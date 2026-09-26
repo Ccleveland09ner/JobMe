@@ -25,22 +25,103 @@
  * LLM_SURFACE once scripts/latency-probe.ts has settled the casing question.
  */
 
-/** Generate JSON matching a provider-side response schema. */
+import { GoogleGenAI } from "@google/genai";
+
+let client: GoogleGenAI | null = null;
+
+/** Lazily constructed so importing this module never requires a key. */
+export function genai(): GoogleGenAI {
+  if (!client) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new LlmError(
+        "GEMINI_API_KEY is not set. Copy .env.example to .env.local.",
+      );
+    }
+    client = new GoogleGenAI({ apiKey });
+  }
+  return client;
+}
+
+export class LlmError extends Error {
+  constructor(
+    message: string,
+    /** True when the call failed because of the free tier's 15 RPM ceiling. */
+    public readonly rateLimited = false,
+  ) {
+    super(message);
+    this.name = "LlmError";
+  }
+}
+
+export interface GenerateJsonResult<T> {
+  value: T;
+  /** Should be ~0 on the chosen model. Non-zero means the config regressed. */
+  thoughtTokens: number;
+  outputTokens: number;
+  ms: number;
+}
+
+/**
+ * One structured-output call.
+ *
+ * NOTE: no `thinkingConfig` is sent. On `gemini-3.5-flash-lite` the default
+ * already reports zero thought tokens and is the fastest of the three modes —
+ * `thinkingBudget: 0` is rejected outright and `MINIMAL` costs ~126ms for
+ * identical output. See the measurement table below. If you change
+ * `LLM_MODEL`, re-run `npm run probe`: the accepted modes differ per model.
+ */
 export async function generateJson<T>(args: {
   systemInstruction: string;
   prompt: string;
-  /** Provider JSON schema, passed as `responseSchema`. */
+  /** Provider JSON schema. Keep it FLAT — $ref/oneOf/allOf are unsupported. */
   responseSchema: unknown;
   temperature?: number;
-}): Promise<T> {
-  void args;
-  throw new Error("TODO(slice 2): generateJson not implemented");
-}
+  model?: string;
+  /** Aborts the call so a slow turn degrades instead of hanging. */
+  signal?: AbortSignal;
+}): Promise<GenerateJsonResult<T>> {
+  const started = performance.now();
+  try {
+    const res = await genai().models.generateContent({
+      model: args.model ?? LLM_MODEL,
+      contents: args.prompt,
+      config: {
+        systemInstruction: args.systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: args.responseSchema as never,
+        temperature: args.temperature ?? 0.2,
+        abortSignal: args.signal,
+      },
+    });
 
-/** Embed one or more strings. Returns one vector per input. */
-export async function embed(texts: string[]): Promise<number[][]> {
-  void texts;
-  throw new Error("TODO(slice 2): embed not implemented");
+    const text = res.text ?? "";
+    let value: T;
+    try {
+      value = JSON.parse(text) as T;
+    } catch {
+      throw new LlmError(
+        `Model returned unparseable JSON: ${text.slice(0, 200)}`,
+      );
+    }
+
+    return {
+      value,
+      thoughtTokens: res.usageMetadata?.thoughtsTokenCount ?? 0,
+      outputTokens: res.usageMetadata?.candidatesTokenCount ?? 0,
+      ms: performance.now() - started,
+    };
+  } catch (err) {
+    if (err instanceof LlmError) throw err;
+    const message = (err as Error).message ?? String(err);
+    const rateLimited = /RESOURCE_EXHAUSTED|429/.test(message);
+    throw new LlmError(
+      rateLimited
+        ? `Rate limited (free tier is ${FREE_TIER_RPM} requests/minute).`
+        : message.slice(0, 300),
+      rateLimited,
+    );
+  }
 }
 
 /**

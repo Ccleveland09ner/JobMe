@@ -17,10 +17,8 @@
  * — you get one vector back and a retrieval feature that quietly does nothing.
  */
 
-import { GoogleGenAI } from "@google/genai";
-
 import type { AnchorSimilarity } from "../engine/classify";
-import { EMBED_DIMS, EMBED_MODEL } from "./llm";
+import { EMBED_DIMS, EMBED_MODEL, genai } from "./llm";
 
 /**
  * Per-request batch size. The API's item limit is undocumented, so this is a
@@ -35,17 +33,6 @@ export const EMBED_BATCH_SIZE = 16;
  * retrieval.
  */
 export type EmbedTask = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY";
-
-let client: GoogleGenAI | null = null;
-
-function ai(): GoogleGenAI {
-  if (!client) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY is not set.");
-    client = new GoogleGenAI({ apiKey });
-  }
-  return client;
-}
 
 export class EmbeddingError extends Error {
   constructor(message: string) {
@@ -68,7 +55,7 @@ export async function embedMany(
   const out: number[][] = [];
   for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
     const batch = texts.slice(i, i + EMBED_BATCH_SIZE);
-    const res = await ai().models.embedContent({
+    const res = await genai().models.embedContent({
       model: EMBED_MODEL,
       contents: batch,
       config: { taskType: task, outputDimensionality: EMBED_DIMS },

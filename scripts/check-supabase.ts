@@ -26,6 +26,8 @@ const EXPECTED_TABLES = [
   "interview_sessions",
   "turns",
   "reports",
+  "resumes",
+  "resume_chunks",
 ] as const;
 
 async function main(): Promise<void> {
@@ -72,8 +74,10 @@ async function main(): Promise<void> {
 
   if (missing) {
     console.log(
-      `\n  ${missing}/${EXPECTED_TABLES.length} tables missing — the migration has not been applied.`,
+      `\n  ${missing}/${EXPECTED_TABLES.length} table(s) missing — a migration has not been applied.`,
     );
+    console.log("\n  Either paste the unapplied file(s) from supabase/migrations/");
+    console.log("  into the dashboard SQL Editor, or link the CLI:");
     console.log("    npx supabase login");
     console.log(`    npx supabase link --project-ref ${new URL(url).host.split(".")[0]}`);
     console.log("    npx supabase db push --linked");
