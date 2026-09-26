@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "probe": "tsx scripts/latency-probe.ts",
+    "check:db": "tsx scripts/check-supabase.ts",
     "embed:bank": "tsx scripts/embed-bank.ts",
     "gen:acks": "tsx scripts/gen-ack-clips.ts"
   },
