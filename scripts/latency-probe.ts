@@ -114,6 +114,40 @@ function heading(title: string): void {
   console.log("\n" + "=".repeat(68) + "\n" + title + "\n" + "=".repeat(68));
 }
 
+/**
+ * MEASURED 2026-09-26: the free tier allows 15 requests per MINUTE per model
+ * (quotaId GenerateRequestsPerMinutePerProjectPerModel-FreeTier) — a burst
+ * limit, not the ~20/day some reports claimed.
+ *
+ * That is comfortably enough for the product: one call per turn, ~10 turns
+ * spread over an 8-minute interview. It is NOT enough for an unpaced probe,
+ * which is why calls below are spaced.
+ */
+const FREE_TIER_RPM = 15;
+const PACE_MS = Math.ceil(60_000 / FREE_TIER_RPM) + 200;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Gemini errors arrive as a wall of JSON; keep the useful part. */
+function briefError(err: unknown): string {
+  const raw = (err as Error).message ?? String(err);
+  try {
+    const parsed = JSON.parse(raw);
+    const e = parsed.error ?? parsed;
+    const retry = /retryDelay":"(\d+)s/.exec(raw)?.[1];
+    return (
+      `${e.code ?? "?"} ${e.status ?? ""} ${String(e.message ?? "").slice(0, 120)}` +
+      (retry ? ` (retry in ${retry}s)` : "")
+    );
+  } catch {
+    return raw.slice(0, 160);
+  }
+}
+
+function isRateLimit(err: unknown): boolean {
+  return /RESOURCE_EXHAUSTED|429/.test((err as Error).message ?? "");
+}
+
 let failures = 0;
 function gate(label: string, actual: number, limit: number): void {
   const ok = actual <= limit;
@@ -199,6 +233,7 @@ async function probeThinking(models: string[]): Promise<void> {
   for (const model of models) {
     console.log(`\n  ${model}`);
     for (const mode of ["default", "budget0", "minimal"] as ThinkMode[]) {
+      await sleep(PACE_MS);
       try {
         const r = await evalCall(model, mode);
         console.log(
@@ -206,7 +241,7 @@ async function probeThinking(models: string[]): Promise<void> {
             `  output=${String(r.output).padStart(4)}  ${Math.round(r.ms)}ms`,
         );
       } catch (err) {
-        console.log(`    ${mode.padEnd(8)} REJECTED: ${(err as Error).message}`);
+        console.log(`    ${mode.padEnd(8)} REJECTED: ${briefError(err)}`);
       }
     }
   }
@@ -215,15 +250,21 @@ async function probeThinking(models: string[]): Promise<void> {
   );
 }
 
-/** 3. Latency with the real schema. Sequential — parallel hides queueing. */
-async function probeLatency(model: string, mode: ThinkMode): Promise<void> {
-  heading(`3. Eval latency — ${model} (${mode}), N=20 sequential`);
+/**
+ * 3. Latency with the real schema. Sequential — parallel hides queueing — and
+ * PACED, because the free tier's 15 RPM otherwise turns the tail of the run
+ * into 429s and poisons the percentiles with failures rather than latency.
+ */
+async function probeLatency(model: string, mode: ThinkMode, n = 12): Promise<void> {
+  heading(`3. Eval latency — ${model} (${mode}), N=${n} sequential, paced`);
   const times: number[] = [];
   let parsed = 0;
   let thoughts = 0;
   let output = 0;
+  let limited = 0;
 
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < n; i++) {
+    if (i > 0) await sleep(PACE_MS);
     try {
       const r = await evalCall(model, mode);
       times.push(r.ms);
@@ -241,10 +282,16 @@ async function probeLatency(model: string, mode: ThinkMode): Promise<void> {
       }
       process.stdout.write(".");
     } catch (err) {
-      console.log(`\n  run ${i} failed: ${(err as Error).message}`);
+      if (isRateLimit(err)) {
+        limited++;
+        process.stdout.write("!");
+      } else {
+        console.log(`\n  run ${i} failed: ${briefError(err)}`);
+      }
     }
   }
   console.log("");
+  if (limited) console.log(`  ${limited} run(s) rate limited — pacing too tight.`);
 
   if (!times.length) {
     console.log("  no successful calls");
@@ -401,9 +448,14 @@ async function main(): Promise<void> {
   await probeThinking(available);
 
   const model = process.env.LLM_MODEL ?? available[0];
-  // Prefer a hard 0 budget if the model took it; the thinking section above
-  // prints which. Default to minimal, the documented floor.
-  const mode: ThinkMode = (process.env.PROBE_THINK_MODE as ThinkMode) ?? "minimal";
+  /**
+   * MEASURED: on gemini-3.5-flash-lite, sending NO thinking config already
+   * yields thoughtsTokenCount = 0 and is the fastest of the three modes —
+   * `thinkingBudget: 0` is rejected outright (400) and `MINIMAL` is slower for
+   * identical output. The inverse holds on gemini-3.8-flash, which rejects
+   * MINIMAL but accepts budget 0. Per-model, and not guessable from the docs.
+   */
+  const mode: ThinkMode = (process.env.PROBE_THINK_MODE as ThinkMode) ?? "default";
 
   await probeLatency(model, mode);
   await probeEmbeddings();

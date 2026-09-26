@@ -43,8 +43,38 @@ export async function embed(texts: string[]): Promise<number[][]> {
   throw new Error("TODO(slice 2): embed not implemented");
 }
 
-/** Default: the Flash-Lite tier whose `thinking_level` default is `minimal`. */
+/**
+ * MEASURED 2026-09-26 by scripts/latency-probe.ts, not assumed:
+ *
+ *   model                  mode      thoughts   latency
+ *   gemini-3.5-flash-lite  default          0     964ms   <- chosen
+ *   gemini-3.5-flash-lite  budget 0   REJECTED (400)
+ *   gemini-3.5-flash-lite  MINIMAL          0    1090ms
+ *   gemini-3.1-flash-lite  default          0    7785ms
+ *   gemini-3.8-flash       default        651    5637ms
+ *   gemini-3.8-flash       budget 0         0    3476ms
+ *   gemini-3.8-flash       MINIMAL    REJECTED ("not supported for this model")
+ *
+ * Two things that are per-model and not guessable from the docs: flash-lite
+ * REJECTS `thinkingBudget: 0` while 3.8-flash accepts it, and 3.8-flash REJECTS
+ * `MINIMAL` while flash-lite accepts it.
+ *
+ * So: send NO thinkingConfig at all on flash-lite. It already reports zero
+ * thought tokens and is the fastest of the three modes. Adding `MINIMAL`
+ * costs ~126ms for identical output.
+ */
 export const LLM_MODEL = process.env.LLM_MODEL ?? "gemini-3.5-flash-lite";
+
+/**
+ * Free tier is **15 requests per minute, per model** (measured; the quotaId is
+ * GenerateRequestsPerMinutePerProjectPerModel-FreeTier). It is a burst limit,
+ * not a daily cap.
+ *
+ * Fine for the product — one call per turn, ~10 turns over ~8 minutes — but it
+ * means back-to-back scripted runs and rehearsal loops WILL hit 429. The
+ * degraded-turn path is what keeps an interview alive when they do.
+ */
+export const FREE_TIER_RPM = 15;
 
 /**
  * `gemini-embedding-001` and NOT `gemini-embedding-2`, deliberately: the newer
