@@ -1,0 +1,4 @@
+shadcn/ui components land here (npx shadcn@latest init).
+Planned: Button, Card, Dialog, Badge, Progress, Textarea, Tooltip.
+Verify Tailwind v4 + React 19 support at init time.
+Ref: docs/TechDesign-JobMe-MVP.md > Stack

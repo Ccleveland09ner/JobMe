@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/**
+ * JobMe design tokens.
+ * Ref: docs/TechDesign-JobMe-MVP.md > Look and Feel
+ *      docs/PRD-JobMe-MVP.md > Look and Feel
+ *
+ * Feel: calm, warm, professional. A good career-center room - not a game and
+ * not a sci-fi AI console.
+ *
+ * Deliberately light-only. The PRD specifies one warm palette (off-white
+ * ground, deep ink text, a single accent); the starter's prefers-color-scheme
+ * block has been removed because a dark inversion would have made these token
+ * values wrong half the time. Revisit if dark mode is ever scoped in.
+ *
+ * Avoid: purple-gradient AI styling, chat bubbles, walls of text in the room.
+ */
+
+@theme {
+  /* Ground and text */
+  --color-bg: #faf8f5; /* warm off-white */
+  --color-ink: #1c1b1a; /* deep ink */
+  --color-muted: #6b6660;
+
+  /* One confident accent - talk button, active states. (PRD OQ4: teal) */
+  --color-accent: #0f766e; /* teal-700 */
+
+  /*
+   * Score colours, 1-4. ALWAYS rendered alongside the number - colour never
+   * carries meaning on its own.
+   * Ref: docs/PRD-JobMe-MVP.md > Non-Functional Requirements > Accessibility
+   */
+  --color-score-1: #b42318;
+  --color-score-2: #b54708;
+  --color-score-3: #a16207;
+  --color-score-4: #15803d;
+
+  /* Geist ships with the starter. Mono is for notepad evidence quotes. */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Visible focus states are a requirement, not a polish item. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

@@ -1,0 +1,4 @@
+ack-01.mp3 .. ack-10.mp3 land here, plus an intro fallback clip.
+Generated once by scripts/gen-ack-clips.ts and committed.
+They are static on purpose - a live TTS call could not hit the 0.3s target.
+Ref: docs/TechDesign-JobMe-MVP.md > Latency Plan

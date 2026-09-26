@@ -1,0 +1,10 @@
+Learn Skill Pack workspace. Do NOT hand-author these - the skills generate them:
+  scope.md  prd.md  spec.md  checklist.md  app-map.html
+  learner-profile.md  (gitignored by 1-start)
+
+scope.md, prd.md and spec.md are HARD submission requirements and must be in
+the public repo. Use docs/PRD-JobMe-MVP.md and docs/TechDesign-JobMe-MVP.md as
+your answers during the 2-scope / 3-prd / 4-spec interviews - both documents
+map their headings to the skill templates for exactly that purpose.
+
+Ref: docs/TechDesign-JobMe-MVP.md > Hackathon Compliance
