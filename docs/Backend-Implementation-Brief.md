@@ -15,10 +15,9 @@ Build the remaining backend: the adaptive engine, the session/turn/report routes
 
 | Area | Files |
 |---|---|
-| Engine (pure TS, no AI, unit-tested) | `src/lib/engine/{bank,classify,policy,notepad}.ts` + `policy.test.ts` |
-| Auth guard | `src/lib/auth.ts` |
-| Validation | `src/lib/schemas.ts` |
-| Stats | `src/lib/stats.ts` |
+| Engine (pure TS, no AI, unit-tested) | `src/lib/engine/{classify,policy,notepad}.ts` + `policy.test.ts` — `types.ts` and `bank.ts` are already done |
+| Validation | `src/lib/schemas.ts` (Zod is installed; the schemas are still stubs) |
+| Stats | `src/lib/stats.ts` — note `wpm` uses `capture_ms`, see §2.8 |
 | Session routes | `src/app/api/sessions/route.ts`, `src/app/api/sessions/[id]/route.ts` |
 | Turn route (the hot path) | `src/app/api/sessions/[id]/turns/route.ts` |
 | Report | `src/app/api/sessions/[id]/report/route.ts`, `src/lib/ai/report.ts` |
@@ -30,9 +29,11 @@ Do not create, edit, or refactor:
 
 - `src/lib/voice/*` (STT, TTS, audio graph)
 - `src/app/api/tts/route.ts`
-- `src/app/api/resume/route.ts` and `src/lib/resume/*` (does not exist yet — someone else is creating it)
-- `src/lib/ai/{llm,evaluate,prompts,embeddings}.ts`
-- `scripts/latency-probe.ts`
+- `src/app/api/resume/route.ts`, `src/lib/resume/*` and `src/lib/jd/*` (built; resume ingestion, redaction, chunking, embeddings, JD distillation and coverage ranking)
+- `src/lib/ai/{llm,evaluate,prompts,embeddings,questions,resume-questions}.ts` (built)
+- `src/lib/engine/{types,bank}.ts` (built — read them, do not rewrite)
+- `src/lib/auth.ts` (built — `requireUser()` and `getUserOrNull()` both work; call them, see §2.3)
+- `scripts/*.ts`
 
 **The turn route consumes `evaluateAndDraft()` from `src/lib/ai/evaluate.ts` and `embed()`/`cosine()` from `src/lib/ai/embeddings.ts`. Program against their existing exported signatures. Do not implement them.** If you need a behaviour they don't expose, write the call site as if it did and leave a `TODO(integration)` comment naming what you need — do not reach into those files.
 
@@ -44,23 +45,19 @@ Also out of scope: all UI. `src/components/**` and every `page.tsx` belong to a 
 
 These were verified against live documentation. The tech design predates them.
 
-### 2.1 The model ID in the docs and scaffold is dead
+### 2.1 Model and rate limits (already fixed — context only)
 
-`.env.example` and `src/lib/ai/llm.ts` both default to `gemini-2.5-flash`. Google restricted 2.5 access on 2026-09-18 to projects with prior usage, so it is **unavailable to this project**. Use `gemini-3.5-flash-lite`.
+`gemini-2.5-flash` was the default and is restricted to projects with prior usage. The project now runs `gemini-3.5-flash-lite` with **no** thinking config: measured, that is both zero-thought and the fastest of the three modes, while `thinkingBudget: 0` is rejected outright on that model. See the measurement table in `src/lib/ai/llm.ts`.
 
-Both files also carry comments saying to "keep thinking off." **Thinking cannot be disabled on Gemini 3.** The parameter is `thinking_level` and there is no `off` value; `minimal` is the floor, and it is already the default on `gemini-3.5-flash-lite`. Fixing these two files is owned by the AI workstream — do not edit them — but do not propagate the dead value into anything you write.
+**The free tier is 15 requests per minute, per model** (measured). Fine for one call per turn across an ~8 minute interview; not fine for back-to-back scripted runs. This is why the degraded-turn path in §6.5 is mandatory rather than optional.
 
-### 2.2 `zod` is a phantom dependency
+### 2.2 Toolchain (already fixed — context only)
 
-`zod@4.6.2` is present in `node_modules` but appears **zero times in `package.json`**. `src/lib/schemas.ts` is written to import it. One `npm ci` produces a broken build.
+`zod` was a phantom `node_modules`-only package and is now a real dependency. `vitest`, `tsx`, `@google/genai` and `unpdf` are installed, `vitest.config.mts` exists, and `@types/node` was aligned to `^24` to match the runtime. `npm test` runs; 108 tests pass.
 
-**Your first commit must promote `zod` to a real dependency**, and install `vitest` and `tsx` (both missing) plus a vitest config — `src/lib/engine/policy.test.ts` exists with no runner, so `npm test` currently fails.
+### 2.3 Routes authenticate themselves (already fixed — context only)
 
-### 2.3 `src/proxy.ts` taxes every API route
-
-Its matcher excludes only `_next/*`, `favicon.ico` and image extensions, so `updateSession()` → `getUser()` (a 100–270ms network hop) runs on **every** `/api/*` request, inside a turn budget of 1.5s.
-
-Tighten the matcher to exclude `/api/*` and authenticate inside each route using the server client — which these routes need anyway. Note this affects `/api/tts` and `/api/resume` too; make the matcher change once, cleanly, and mention it in the PR so the other workstream knows.
+`src/proxy.ts` no longer matches `/api/*`, because `updateSession()` → `getUser()` was adding a 100–270ms network hop to every route inside a 1.5s turn budget. **Your routes must therefore call `getUserOrNull()` from `src/lib/auth.ts` themselves** — it is implemented and returns `null` so you can answer 401 JSON. There is no session-refresh middleware behind you any more.
 
 ### 2.4 The turn insert must NOT go in `after()`
 
