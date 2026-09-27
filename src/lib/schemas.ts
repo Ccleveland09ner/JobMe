@@ -41,6 +41,13 @@ export const TurnBody = z.object({
 });
 export type TurnBody = z.infer<typeof TurnBody>;
 
+/**
+ * A `[id]` route segment. Checked before querying, because Postgres rejects a
+ * malformed uuid with an error rather than zero rows — and the answer to a
+ * nonsense id should be the same 404 as a missing one.
+ */
+export const SessionId = z.string().uuid();
+
 export const TtsQuery = z.object({
   text: z.string().min(1).max(LIMITS.ttsText),
 });
