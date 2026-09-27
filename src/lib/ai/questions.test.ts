@@ -4,6 +4,7 @@ import { extractEvidence, validateEvaluation, EvalError } from "./evaluate";
 import {
   checkDraft,
   chooseQuestionText,
+  hasProperNoun,
   heuristicGap,
   heuristicScores,
   preClassify,
@@ -185,6 +186,23 @@ describe("preClassify — demo insurance", () => {
       "and it all came together in the end which was good for everyone " +
       "involved and we learned a lot from the whole process overall too";
     expect(preClassify(vague)).toBe("weak");
+  });
+
+  /**
+   * The regression that motivated `hasProperNoun`: the obvious regex matches
+   * the word after a full stop, which is sentence-initial, so any
+   * multi-sentence answer looked like it named something and the
+   * pre-classifier silently stopped firing.
+   */
+  it("does not treat a sentence-initial capital as naming something", () => {
+    expect(
+      hasProperNoun("we shipped it on time. The team was happy about that."),
+    ).toBe(false);
+  });
+
+  it("recognises an actual named system mid-sentence", () => {
+    expect(hasProperNoun("I rewrote the scheduler in Kubernetes.")).toBe(true);
+    expect(hasProperNoun("we migrated to AWS last spring")).toBe(true);
   });
 
   it("defers to the model when the answer has substance", () => {

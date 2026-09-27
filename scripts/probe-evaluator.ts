@@ -13,6 +13,7 @@
 
 import { evaluateAndDraft, extractEvidence } from "../src/lib/ai/evaluate";
 import { checkDraft, preClassify } from "../src/lib/ai/questions";
+import { STAR_DIMENSIONS, bandingValues } from "../src/lib/engine/types";
 import { loadEnv, requireEnv } from "./_env";
 
 loadEnv();
@@ -35,10 +36,17 @@ interface Result {
   min: number;
   ownership: number;
   offTopic: boolean;
+  star: string;
   band: "weak" | "mediocre" | "great";
 }
 
-/** Mirrors lib/engine/classify.ts so this probe is self-contained. */
+/**
+ * Banding is computed over the STAR ROLL-UP plus the other four dimensions,
+ * not over all eight. With eight there are three extra chances to trip the
+ * `min >= 3` clause, and Task is the component speakers most often fold into
+ * Situation — `great` would become nearly unreachable and the weak-vs-strong
+ * contrast this probe exists to protect would collapse.
+ */
 function band(avg: number, min: number, offTopic: boolean): Result["band"] {
   if (offTopic || avg < 2.0) return "weak";
   if (avg >= 3.5 && min >= 3) return "great";
@@ -127,14 +135,16 @@ async function main() {
           difficulty: 1,
         });
 
-        const values = Object.values(evaluation.scores);
+        const s = evaluation.scores;
+        const values = bandingValues(s);
         const avg = values.reduce((a, b) => a + b, 0) / values.length;
         const min = Math.min(...values);
         const result: Result = {
           avg,
           min,
-          ownership: evaluation.scores.ownership,
+          ownership: s.ownership,
           offTopic: evaluation.off_topic,
+          star: STAR_DIMENSIONS.map((d) => `${d[0].toUpperCase()}${s[d]}`).join(" "),
           band: pre ?? band(avg, min, evaluation.off_topic),
         };
         bands.push(result.band);
@@ -142,7 +152,7 @@ async function main() {
         const problem = fixture.expect(result);
         console.log(
           `  run ${i + 1}: ${result.band.padEnd(8)} avg=${avg.toFixed(2)} ` +
-            `min=${min} own=${result.ownership}` +
+            `min=${min} own=${result.ownership}  [${result.star}]` +
             (problem ? `  <-- ${problem}` : ""),
         );
         if (problem) failures++;

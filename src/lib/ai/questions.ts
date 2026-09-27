@@ -125,13 +125,39 @@ export const MIN_SUBSTANTIVE_WORDS = 25;
 export function preClassify(answer: string): Band | null {
   const words = answer.trim().split(/\s+/).filter(Boolean);
   if (words.length < MIN_SUBSTANTIVE_WORDS) return "weak";
-
-  const hasNumber = /\d/.test(answer);
-  // A concrete noun proxy: a capitalised word that is not sentence-initial.
-  const hasProperNoun = /(?:\w[.!?]\s+|\s)[A-Z][a-z]{2,}/.test(answer);
-  if (!hasNumber && !hasProperNoun) return "weak";
-
+  if (!hasNumber(answer) && !hasProperNoun(answer)) return "weak";
   return null;
+}
+
+function hasNumber(text: string): boolean {
+  return /\d/.test(text);
+}
+
+/**
+ * A capitalised word that is NOT the first word of a sentence — a proxy for
+ * naming an actual system, tool, company or person.
+ *
+ * Done by walking sentences rather than with one regex: the obvious pattern
+ * (`/[.!?]\s+[A-Z][a-z]+/`) matches the word AFTER a full stop, which is
+ * sentence-initial and therefore exactly what must be excluded. That bug made
+ * every multi-sentence answer look like it named something, which silently
+ * disabled the pre-classifier for the answers it most needed to catch.
+ */
+export function hasProperNoun(text: string): boolean {
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    const tokens = sentence.trim().split(/\s+/).filter(Boolean);
+    // Skip index 0: sentence-initial capitals carry no information.
+    for (let i = 1; i < tokens.length; i++) {
+      const token = tokens[i].replace(/^[("']+|[)"'.,;:!?]+$/g, "");
+      if (/^[A-Z][a-z]{2,}$/.test(token) || /^[A-Z]{2,}$/.test(token)) {
+        // "I" and common sentence connectors are not proper nouns.
+        if (!/^(I|A|The|But|And|So|Then|We|It|My|Our)$/i.test(token)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 /**
