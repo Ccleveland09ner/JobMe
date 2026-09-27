@@ -1,14 +1,11 @@
 /**
- * The kernel's live smoke test: `npm run probe:eval`
+ * `npm run probe:eval` — the kernel's live smoke test, paced for 15 RPM.
  *
- * Ref: docs/PRD-JobMe-MVP.md > Success Metrics
+ * The demo stands or falls on one thing: the scripted weak and strong answers
+ * must land in different bands every run, because that is what produces the
+ * visible Clarify-vs-Deepen contrast. 2/3 stability means a coin flip.
  *
- * The demo stands or falls on one thing — the same scripted weak answer and
- * the same scripted strong answer must land in different bands every single
- * run, because that is what produces the visible Clarify-vs-Deepen contrast on
- * stage. Band stability of 2/3 means the demo is a coin flip.
- *
- * Paced for the free tier's 15 requests/minute.
+ * Ref: PRD > Success Metrics
  */
 
 import { evaluateAndDraft, extractEvidence } from "../src/lib/ai/evaluate";
@@ -27,7 +24,7 @@ const QUESTION = "Tell me about a time you worked on a team to ship something.";
 interface Fixture {
   label: string;
   answer: string;
-  /** What the design requires of this answer, not merely what it scores. */
+  /** What the design requires, not merely what it scores. */
   expect: (r: Result) => string | null;
 }
 
@@ -41,11 +38,9 @@ interface Result {
 }
 
 /**
- * Banding is computed over the STAR ROLL-UP plus the other four dimensions,
- * not over all eight. With eight there are three extra chances to trip the
- * `min >= 3` clause, and Task is the component speakers most often fold into
- * Situation — `great` would become nearly unreachable and the weak-vs-strong
- * contrast this probe exists to protect would collapse.
+ * Over the STAR roll-up plus the other four, not all eight: eight gives three
+ * extra chances to trip `min >= 3`, which would make `great` nearly
+ * unreachable and collapse the contrast this probe exists to protect.
  */
 function band(avg: number, min: number, offTopic: boolean): Result["band"] {
   if (offTopic || avg < 2.0) return "weak";
@@ -118,8 +113,7 @@ async function main() {
   for (const fixture of FIXTURES) {
     console.log(`${fixture.label}`);
 
-    // The deterministic pre-classifier gets a vote first, and for the weak
-    // fixture it should decide the band outright without any model call.
+    // The pre-classifier votes first; for the weak fixture it decides outright.
     const pre = preClassify(fixture.answer);
     if (pre) console.log(`  pre-classifier: forced ${pre} (no model call)`);
 

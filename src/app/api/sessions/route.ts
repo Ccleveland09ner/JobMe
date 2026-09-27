@@ -13,7 +13,7 @@ import type { Question, ResumeItem } from "@/lib/engine/types";
 import { CreateSessionBody } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
-/** Bank topics drawn per session. The bank holds 11; variety comes from this. */
+/** Drawn from a bank of 11 — this is where session-to-session variety comes from. */
 const QUICK_TOPICS = 4;
 const FULL_TOPICS = 6;
 
@@ -38,10 +38,9 @@ export async function POST(request: Request) {
     .eq("id", user.id);
 
   /**
-   * Coverage comes from the resume, already ranked against the pasted job
-   * description at ingest time. Full mode without a resume has nothing to
-   * guarantee coverage of, so it degrades to a longer bank-led interview
-   * rather than failing.
+   * Already ranked against the job description at ingest. Full mode without a
+   * resume has nothing to cover, so it degrades to a longer bank-led
+   * interview rather than failing.
    */
   let resumeItems: ResumeItem[] = [];
   let resumeFacts: unknown = null;

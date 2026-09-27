@@ -1,12 +1,9 @@
 /**
- * Auth guard used by every protected page and route.
+ * Auth guard for every protected page and route. Load-bearing now that
+ * `proxy.ts` no longer matches `/api/*`: handlers authenticate here instead of
+ * relying on middleware that cost a `getUser()` round trip on every request.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Components > Auth and Profile
- *
- * This is load-bearing now that `src/proxy.ts` no longer matches `/api/*`:
- * route handlers authenticate themselves here rather than relying on session
- * refresh middleware, which was costing a `getUser()` round trip on every
- * request including the ones with the tightest latency budgets.
+ * Ref: TechDesign > Components > Auth and Profile
  */
 
 import { redirect } from "next/navigation";
@@ -19,11 +16,9 @@ export interface AuthedUser {
 }
 
 /**
- * For Server Components and pages. Redirects to /login when signed out.
- *
- * Uses `getUser()`, which revalidates the token with Supabase, and NOT
- * `getSession()` — that reads the cookie without verifying it, so it must
- * never be trusted in server code.
+ * Pages and Server Components; redirects when signed out. Uses `getUser()`,
+ * which revalidates the token — NOT `getSession()`, which reads the cookie
+ * without verifying it and must never be trusted server-side.
  */
 export async function requireUser(): Promise<AuthedUser> {
   const user = await getUserOrNull();

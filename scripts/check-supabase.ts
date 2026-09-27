@@ -1,13 +1,8 @@
 /**
- * Connectivity and schema diagnostic: `npm run check:db`
- *
- * Answers three questions that otherwise fail late and confusingly:
- *   1. Are the env vars present, under either key name?
- *   2. Is the project reachable (and awake — free projects pause after a week
- *      of inactivity, which looks like a network error)?
- *   3. Has the schema migration actually been applied?
- *
- * Read-only. Safe to run any time.
+ * `npm run check:db` — read-only, safe any time. Answers three things that
+ * otherwise fail late and confusingly: are the env vars present, is the
+ * project reachable and awake (free projects pause after a week, which looks
+ * like a network error), and has the schema actually been applied?
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -62,12 +57,10 @@ async function main(): Promise<void> {
   let missing = 0;
   for (const table of EXPECTED_TABLES) {
     /**
-     * A real GET, NOT `{ head: true }`.
-     *
-     * A HEAD response carries no body, so PostgREST's JSON error payload never
-     * reaches supabase-js and `error` stays null even for a table that does
-     * not exist. This script previously used `head: true` and cheerfully
-     * reported a completely empty database as fully migrated.
+     * A real GET, NOT `{ head: true }`: a HEAD response carries no body, so
+     * PostgREST's JSON error never reaches supabase-js and `error` stays null
+     * even for a missing table. This script once reported a completely empty
+     * database as fully migrated.
      */
     const { error } = await supabase.from(table).select("*").limit(1);
 
@@ -77,13 +70,9 @@ async function main(): Promise<void> {
     }
 
     /**
-     * `42501 permission denied` means the table EXISTS and the grants are
-     * doing their job — this script authenticates with the publishable key
-     * and no user session, so it acts as `anon`, and JobMe grants nothing to
-     * `anon` because it has no public data.
-     *
-     * A genuinely missing table reports PGRST205 (PostgREST cannot find it in
-     * its schema cache) or 42P01.
+     * `42501` means the table EXISTS and grants are working: this script has
+     * no user session, so it acts as `anon`, and JobMe grants `anon` nothing.
+     * A genuinely missing table reports PGRST205 or 42P01.
      */
     if (error.code === "42501") {
       console.log(`  ok        ${table.padEnd(20)} (exists; anon correctly denied)`);

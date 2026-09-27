@@ -1,11 +1,11 @@
 /**
- * POST /api/sessions/[id]/turns — the hot path. One turn of the interview.
+ * POST /api/sessions/[id]/turns — the hot path.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > The Core Journey Through the System (8)
+ * The orchestration lives in `lib/interview/turn.ts` so the rehearsal harness
+ * runs identical code. This is the HTTP shell: auth, validation, idempotency,
+ * persistence.
  *
- * The orchestration itself lives in `src/lib/interview/turn.ts` so the
- * rehearsal harness exercises the identical code path. This file is the HTTP
- * shell: auth, validation, idempotency, persistence.
+ * Ref: TechDesign > The Core Journey (8)
  */
 
 import { NextResponse, after } from "next/server";
@@ -39,8 +39,8 @@ export async function POST(
 
   const supabase = await createClient();
 
-  // RLS makes another user's session invisible, so "not found" and "not yours"
-  // are the same 404 and the difference never leaks.
+  // RLS makes another user's session invisible: "not found" and "not yours"
+  // are the same 404, so the difference never leaks.
   const { data: session } = await supabase
     .from("interview_sessions")
     .select("id, engine_state, resume_id, status")
@@ -60,9 +60,9 @@ export async function POST(
   const state = session.engine_state as EngineState;
 
   /**
-   * Idempotency. A push-to-talk button double-fires constantly, and without
-   * this the same answer would be scored twice and the engine advanced twice.
-   * The client resyncs from the state in this body rather than retrying.
+   * Idempotency. Push-to-talk double-fires constantly; without this the same
+   * answer is scored twice and the engine advanced twice. The client resyncs
+   * from the state in this body rather than retrying.
    */
   if (body.clientTurnSeq !== state.turnSeq + 1) {
     return NextResponse.json(
@@ -76,8 +76,8 @@ export async function POST(
     );
   }
 
-  // Resume context: distilled facts go in every prompt (a fixed prefix, cheap
-  // and reproducible); retrieval is only used to ground a resume-led opening.
+  // Distilled facts go in every prompt — a fixed prefix, cheap and
+  // reproducible. Retrieval only grounds a resume-led opening.
   let resumeFacts: string | null = null;
   let role: RoleProfile | null = null;
 
@@ -113,18 +113,15 @@ export async function POST(
   });
 
   if (result.kind === "nudge") {
-    // Deliberately not persisted and not counted: a cough must not cost the
-    // candidate one of their questions.
+    // Not persisted, not counted: a cough must not cost a question.
     return NextResponse.json({ kind: "nudge", line: result.line });
   }
 
   /**
-   * Both writes are SYNCHRONOUS, before the response.
-   *
-   * The tech design put the turn insert in `after()` for latency. That is
-   * wrong: if it fails after the response is sent, the candidate heard a
-   * question that was never persisted and the next `clientTurnSeq` check
-   * mismatches against a stale `turnSeq`, silently breaking idempotency.
+   * Both writes are SYNCHRONOUS. The tech design put the turn insert in
+   * `after()` for latency, which is wrong: if it fails after the response is
+   * sent, the candidate heard a question that was never persisted and the next
+   * `clientTurnSeq` check mismatches, silently breaking idempotency.
    */
   const { error: updateError } = await supabase
     .from("interview_sessions")
@@ -169,8 +166,8 @@ export async function POST(
     );
   }
 
-  // Safe to run after the response: telemetry only, and `after()` runs even if
-  // the response errored, so nothing here may be load-bearing.
+  // Telemetry only. `after()` runs even when the response errored, so nothing
+  // here may be load-bearing.
   after(() => {
     if (result.notepad.degraded) {
       console.warn(`[turn] session ${id} seq ${result.state.turnSeq} degraded`);

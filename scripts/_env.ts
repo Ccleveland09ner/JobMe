@@ -1,10 +1,7 @@
 /**
- * Minimal .env.local loader for standalone scripts.
- *
- * `next dev` loads .env.local automatically; a script run through tsx does not.
- * Node's own --env-file would work but hard-fails when the file is absent,
- * which makes the scripts unusable before setup. This is deliberately tiny:
- * existing process.env values always win, so CI and shell overrides work.
+ * Minimal .env.local loader: `next dev` loads it automatically, tsx does not,
+ * and Node's --env-file hard-fails when the file is absent. Existing
+ * process.env values always win, so CI and shell overrides still work.
  */
 
 import { existsSync, readFileSync } from "node:fs";

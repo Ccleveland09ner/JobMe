@@ -1,17 +1,12 @@
 /**
- * End-to-end rehearsal harness: `npm run rehearse`
+ * `npm run rehearse` (add `--live` for one real-model run).
  *
  * Drives complete interviews through the REAL turn pipeline — pre-classifier,
- * banding with hysteresis, the engine, question selection, coverage tracking,
- * plateau detection — and asserts the guarantees the product is built on.
+ * banding, the engine, question selection, coverage, plateau detection — and
+ * asserts the guarantees the product is built on.
  *
- * By default the evaluator is scripted, so a 24-turn full-mode session costs
- * nothing against a 15 requests/minute free tier. `--live` swaps in the real
- * model for a single quick-mode run; everything downstream is identical.
- *
- * Usage:
- *   npm run rehearse
- *   npm run rehearse -- --live
+ * The evaluator is scripted by default, so a 24-turn session costs nothing
+ * against a 15 requests/minute free tier. Everything downstream is identical.
  */
 
 import { questionFor, pickTopics } from "../src/lib/engine/bank";
@@ -71,7 +66,7 @@ const ANSWERS = {
     "Black Friday.",
 };
 
-/** Deterministic stand-in for the model, keyed by which answer was given. */
+/** Deterministic stand-in for the model. */
 function scriptedEvaluator(
   plan: (turn: number) => { band: Band; repeats?: boolean },
 ) {
@@ -150,9 +145,8 @@ async function runSession(opts: {
       holdMs: 30_000,
       captureMs: 24_000,
       evaluate: opts.live ? undefined : scriptedEvaluator(() => opts.plan(turn)),
-      // Resume-led openings are a SECOND model call. Stubbed offline too, or
-      // a 24-turn rehearsal quietly spends a minute of the free tier's quota
-      // and starts exercising the fallback instead of the real path.
+      // A SECOND model call. Stubbed offline too, or a 24-turn rehearsal
+      // spends a minute of quota and exercises the fallback, not the real path.
       generateQuestion: opts.live
         ? undefined
         : async ({ item, fallbackTopic }) => ({
@@ -256,8 +250,7 @@ async function resumeHeavy(): Promise<void> {
   check("cap is clamped at 24", trace.state.questionCap <= 24,
     `cap ${trace.state.questionCap}`);
 
-  // Ordering matters: a truncated interview must have covered the most
-  // relevant experience, not whatever happened to be first alphabetically.
+  // A truncated interview must still have covered the most relevant items.
   const order = trace.state.resumeItems.map((i) => i.relevanceToRole);
   const sorted = [...order].sort((a, b) => b - a);
   check("preserves relevance ranking", JSON.stringify(order) === JSON.stringify(sorted));
@@ -293,8 +286,7 @@ async function weakThenStrong(): Promise<void> {
 async function plateauAndRepeat(): Promise<void> {
   console.log("\nPlateau and repeat detection");
 
-  // Same scores every turn: the follow-up lifts nothing, so the topic must
-  // resolve rather than grinding on.
+  // Same scores every turn: the follow-up lifts nothing, so resolve.
   const plateau = await runSession({
     mode: "quick",
     items: [],
@@ -310,8 +302,7 @@ async function plateauAndRepeat(): Promise<void> {
     `${followUpRuns} follow-ups across ${plateau.moves.length} moves`,
   );
 
-  // A follow-up that restates the previous answer counts as a plateau even if
-  // the scores happen to move.
+  // A restated answer is a plateau even when the scores move.
   const repeating = await runSession({
     mode: "quick",
     items: [],

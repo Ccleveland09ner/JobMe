@@ -1,14 +1,11 @@
 /**
  * GET /api/tts?text= — streams the recruiter's voice.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Voice Output
+ * The proxy exists for two load-bearing reasons: the API key stays
+ * server-side, and being same-origin lets an AnalyserNode read the stream for
+ * lip-sync without CORS. Auth-gated, so a stranger cannot drain the quota.
  *
- * This proxy exists for two reasons, both load-bearing:
- *   - the API key stays server-side
- *   - being same-origin lets an AnalyserNode read the stream for the avatar's
- *     lip-sync without a CORS dance
- *
- * Auth-gated so a stranger cannot drain a metered quota.
+ * Ref: TechDesign > Voice Output
  */
 
 import { NextResponse } from "next/server";
@@ -33,8 +30,8 @@ export async function GET(request: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voiceId = process.env.ELEVENLABS_VOICE_ID;
 
-  // Not an error: browser speech synthesis is the intended development
-  // default, and the client falls back on a non-200 without complaint.
+  // Not an error: browser synthesis is the intended dev default, and the
+  // client falls back on a non-200 without complaint.
   if (!apiKey || !voiceId || process.env.TTS_PROVIDER !== "elevenlabs") {
     return NextResponse.json(
       { error: "Neural TTS is not enabled; use the browser voice." },
@@ -42,11 +39,8 @@ export async function GET(request: Request) {
     );
   }
 
-  /**
-   * Everything must be validated BEFORE the stream is returned: once streaming
-   * begins the status line and headers are already on the wire and cannot be
-   * changed.
-   */
+  // Validate BEFORE returning the stream: once it begins, the status line and
+  // headers are already on the wire.
   let upstream: Response;
   try {
     upstream = await fetch(
@@ -78,13 +72,12 @@ export async function GET(request: Request) {
     );
   }
 
-  // Piped straight through, never buffered — buffering forfeits the
-  // first-byte target that the whole latency plan depends on.
+  // Never buffered: that would forfeit the first-byte target.
   return new Response(upstream.body, {
     headers: {
       "Content-Type": "audio/mpeg",
       "Cache-Control": "no-store",
-      // nginx and similar proxies buffer streams by default.
+      // nginx and friends buffer streams by default.
       "X-Accel-Buffering": "no",
     },
   });

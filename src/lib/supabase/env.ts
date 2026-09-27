@@ -1,15 +1,10 @@
 /**
- * Supabase connection values, tolerant of both key names.
+ * Supabase connection values, tolerant of both key names — "anon key" was
+ * renamed to "publishable key", and they are the same value.
  *
- * Supabase renamed the browser-safe key from "anon key" to "publishable key".
- * Their current dashboard and docs hand you `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
- * while this starter was written against `NEXT_PUBLIC_SUPABASE_ANON_KEY`. They
- * are the same value, so we accept either and prefer the newer name.
- *
- * Both names are referenced as literals on purpose: Next inlines
- * `process.env.NEXT_PUBLIC_*` at build time by textual substitution, so a
- * computed lookup like `process.env[name]` would resolve to undefined in the
- * browser bundle.
+ * Both are referenced as literals on purpose: Next inlines
+ * `process.env.NEXT_PUBLIC_*` by textual substitution, so a computed lookup
+ * would resolve to undefined in the browser bundle.
  */
 
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -18,10 +13,7 @@ export const SUPABASE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-/**
- * Throws with an actionable message rather than letting `undefined` reach the
- * Supabase client, which fails later with a much less obvious error.
- */
+/** Fails here with a clear message rather than deeper with an opaque one. */
 export function supabaseEnv(): { url: string; key: string } {
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     const missing = [

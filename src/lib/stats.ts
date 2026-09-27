@@ -5,11 +5,9 @@
  */
 
 /**
- * Words per minute over CAPTURE time, not hold time.
- *
- * Hold time includes the pauses while the candidate thinks, so using it
- * under-reports speaking rate by 20-40% on a considered answer — which would
- * tell a perfectly well-paced candidate they speak too slowly.
+ * Over CAPTURE time, not hold time: hold includes thinking pauses and
+ * under-reports speaking rate by 20-40% on a considered answer, which would
+ * tell a well-paced candidate they speak too slowly.
  */
 export function wpm(text: string, captureMs: number): number {
   if (captureMs <= 0) return 0;
@@ -17,10 +15,8 @@ export function wpm(text: string, captureMs: number): number {
 }
 
 /**
- * Best-effort only, and labelled "approximate" wherever it surfaces: Chrome's
- * speech recognition drops most "um"/"uh" before the server ever sees the
- * transcript, so a low count means little.
- * Ref: docs/PRD-JobMe-MVP.md > Constraints and Assumptions
+ * Labelled "approximate" wherever it surfaces: Chrome drops most "um"/"uh"
+ * before the server sees the transcript, so a low count means little.
  */
 export const FILLER_RE =
   /\b(um+|uh+|erm|like|you know|basically|actually|kind of|sort of|i mean)\b/gi;

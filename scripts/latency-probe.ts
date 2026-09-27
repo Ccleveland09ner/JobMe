@@ -1,32 +1,19 @@
 /**
- * HOUR 1. Run this before building anything else: `npm run probe`
+ * `npm run probe` — run before building anything else.
  *
- * Answers the project's one genuine unknown — can a full turn fit in 2.5s on
- * free tiers? — and settles the model questions the docs cannot.
+ * Answers the project's one genuine unknown: can a full turn fit in 2.5s on
+ * free tiers? Gates: eval p50 <= 1100ms, p90 <= 1800ms, TTS first byte <= 600ms.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Latency Plan
+ * The SDK's own types already settled the API shape — no `interactions`
+ * namespace in @google/genai 2.24, camelCase `config.thinkingConfig`, thought
+ * tokens at `usageMetadata.thoughtsTokenCount` — so what is left to measure is:
+ *   1. which model IDs resolve for THIS project (2.5 is restricted)
+ *   2. which thinking modes each model accepts (per-model, undocumented)
+ *   3. real p50/p90 against the real schema
+ *   4. the free-tier ceiling, no longer published
+ *   5. TTS first byte at two bitrates
  *
- * Gates:
- *   eval p50 <= 1100ms, p90 <= 1800ms
- *   TTS first byte <= 600ms
- *
- * Findings already established from the installed SDK's own types, so this
- * script no longer has to discover them:
- *   - There is NO `interactions` namespace in @google/genai v2.24.x, so the
- *     legacy `generateContent` surface is the only option, and the snake_case
- *     vs camelCase ambiguity in Google's Interactions docs is moot here.
- *   - Thinking config is `config.thinkingConfig`, camelCase, with
- *     `thinkingBudget?: number` ("0 is DISABLED") and `thinkingLevel?:
- *     ThinkingLevel` (MINIMAL | LOW | MEDIUM | HIGH — there is no OFF).
- *   - Thought tokens come back as `usageMetadata.thoughtsTokenCount`.
- *
- * What remains genuinely unknown, and is what this script measures:
- *   1. Which model IDs actually resolve for THIS project (2.5 is restricted).
- *   2. Whether `thinkingBudget: 0` is accepted per model, since the SDK says
- *      allowed ranges are model dependent. If it is, it beats MINIMAL.
- *   3. Real p50/p90 with the real schema and a realistic answer.
- *   4. The free-tier request ceiling, which is no longer published anywhere.
- *   5. TTS first-byte latency at two bitrates.
+ * Ref: TechDesign > Latency Plan
  */
 
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
@@ -48,12 +35,9 @@ const EVAL_P90_GATE_MS = 1800;
 const TTS_TTFB_GATE_MS = 600;
 
 /**
- * The real turn schema. Flat on purpose: the supported JSON Schema subset
- * excludes $ref/oneOf/allOf and deeply nested schemas may be rejected outright.
- *
- * `evidence` and `primary_gap` are deliberately absent — both are computed in
- * code (see src/lib/engine/classify.ts), so paying decode tokens for them was
- * waste. Decode dominates this call, so the payload size IS the latency.
+ * The real turn schema, flat on purpose. `evidence` and `primary_gap` are
+ * absent because both are computed in code — decode dominates this call, so
+ * payload size IS the latency.
  */
 const SCORE = { type: Type.INTEGER, minimum: 1, maximum: 4 } as const;
 
@@ -63,16 +47,29 @@ const EVAL_SCHEMA = {
     scores: {
       type: Type.OBJECT,
       properties: {
-        structure: SCORE,
+        situation: SCORE,
+        task: SCORE,
+        action: SCORE,
+        result: SCORE,
         specificity: SCORE,
         impact: SCORE,
         ownership: SCORE,
         relevance: SCORE,
       },
-      required: ["structure", "specificity", "impact", "ownership", "relevance"],
+      required: [
+        "situation",
+        "task",
+        "action",
+        "result",
+        "specificity",
+        "impact",
+        "ownership",
+        "relevance",
+      ],
     },
     observation: { type: Type.STRING },
     off_topic: { type: Type.BOOLEAN },
+    repeats_previous: { type: Type.BOOLEAN },
     drafts: {
       type: Type.OBJECT,
       properties: {
@@ -82,12 +79,19 @@ const EVAL_SCHEMA = {
       required: ["deepen", "clarify"],
     },
   },
-  required: ["scores", "observation", "off_topic", "drafts"],
+  required: [
+    "scores",
+    "observation",
+    "off_topic",
+    "repeats_previous",
+    "drafts",
+  ],
 } as const;
 
 const SYSTEM = [
   "You are a recruiter scoring one behavioral interview answer.",
-  "Score 1-4 on structure, specificity, impact, ownership, relevance.",
+  "Score 1-4 on situation, task, action, result, specificity, impact,",
+  "ownership, relevance.",
   "observation: one terse line, max 90 chars, on what you noticed.",
   "drafts.deepen and drafts.clarify: one follow-up question each, max 25 words,",
   "referencing the candidate's own words. Invent no facts about the candidate.",
@@ -95,7 +99,7 @@ const SYSTEM = [
 
 const QUESTION = "Tell me about a time you worked on a team to ship something.";
 
-/** A realistic mid-quality answer, ~150 words — the shape we actually score. */
+/** ~150 words: the shape we actually score. */
 const ANSWER = [
   "So last semester I was on a team of four building a course scheduling tool",
   "for a class project. We had about six weeks. I picked up the backend, mostly",
@@ -115,13 +119,9 @@ function heading(title: string): void {
 }
 
 /**
- * MEASURED 2026-09-26: the free tier allows 15 requests per MINUTE per model
- * (quotaId GenerateRequestsPerMinutePerProjectPerModel-FreeTier) — a burst
- * limit, not the ~20/day some reports claimed.
- *
- * That is comfortably enough for the product: one call per turn, ~10 turns
- * spread over an 8-minute interview. It is NOT enough for an unpaced probe,
- * which is why calls below are spaced.
+ * MEASURED: 15 requests per MINUTE per model — a burst limit, not the ~20/day
+ * some reports claimed. Enough for one call per turn across an 8-minute
+ * interview; not enough for an unpaced probe, hence the spacing below.
  */
 const FREE_TIER_RPM = 15;
 const PACE_MS = Math.ceil(60_000 / FREE_TIER_RPM) + 200;
@@ -222,11 +222,9 @@ async function probeAvailability(): Promise<string[]> {
 }
 
 /**
- * 2. How cheaply can thinking be suppressed on each model?
- *
- * The SDK says `thinkingBudget: 0` is DISABLED but that allowed ranges are
- * model dependent, so this is per-model empirical. A model that accepts 0 is
- * strictly better than one that floors at MINIMAL.
+ * 2. How cheaply can thinking be suppressed per model? The SDK says budget 0
+ * is DISABLED but that allowed ranges are model dependent, so this is
+ * empirical — a model accepting 0 beats one that floors at MINIMAL.
  */
 async function probeThinking(models: string[]): Promise<void> {
   heading("2. Thinking suppression (thoughtsTokenCount per mode)");
@@ -251,9 +249,8 @@ async function probeThinking(models: string[]): Promise<void> {
 }
 
 /**
- * 3. Latency with the real schema. Sequential — parallel hides queueing — and
- * PACED, because the free tier's 15 RPM otherwise turns the tail of the run
- * into 429s and poisons the percentiles with failures rather than latency.
+ * 3. Sequential (parallel hides queueing) and paced, or 15 RPM turns the tail
+ * of the run into 429s and poisons the percentiles with failures.
  */
 async function probeLatency(model: string, mode: ThinkMode, n = 12): Promise<void> {
   heading(`3. Eval latency — ${model} (${mode}), N=${n} sequential, paced`);
@@ -273,8 +270,16 @@ async function probeLatency(model: string, mode: ThinkMode, n = 12): Promise<voi
       try {
         const j = JSON.parse(r.text);
         const s = j.scores ?? {};
-        const valid = ["structure", "specificity", "impact", "ownership", "relevance"]
-          .every((k) => Number.isInteger(s[k]) && s[k] >= 1 && s[k] <= 4);
+        const valid = [
+          "situation",
+          "task",
+          "action",
+          "result",
+          "specificity",
+          "impact",
+          "ownership",
+          "relevance",
+        ].every((k) => Number.isInteger(s[k]) && s[k] >= 1 && s[k] <= 4);
         if (valid && j.drafts?.deepen && j.drafts?.clarify) parsed++;
         else console.log(`  run ${i}: parsed but failed validation`);
       } catch {
@@ -332,8 +337,8 @@ async function probeEmbeddings(): Promise<void> {
 
       if (i === 0) {
         const n = res.embeddings?.length ?? 0;
-        // THE aggregation-trap detector: gemini-embedding-2 returns ONE vector
-        // for many inputs. If n !== chunks.length the model is wrong for RAG.
+        // The aggregation-trap detector: gemini-embedding-2 returns ONE vector
+        // for many inputs, which silently breaks retrieval.
         console.log(
           `  ${n === chunks.length ? "PASS" : "FAIL"}  one vector per input:` +
             ` ${n} vectors for ${chunks.length} inputs`,
@@ -354,8 +359,7 @@ async function probeEmbeddings(): Promise<void> {
   }
 }
 
-/** 5. TTS first byte at two bitrates. Lower bitrate reaches Safari's
- *  1024-byte playback threshold sooner. */
+/** 5. Lower bitrate reaches Safari's 1024-byte playback threshold sooner. */
 async function probeTts(): Promise<void> {
   heading("5. TTS first byte");
   const key = process.env.ELEVENLABS_API_KEY;
@@ -405,10 +409,8 @@ async function probeTts(): Promise<void> {
 }
 
 /**
- * 6. Free-tier request ceiling. Limits are no longer published, so the only
- * way to know is to hit the wall. Run this ONCE, on day one — if the ceiling
- * is tens of requests per day, one rehearsal exhausts it and the project's
- * shape has to change.
+ * 6. Free-tier ceiling. No longer published, so the only way to know is to hit
+ * the wall. Run ONCE: if the ceiling is tens per day, the project changes shape.
  */
 async function probeQuota(model: string): Promise<void> {
   heading("6. Quota ceiling (opt-in)");
@@ -449,11 +451,9 @@ async function main(): Promise<void> {
 
   const model = process.env.LLM_MODEL ?? available[0];
   /**
-   * MEASURED: on gemini-3.5-flash-lite, sending NO thinking config already
-   * yields thoughtsTokenCount = 0 and is the fastest of the three modes —
-   * `thinkingBudget: 0` is rejected outright (400) and `MINIMAL` is slower for
-   * identical output. The inverse holds on gemini-3.8-flash, which rejects
-   * MINIMAL but accepts budget 0. Per-model, and not guessable from the docs.
+   * MEASURED: on flash-lite, no thinking config is already zero thoughts and
+   * the fastest mode; budget 0 is rejected outright. 3.8-flash is the inverse.
+   * Per-model, and not guessable from the docs.
    */
   const mode: ThinkMode = (process.env.PROBE_THINK_MODE as ThinkMode) ?? "default";
 
