@@ -38,6 +38,42 @@ export async function POST(request: Request) {
     );
   }
 
+  /**
+   * THE SILENT-TRUNCATION GUARD. `proxyClientMaxBodySize` does not reject an
+   * oversized body — it buffers to the limit, logs a warning, and lets the
+   * request through TRUNCATED. A half-read PDF parses, embeds cleanly, and
+   * quietly loses the candidate's most recent role, so comparing what was
+   * declared against what arrived is the only way to notice.
+   *
+   * The comparison MUST be against the whole request body, not the file part:
+   * `content-length` covers the entire multipart envelope — boundaries, part
+   * headers and the roleText field — so the file alone is always smaller and
+   * comparing the two rejects every legitimate upload.
+   *
+   * A body can only be read once, hence the clone. Bounded by MAX_BYTES above,
+   * so buffering twice is at most 8MB.
+   */
+  let received: number;
+  try {
+    received = (await request.clone().arrayBuffer()).byteLength;
+  } catch {
+    return NextResponse.json(
+      { error: "Could not read the upload." },
+      { status: 400 },
+    );
+  }
+
+  if (declared > 0 && received < declared) {
+    return NextResponse.json(
+      {
+        error:
+          "The upload was truncated in transit. Try a smaller file, or " +
+          "re-export the PDF.",
+      },
+      { status: 413 },
+    );
+  }
+
   let file: File | null = null;
   let form: FormData | null = null;
   try {
@@ -59,24 +95,6 @@ export async function POST(request: Request) {
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
-
-  /**
-   * THE SILENT-TRUNCATION GUARD. `proxyClientMaxBodySize` does not reject an
-   * oversized body — it buffers to the limit, logs a warning, and lets the
-   * request through TRUNCATED. A half-read PDF parses, embeds cleanly, and
-   * quietly loses the candidate's most recent role. Comparing declared length
-   * against what arrived is the only way to notice.
-   */
-  if (declared > 0 && bytes.byteLength < declared) {
-    return NextResponse.json(
-      {
-        error:
-          "The upload was truncated in transit. Try a smaller file, or " +
-          "re-export the PDF.",
-      },
-      { status: 413 },
-    );
-  }
 
   if (bytes.byteLength > MAX_BYTES) {
     return NextResponse.json(
