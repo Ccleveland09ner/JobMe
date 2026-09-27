@@ -1,29 +1,91 @@
 /**
- * GET /api/tts?text= - streams the recruiter's voice.
+ * GET /api/tts?text= — streams the recruiter's voice.
  *
- * TODO(slice 3): implement.
  * Ref: docs/TechDesign-JobMe-MVP.md > Voice Output
  *
- * Response: audio/mpeg stream. Errors: 401, 413, 502 (client falls back).
- *
- * Pipe the upstream body straight through - do not buffer it, or the first-byte
- * target (<= 0.6s) is gone.
- *
- * POST https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream
- *   ?output_format=mp3_44100_128
- *   header: xi-api-key
- *   body:   { text, model_id: 'eleven_flash_v2_5' }
- *
- * Two things this route exists for, both load-bearing:
+ * This proxy exists for two reasons, both load-bearing:
  *   - the API key stays server-side
- *   - being same-origin lets the AnalyserNode read the stream without CORS
+ *   - being same-origin lets an AnalyserNode read the stream for the avatar's
+ *     lip-sync without a CORS dance
  *
- * Requires auth, so a stranger cannot drain the free-tier quota.
- * Caps text at 600 chars.
+ * Auth-gated so a stranger cannot drain a metered quota.
  */
 
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { TtsQuery } from "@/lib/schemas";
+import { TTS_MODEL_ID, TTS_OUTPUT_FORMAT } from "@/lib/voice/config";
+
+export async function GET(request: Request) {
+  const user = await getUserOrNull();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
+  const url = new URL(request.url);
+  const parsed = TtsQuery.safeParse({ text: url.searchParams.get("text") ?? "" });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Text is required and must be under 600 characters." },
+      { status: 413 },
+    );
+  }
+
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+
+  // Not an error: browser speech synthesis is the intended development
+  // default, and the client falls back on a non-200 without complaint.
+  if (!apiKey || !voiceId || process.env.TTS_PROVIDER !== "elevenlabs") {
+    return NextResponse.json(
+      { error: "Neural TTS is not enabled; use the browser voice." },
+      { status: 503 },
+    );
+  }
+
+  /**
+   * Everything must be validated BEFORE the stream is returned: once streaming
+   * begins the status line and headers are already on the wire and cannot be
+   * changed.
+   */
+  let upstream: Response;
+  try {
+    upstream = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream` +
+        `?output_format=${TTS_OUTPUT_FORMAT}`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          text: parsed.data.text,
+          model_id: TTS_MODEL_ID,
+        }),
+      },
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Voice service unreachable: ${(err as Error).message}` },
+      { status: 502 },
+    );
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    return NextResponse.json(
+      { error: `Voice service returned ${upstream.status}` },
+      { status: 502 },
+    );
+  }
+
+  // Piped straight through, never buffered — buffering forfeits the
+  // first-byte target that the whole latency plan depends on.
+  return new Response(upstream.body, {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Cache-Control": "no-store",
+      // nginx and similar proxies buffer streams by default.
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
