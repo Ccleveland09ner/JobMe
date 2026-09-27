@@ -11,18 +11,25 @@
 import { NextResponse, after } from "next/server";
 
 import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { MAX_FOLLOW_UPS } from "@/lib/engine/policy";
 import type { EngineState } from "@/lib/engine/types";
 import { formatFactsForPrompt } from "@/lib/resume/distill";
-import { retrieveRelevantChunks, formatChunksForPrompt } from "@/lib/resume/retrieve";
-import { runTurn } from "@/lib/interview/turn";
-import { TurnBody } from "@/lib/schemas";
+import {
+  isStaleSubmit,
+  runTurn,
+  threadHistory,
+  turnRowFor,
+  type TurnContext,
+} from "@/lib/interview/turn";
+import { QuestionPlan, SessionId, TurnBody } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
-import type { RoleProfile } from "@/lib/jd/distill";
+import { formatRoleForPrompt, type RoleProfile } from "@/lib/jd/distill";
 
 export async function POST(
   request: Request,
   ctx: RouteContext<"/api/sessions/[id]/turns">,
 ) {
+  const started = performance.now();
   const { id } = await ctx.params;
 
   const user = await getUserOrNull();
@@ -37,15 +44,50 @@ export async function POST(
   }
   const body = parsed.data;
 
+  if (!SessionId.safeParse(id).success) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const supabase = await createClient();
 
   // RLS makes another user's session invisible: "not found" and "not yours"
-  // are the same 404, so the difference never leaks.
-  const { data: session } = await supabase
-    .from("interview_sessions")
-    .select("id, engine_state, resume_id, status")
-    .eq("id", id)
-    .maybeSingle();
+  // are the same 404, so the difference never leaks. The latest turns come
+  // back in the same round trip — a thread is at most MAX_FOLLOW_UPS answers
+  // deep, and the evaluator needs them to score a follow-up in context.
+  const [
+    { data: session, error: sessionError },
+    { data: recentTurns, error: turnsError },
+  ] = await Promise.all([
+    supabase
+      .from("interview_sessions")
+      .select("id, engine_state, resume_id, status, role_text, question_plan")
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("turns")
+      .select("seq, question_text, answer_transcript")
+      .eq("session_id", id)
+      .order("seq", { ascending: false })
+      .limit(MAX_FOLLOW_UPS),
+  ]);
+
+  // A failed query is not a missing row. Answering 404 here would tell the
+  // candidate their interview is gone when the database merely errored — and
+  // hide the likeliest cause after a deploy, an unapplied migration.
+  if (sessionError) {
+    console.error(
+      `[turn] load session ${id}: ${sessionError.message} ` +
+        "(if a column is missing, apply supabase/migrations/20260927110000)",
+    );
+    return NextResponse.json(
+      { error: "Couldn't load the interview. Please try again." },
+      { status: 500 },
+    );
+  }
+  // History only sharpens follow-up scoring; without it the turn still runs.
+  if (turnsError) {
+    console.warn(`[turn] load history ${id}: ${turnsError.message}`);
+  }
 
   if (!session) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -76,8 +118,12 @@ export async function POST(
     );
   }
 
+  // Parsed, not trusted: a malformed plan means the fixed openings, not a 500.
+  const planParse = QuestionPlan.safeParse(session.question_plan);
+  const plan = planParse.success ? planParse.data : null;
+
   // Distilled facts go in every prompt — a fixed prefix, cheap and
-  // reproducible. Retrieval only grounds a resume-led opening.
+  // reproducible.
   let resumeFacts: string | null = null;
   let role: RoleProfile | null = null;
 
@@ -93,24 +139,23 @@ export async function POST(
     }
   }
 
-  const result = await runTurn({
+  const turnCtx: TurnContext = {
     state,
     transcript: body.transcript,
     holdMs: body.holdMs,
     captureMs: body.captureMs,
     resumeFacts,
     role,
-    excerptFor: async (itemId) => {
-      const item = state.resumeItems.find((i) => i.id === itemId);
-      if (!session.resume_id || !item) return item?.label ?? "";
-      const chunks = await retrieveRelevantChunks(
-        session.resume_id,
-        item.label,
-        3,
-      );
-      return formatChunksForPrompt(chunks) || item.label;
-    },
-  });
+    // THIS session's job outranks the resume's. The plan's distilled summary
+    // is preferred to the raw posting: shorter prompt, same signal.
+    roleText: plan?.role
+      ? formatRoleForPrompt(plan.role)
+      : (session.role_text ?? null),
+    priorThreadTurns: threadHistory(state, recentTurns ?? []),
+    plan,
+  };
+
+  const result = await runTurn(turnCtx);
 
   if (result.kind === "nudge") {
     // Not persisted, not counted: a cough must not cost a question.
@@ -118,60 +163,74 @@ export async function POST(
   }
 
   /**
-   * Both writes are SYNCHRONOUS. The tech design put the turn insert in
-   * `after()` for latency, which is wrong: if it fails after the response is
-   * sent, the candidate heard a question that was never persisted and the next
-   * `clientTurnSeq` check mismatches, silently breaking idempotency.
+   * SYNCHRONOUS and ATOMIC. The tech design put the turn insert in `after()`
+   * for latency, which is wrong: if it fails after the response is sent, the
+   * candidate heard a question that was never persisted and idempotency
+   * silently breaks. `submit_turn` writes the turn and advances engine_state
+   * in one transaction, and only from the turnSeq read above — so a
+   * double-fired submit racing this one cannot overwrite it.
    */
-  const { error: updateError } = await supabase
-    .from("interview_sessions")
-    .update({
-      engine_state: result.state,
-      question_count: result.state.questionCount,
-      ...(result.done ? { status: "completed", ended_at: new Date().toISOString() } : {}),
-    })
-    .eq("id", id);
+  const saveStarted = performance.now();
+  const { error: submitError } = await supabase.rpc("submit_turn", {
+    p_session_id: id,
+    p_seq: result.state.turnSeq,
+    p_engine_state: result.state,
+    p_turn: turnRowFor(turnCtx, result),
+  });
+  const saveMs = Math.round(performance.now() - saveStarted);
 
-  if (updateError) {
+  if (isStaleSubmit(submitError)) {
+    // Lost the race: the other submit's turn is the one that counts, and the
+    // client resyncs from its state rather than retrying.
+    const { data: latest } = await supabase
+      .from("interview_sessions")
+      .select("engine_state")
+      .eq("id", id)
+      .maybeSingle();
+    const current = (latest?.engine_state ?? state) as EngineState;
     return NextResponse.json(
-      { error: `Could not save progress: ${updateError.message}` },
-      { status: 500 },
+      {
+        error: "Stale turn sequence",
+        expected: current.turnSeq + 1,
+        received: body.clientTurnSeq,
+        state: current,
+      },
+      { status: 409 },
     );
   }
 
-  const { error: turnError } = await supabase.from("turns").insert({
-    session_id: id,
-    seq: result.state.turnSeq,
-    topic: result.notepad.topic,
-    question_type: result.notepad.questionType,
-    difficulty: state.difficulty,
-    question_text: state.currentQuestion.text,
-    answer_transcript: body.transcript,
-    scores: result.persistedScores,
-    band: result.notepad.band,
-    primary_gap: result.notepad.primaryGap,
-    evidence: result.notepad.evidence,
-    notepad_text: result.notepad.observation,
-    reason_text: result.notepad.reason,
-    wpm: result.stats.wpm,
-    filler_count: result.stats.fillers,
-    hold_ms: body.holdMs,
-    capture_ms: body.captureMs ?? body.holdMs,
-  });
-
-  if (turnError) {
+  if (submitError) {
+    // The detail is for the server log only — never the candidate's screen.
+    console.error(
+      `[turn] session ${id} seq ${result.state.turnSeq}: ${submitError.message}`,
+    );
     return NextResponse.json(
-      { error: `Could not save the answer: ${turnError.message}` },
+      { error: "Couldn't save your answer. Please try again." },
       { status: 500 },
     );
   }
 
   // Telemetry only. `after()` runs even when the response errored, so nothing
-  // here may be load-bearing.
+  // here may be load-bearing. One line per turn is how the latency budget is
+  // measured (PRD > Success Metrics: "timing logged in dev console"): eval is
+  // the model call, save the atomic write, total everything up to the reply.
+  // No transcript or other candidate text goes in the log.
+  // TODO(integration): TTS prewarm belongs here once /api/tts has a cache.
+  const totalMs = Math.round(performance.now() - started);
   after(() => {
-    if (result.notepad.degraded) {
-      console.warn(`[turn] session ${id} seq ${result.state.turnSeq} degraded`);
-    }
+    const line = {
+      event: "turn",
+      session: id,
+      seq: result.state.turnSeq,
+      move: result.move,
+      band: result.notepad.band,
+      degraded: result.degradedReason,
+      evalMs: result.evalMs,
+      saveMs,
+      totalMs,
+    };
+    if (result.degradedReason) console.warn(`[turn] ${JSON.stringify(line)}`);
+    else console.info(`[turn] ${JSON.stringify(line)}`);
   });
 
   const covered = result.state.resumeItems.filter((i) => i.covered).length;
@@ -180,7 +239,8 @@ export async function POST(
     kind: "turn",
     move: result.move,
     notepad: result.notepad,
-    next: result.next,
+    // `lead` (a new thread only) is spoken before `text`, never shown alone.
+    next: result.next ? { ...result.next, lead: result.lead } : null,
     done: result.done,
     wrapLine: result.wrapLine,
     progress: {
