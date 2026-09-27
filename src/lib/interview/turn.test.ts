@@ -337,3 +337,20 @@ describe("runTurn — openings come from the question plan", () => {
     expect(evaluate).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("runTurn — nudge", () => {
+  /** Brief §8: a 3-word answer increments neither questionCount nor turnSeq. */
+  it("does not score, count or advance on an answer under five words", async () => {
+    const evaluate = vi.fn(async () => raw(flat(3)));
+    const c = ctx({ evaluate, transcript: "um I dunno" });
+
+    const result = await runTurn(c);
+
+    expect(result.kind).toBe("nudge");
+    // The very same state comes back: nothing to persist, nothing counted.
+    expect(result.state).toBe(c.state);
+    expect(result.state.turnSeq).toBe(0);
+    expect(result.state.questionCount).toBe(c.state.questionCount);
+    expect(evaluate).not.toHaveBeenCalled();
+  });
+});
