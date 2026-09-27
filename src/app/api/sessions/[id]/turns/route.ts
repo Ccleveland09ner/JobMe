@@ -53,7 +53,10 @@ export async function POST(
   // are the same 404, so the difference never leaks. The latest turns come
   // back in the same round trip — a thread is at most MAX_FOLLOW_UPS answers
   // deep, and the evaluator needs them to score a follow-up in context.
-  const [{ data: session }, { data: recentTurns }] = await Promise.all([
+  const [
+    { data: session, error: sessionError },
+    { data: recentTurns, error: turnsError },
+  ] = await Promise.all([
     supabase
       .from("interview_sessions")
       .select("id, engine_state, resume_id, status, role_text, question_plan")
@@ -66,6 +69,24 @@ export async function POST(
       .order("seq", { ascending: false })
       .limit(MAX_FOLLOW_UPS),
   ]);
+
+  // A failed query is not a missing row. Answering 404 here would tell the
+  // candidate their interview is gone when the database merely errored — and
+  // hide the likeliest cause after a deploy, an unapplied migration.
+  if (sessionError) {
+    console.error(
+      `[turn] load session ${id}: ${sessionError.message} ` +
+        "(if a column is missing, apply supabase/migrations/20260927110000)",
+    );
+    return NextResponse.json(
+      { error: "Couldn't load the interview. Please try again." },
+      { status: 500 },
+    );
+  }
+  // History only sharpens follow-up scoring; without it the turn still runs.
+  if (turnsError) {
+    console.warn(`[turn] load history ${id}: ${turnsError.message}`);
+  }
 
   if (!session) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
