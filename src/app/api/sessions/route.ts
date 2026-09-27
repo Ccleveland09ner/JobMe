@@ -87,8 +87,10 @@ export async function POST(request: Request) {
     .single();
 
   if (error || !session) {
+    // The detail is for the server log only — never the candidate's screen.
+    console.error(`[sessions] create: ${error?.message ?? "no row returned"}`);
     return NextResponse.json(
-      { error: `Could not start the interview: ${error?.message ?? "unknown"}` },
+      { error: "Couldn't start the interview. Please try again." },
       { status: 500 },
     );
   }

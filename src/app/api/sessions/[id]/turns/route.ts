@@ -11,11 +11,18 @@
 import { NextResponse, after } from "next/server";
 
 import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { MAX_FOLLOW_UPS } from "@/lib/engine/policy";
 import type { EngineState } from "@/lib/engine/types";
 import { formatFactsForPrompt } from "@/lib/resume/distill";
 import { retrieveRelevantChunks, formatChunksForPrompt } from "@/lib/resume/retrieve";
-import { runTurn } from "@/lib/interview/turn";
-import { TurnBody } from "@/lib/schemas";
+import {
+  isStaleSubmit,
+  runTurn,
+  threadHistory,
+  turnRowFor,
+  type TurnContext,
+} from "@/lib/interview/turn";
+import { SessionId, TurnBody } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import type { RoleProfile } from "@/lib/jd/distill";
 
@@ -37,15 +44,29 @@ export async function POST(
   }
   const body = parsed.data;
 
+  if (!SessionId.safeParse(id).success) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const supabase = await createClient();
 
   // RLS makes another user's session invisible: "not found" and "not yours"
-  // are the same 404, so the difference never leaks.
-  const { data: session } = await supabase
-    .from("interview_sessions")
-    .select("id, engine_state, resume_id, status")
-    .eq("id", id)
-    .maybeSingle();
+  // are the same 404, so the difference never leaks. The latest turns come
+  // back in the same round trip — a thread is at most MAX_FOLLOW_UPS answers
+  // deep, and the evaluator needs them to score a follow-up in context.
+  const [{ data: session }, { data: recentTurns }] = await Promise.all([
+    supabase
+      .from("interview_sessions")
+      .select("id, engine_state, resume_id, status, role_text")
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("turns")
+      .select("seq, question_text, answer_transcript")
+      .eq("session_id", id)
+      .order("seq", { ascending: false })
+      .limit(MAX_FOLLOW_UPS),
+  ]);
 
   if (!session) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -93,13 +114,16 @@ export async function POST(
     }
   }
 
-  const result = await runTurn({
+  const turnCtx: TurnContext = {
     state,
     transcript: body.transcript,
     holdMs: body.holdMs,
     captureMs: body.captureMs,
     resumeFacts,
     role,
+    // The job description pasted for THIS session outranks the resume's.
+    roleText: session.role_text ?? null,
+    priorThreadTurns: threadHistory(state, recentTurns ?? []),
     excerptFor: async (itemId) => {
       const item = state.resumeItems.find((i) => i.id === itemId);
       if (!session.resume_id || !item) return item?.label ?? "";
@@ -110,7 +134,9 @@ export async function POST(
       );
       return formatChunksForPrompt(chunks) || item.label;
     },
-  });
+  };
+
+  const result = await runTurn(turnCtx);
 
   if (result.kind === "nudge") {
     // Not persisted, not counted: a cough must not cost a question.
@@ -118,50 +144,47 @@ export async function POST(
   }
 
   /**
-   * Both writes are SYNCHRONOUS. The tech design put the turn insert in
-   * `after()` for latency, which is wrong: if it fails after the response is
-   * sent, the candidate heard a question that was never persisted and the next
-   * `clientTurnSeq` check mismatches, silently breaking idempotency.
+   * SYNCHRONOUS and ATOMIC. The tech design put the turn insert in `after()`
+   * for latency, which is wrong: if it fails after the response is sent, the
+   * candidate heard a question that was never persisted and idempotency
+   * silently breaks. `submit_turn` writes the turn and advances engine_state
+   * in one transaction, and only from the turnSeq read above — so a
+   * double-fired submit racing this one cannot overwrite it.
    */
-  const { error: updateError } = await supabase
-    .from("interview_sessions")
-    .update({
-      engine_state: result.state,
-      question_count: result.state.questionCount,
-      ...(result.done ? { status: "completed", ended_at: new Date().toISOString() } : {}),
-    })
-    .eq("id", id);
+  const { error: submitError } = await supabase.rpc("submit_turn", {
+    p_session_id: id,
+    p_seq: result.state.turnSeq,
+    p_engine_state: result.state,
+    p_turn: turnRowFor(turnCtx, result),
+  });
 
-  if (updateError) {
+  if (isStaleSubmit(submitError)) {
+    // Lost the race: the other submit's turn is the one that counts, and the
+    // client resyncs from its state rather than retrying.
+    const { data: latest } = await supabase
+      .from("interview_sessions")
+      .select("engine_state")
+      .eq("id", id)
+      .maybeSingle();
+    const current = (latest?.engine_state ?? state) as EngineState;
     return NextResponse.json(
-      { error: `Could not save progress: ${updateError.message}` },
-      { status: 500 },
+      {
+        error: "Stale turn sequence",
+        expected: current.turnSeq + 1,
+        received: body.clientTurnSeq,
+        state: current,
+      },
+      { status: 409 },
     );
   }
 
-  const { error: turnError } = await supabase.from("turns").insert({
-    session_id: id,
-    seq: result.state.turnSeq,
-    topic: result.notepad.topic,
-    question_type: result.notepad.questionType,
-    difficulty: state.difficulty,
-    question_text: state.currentQuestion.text,
-    answer_transcript: body.transcript,
-    scores: result.persistedScores,
-    band: result.notepad.band,
-    primary_gap: result.notepad.primaryGap,
-    evidence: result.notepad.evidence,
-    notepad_text: result.notepad.observation,
-    reason_text: result.notepad.reason,
-    wpm: result.stats.wpm,
-    filler_count: result.stats.fillers,
-    hold_ms: body.holdMs,
-    capture_ms: body.captureMs ?? body.holdMs,
-  });
-
-  if (turnError) {
+  if (submitError) {
+    // The detail is for the server log only — never the candidate's screen.
+    console.error(
+      `[turn] session ${id} seq ${result.state.turnSeq}: ${submitError.message}`,
+    );
     return NextResponse.json(
-      { error: `Could not save the answer: ${turnError.message}` },
+      { error: "Couldn't save your answer. Please try again." },
       { status: 500 },
     );
   }
@@ -169,8 +192,10 @@ export async function POST(
   // Telemetry only. `after()` runs even when the response errored, so nothing
   // here may be load-bearing.
   after(() => {
-    if (result.notepad.degraded) {
-      console.warn(`[turn] session ${id} seq ${result.state.turnSeq} degraded`);
+    if (result.degradedReason) {
+      console.warn(
+        `[turn] session ${id} seq ${result.state.turnSeq} degraded: ${result.degradedReason}`,
+      );
     }
   });
 
