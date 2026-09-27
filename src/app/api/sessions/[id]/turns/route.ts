@@ -1,45 +1,198 @@
 /**
- * POST /api/sessions/[id]/turns - the hot path. One turn of the interview.
+ * POST /api/sessions/[id]/turns — the hot path. One turn of the interview.
  *
- * TODO(slice 2): implement. This route is the product.
  * Ref: docs/TechDesign-JobMe-MVP.md > The Core Journey Through the System (8)
- *      docs/TechDesign-JobMe-MVP.md > Turn API
  *
- * Request:  { transcript: 1..5000, durationMs: int, clientTurnSeq: int }
- * Response: { kind: 'nudge', line }
- *        OR { kind: 'turn', notepad: {...}, next: {...} | null, done,
- *             wrapLine?, progress }
- * Errors:   401, 404, 409 (stale seq - body carries the current state), 422
- *
- * Order of operations (the latency budget depends on it - target <= 1.5s):
- *   1. Auth, then load engine_state from interview_sessions.
- *   2. Fewer than 5 words -> return a nudge. No scoring, no cap increment.
- *   3. Promise.all([evaluateAndDraft(...), embed(answer)])  <- parallel, and
- *      the single reason a turn fits the budget. Do not serialise these.
- *   4. Relevance blend + anchor check -> classifyBand().
- *   5. engine.step(state, evaluation) -> { nextState, move, nextQuestion }.
- *   6. UPDATE interview_sessions (synchronous - this is the source of truth).
- *   7. Return the response.
- *   8. after() inserts the turns row (non-blocking).
- *
- * clientTurnSeq must equal state.turnSeq + 1, else 409 with the current state.
- * That plus unique(session_id, seq) is what makes a double-submit harmless.
- *
- * On EvalError: retry once, then fall back to a seed Clarify and save the turn
- * with scores = null. The notepad says so in plain language. The interview
- * keeps moving.
- *
- * Open Question #4: verify after() behaves as documented on Next 16 + Vercel.
- * If it does not, just await the insert (+~80ms).
+ * The orchestration itself lives in `src/lib/interview/turn.ts` so the
+ * rehearsal harness exercises the identical code path. This file is the HTTP
+ * shell: auth, validation, idempotency, persistence.
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+
+import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import type { EngineState } from "@/lib/engine/types";
+import { formatFactsForPrompt } from "@/lib/resume/distill";
+import { retrieveRelevantChunks, formatChunksForPrompt } from "@/lib/resume/retrieve";
+import { runTurn } from "@/lib/interview/turn";
+import { TurnBody } from "@/lib/schemas";
+import { createClient } from "@/lib/supabase/server";
+import type { RoleProfile } from "@/lib/jd/distill";
 
 export async function POST(
-  _req: Request,
+  request: Request,
   ctx: RouteContext<"/api/sessions/[id]/turns">,
 ) {
   const { id } = await ctx.params;
-  void id;
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+
+  const user = await getUserOrNull();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
+  const parsed = TurnBody.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid request", detail: parsed.error.issues },
+      { status: 422 },
+    );
+  }
+  const body = parsed.data;
+
+  const supabase = await createClient();
+
+  // RLS makes another user's session invisible, so "not found" and "not yours"
+  // are the same 404 and the difference never leaks.
+  const { data: session } = await supabase
+    .from("interview_sessions")
+    .select("id, engine_state, resume_id, status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!session) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (session.status === "completed") {
+    return NextResponse.json(
+      { error: "This interview has already finished." },
+      { status: 409 },
+    );
+  }
+
+  const state = session.engine_state as EngineState;
+
+  /**
+   * Idempotency. A push-to-talk button double-fires constantly, and without
+   * this the same answer would be scored twice and the engine advanced twice.
+   * The client resyncs from the state in this body rather than retrying.
+   */
+  if (body.clientTurnSeq !== state.turnSeq + 1) {
+    return NextResponse.json(
+      {
+        error: "Stale turn sequence",
+        expected: state.turnSeq + 1,
+        received: body.clientTurnSeq,
+        state,
+      },
+      { status: 409 },
+    );
+  }
+
+  // Resume context: distilled facts go in every prompt (a fixed prefix, cheap
+  // and reproducible); retrieval is only used to ground a resume-led opening.
+  let resumeFacts: string | null = null;
+  let role: RoleProfile | null = null;
+
+  if (session.resume_id) {
+    const { data: resume } = await supabase
+      .from("resumes")
+      .select("resume_facts, role_profile")
+      .eq("id", session.resume_id)
+      .maybeSingle();
+    if (resume) {
+      resumeFacts = formatFactsForPrompt(resume.resume_facts ?? null);
+      role = (resume.role_profile ?? null) as RoleProfile | null;
+    }
+  }
+
+  const result = await runTurn({
+    state,
+    transcript: body.transcript,
+    holdMs: body.holdMs,
+    captureMs: body.captureMs,
+    resumeFacts,
+    role,
+    excerptFor: async (itemId) => {
+      const item = state.resumeItems.find((i) => i.id === itemId);
+      if (!session.resume_id || !item) return item?.label ?? "";
+      const chunks = await retrieveRelevantChunks(
+        session.resume_id,
+        item.label,
+        3,
+      );
+      return formatChunksForPrompt(chunks) || item.label;
+    },
+  });
+
+  if (result.kind === "nudge") {
+    // Deliberately not persisted and not counted: a cough must not cost the
+    // candidate one of their questions.
+    return NextResponse.json({ kind: "nudge", line: result.line });
+  }
+
+  /**
+   * Both writes are SYNCHRONOUS, before the response.
+   *
+   * The tech design put the turn insert in `after()` for latency. That is
+   * wrong: if it fails after the response is sent, the candidate heard a
+   * question that was never persisted and the next `clientTurnSeq` check
+   * mismatches against a stale `turnSeq`, silently breaking idempotency.
+   */
+  const { error: updateError } = await supabase
+    .from("interview_sessions")
+    .update({
+      engine_state: result.state,
+      question_count: result.state.questionCount,
+      ...(result.done ? { status: "completed", ended_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", id);
+
+  if (updateError) {
+    return NextResponse.json(
+      { error: `Could not save progress: ${updateError.message}` },
+      { status: 500 },
+    );
+  }
+
+  const { error: turnError } = await supabase.from("turns").insert({
+    session_id: id,
+    seq: result.state.turnSeq,
+    topic: result.notepad.topic,
+    question_type: result.notepad.questionType,
+    difficulty: state.difficulty,
+    question_text: state.currentQuestion.text,
+    answer_transcript: body.transcript,
+    scores: result.persistedScores,
+    band: result.notepad.band,
+    primary_gap: result.notepad.primaryGap,
+    evidence: result.notepad.evidence,
+    notepad_text: result.notepad.observation,
+    reason_text: result.notepad.reason,
+    wpm: result.stats.wpm,
+    filler_count: result.stats.fillers,
+    hold_ms: body.holdMs,
+    capture_ms: body.captureMs ?? body.holdMs,
+  });
+
+  if (turnError) {
+    return NextResponse.json(
+      { error: `Could not save the answer: ${turnError.message}` },
+      { status: 500 },
+    );
+  }
+
+  // Safe to run after the response: telemetry only, and `after()` runs even if
+  // the response errored, so nothing here may be load-bearing.
+  after(() => {
+    if (result.notepad.degraded) {
+      console.warn(`[turn] session ${id} seq ${result.state.turnSeq} degraded`);
+    }
+  });
+
+  const covered = result.state.resumeItems.filter((i) => i.covered).length;
+
+  return NextResponse.json({
+    kind: "turn",
+    move: result.move,
+    notepad: result.notepad,
+    next: result.next,
+    done: result.done,
+    wrapLine: result.wrapLine,
+    progress: {
+      questionCount: result.state.questionCount,
+      questionCap: result.state.questionCap,
+      topicIndex: result.state.topicIndex,
+      topicsTotal: result.state.topics.length,
+      coverageDone: covered,
+      coverageTotal: result.state.resumeItems.length,
+    },
+  });
 }
