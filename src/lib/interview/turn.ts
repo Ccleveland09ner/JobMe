@@ -13,6 +13,11 @@
  *   6. step() — the engine, and the only thing that picks the move
  *   7. wording resolved, validated, with a bank fallback
  *
+ * Wording never costs a model call here. Follow-ups use the drafts the
+ * evaluator already returned; thread openings come from the question plan
+ * written at session start (lib/ai/question-plan.ts), falling back to the
+ * bank's fixed text or `fallbackResumeQuestion()`.
+ *
  * Ref: TechDesign > The Core Journey (8)
  *
  * Imports are relative, not `@/`: vitest has no path alias, and this is the
@@ -28,6 +33,7 @@ import {
   SCORING_FAILED_LINE,
   WRAP_LINE,
   reasonLine,
+  transitionLead,
 } from "../engine/notepad";
 import type {
   Band,
@@ -45,8 +51,13 @@ import {
   heuristicScores,
   preClassify,
 } from "../ai/questions";
-import { generateResumeQuestion } from "../ai/resume-questions";
+import { plannedBankOpening, plannedResumeOpening } from "../ai/question-plan";
+import {
+  fallbackResumeQuestion,
+  type generateResumeQuestion,
+} from "../ai/resume-questions";
 import type { RoleProfile } from "../jd/distill";
+import type { QuestionPlan } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
 /** Aborts a slow evaluation so the turn degrades instead of hanging. */
@@ -71,14 +82,23 @@ export interface TurnContext {
    * do without them — nor can its drafts build on what was already said.
    */
   priorThreadTurns?: { question: string; answer: string }[];
-  /** Resume text backing the next item, when a resume-led opening is due. */
-  excerptFor?: (itemId: string) => Promise<string>;
+  /**
+   * Openings prepared at session start. Null or absent: every opening uses
+   * the fixed bank text or `fallbackResumeQuestion()`.
+   */
+  plan?: QuestionPlan | null;
   /**
    * Test seam. The rehearsal harness scripts this so a 20-turn session costs
    * nothing against a 15/minute free tier; everything downstream is identical.
    */
   evaluate?: typeof evaluateAndDraft;
-  /** Same seam for resume-led openings, which are a second model call. */
+  /**
+   * @deprecated Unused: resume-led openings are pre-generated in the question
+   * plan rather than generated mid-turn. Kept so `scripts/rehearse.ts`, which
+   * still passes it, typechecks. TODO(integration): drop once it stops.
+   */
+  excerptFor?: (itemId: string) => Promise<string>;
+  /** @deprecated As `excerptFor`. */
   generateQuestion?: typeof generateResumeQuestion;
 }
 
@@ -120,6 +140,8 @@ export type TurnResult =
       move: Move;
       notepad: NotepadEntry;
       next: Question | null;
+      /** Spoken before `next.text` when it opens a new thread. */
+      lead?: string;
       wrapLine?: string;
       done: boolean;
       /** `wpm` is null when no capture time was sent (typed answers). */
@@ -201,26 +223,25 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   // ---- 7. wording for the next question ---------------------------------
   let nextQuestion: Question | null = null;
   let nextState = result.state;
+  let lead: string | undefined;
 
   if (result.next) {
     const spec = result.next;
+    const asked = nextState.askedQuestions;
     let text: string;
+    let topic = spec.topic;
 
     if (spec.type === "opening" && spec.source === "resume" && spec.resumeItem) {
-      const excerpt = ctx.excerptFor
-        ? await ctx.excerptFor(spec.resumeItem.id)
-        : spec.resumeItem.label;
-      const generate = ctx.generateQuestion ?? generateResumeQuestion;
-      const generated = await generate({
-        item: spec.resumeItem,
-        excerpt,
-        role: ctx.role ?? null,
-        askedQuestions: nextState.askedQuestions,
-        fallbackTopic: spec.topic,
-      });
-      text = generated.text;
+      // Prepared at session start. The deterministic opening still names the
+      // item, so a missing plan costs polish, never coverage.
+      const planned = plannedResumeOpening(ctx.plan, spec.resumeItem.id, asked);
+      text = planned?.text ?? fallbackResumeQuestion(spec.resumeItem);
+      // The competency the question actually lands on, so follow-up seeds match.
+      topic = planned?.topic ?? spec.topic;
     } else if (spec.type === "opening") {
-      text = questionFor(spec.topic, spec.difficulty);
+      text =
+        plannedBankOpening(ctx.plan, spec.topic, spec.difficulty, asked) ??
+        questionFor(spec.topic, spec.difficulty);
     } else {
       // Prefer the draft, fall back to a seed for the same gap. Either way
       // the ENGINE chose the move.
@@ -235,10 +256,15 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
       text = chosen.text;
     }
 
+    // A new thread: mark the change of topic the way an interviewer would.
+    if (spec.type === "opening") {
+      lead = transitionLead(spec.source, nextState.questionCount);
+    }
+
     nextQuestion = {
       text,
       type: spec.type,
-      topic: spec.topic,
+      topic,
       difficulty: spec.difficulty,
       source: spec.source,
       resumeItemId: spec.resumeItem?.id,
@@ -257,6 +283,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     state: nextState,
     move: result.move,
     next: nextQuestion,
+    lead,
     done: result.move === "wrap",
     wrapLine: result.move === "wrap" ? WRAP_LINE : undefined,
     persistedScores: degraded ? null : scores,

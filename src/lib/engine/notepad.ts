@@ -10,7 +10,7 @@
  * undermine exactly that.
  */
 
-import type { Band, Dimension, Move } from "./types";
+import type { Band, Dimension, Move, QuestionSource } from "./types";
 
 /** What a follow-up aimed at each gap is trying to get. */
 const GAP_REASON: Record<Dimension, string> = {
@@ -52,3 +52,25 @@ export const NUDGE_LINE = "Take your time. Could you say a bit more?";
 /** Acknowledgement text for the wrap turn. */
 export const WRAP_LINE =
   "That's everything I wanted to cover. Let me pull your feedback together.";
+
+const BANK_LEADS = [
+  "Let's switch gears.",
+  "Okay, something different now.",
+  "Let me take us somewhere else.",
+];
+
+const RESUME_LEADS = [
+  "I'd like to ask about something on your resume.",
+  "Let's talk about your experience for a moment.",
+  "Something on your resume caught my eye.",
+];
+
+/**
+ * Spoken before a new thread's opening, so a change of topic sounds like a
+ * conversation rather than the next item on a list. Picked by position, never
+ * at random, so a scripted rehearsal hears the same words every run.
+ */
+export function transitionLead(source: QuestionSource, position: number): string {
+  const leads = source === "resume" ? RESUME_LEADS : BANK_LEADS;
+  return leads[Math.abs(Math.trunc(position)) % leads.length];
+}

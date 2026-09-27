@@ -14,7 +14,6 @@ import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
 import { MAX_FOLLOW_UPS } from "@/lib/engine/policy";
 import type { EngineState } from "@/lib/engine/types";
 import { formatFactsForPrompt } from "@/lib/resume/distill";
-import { retrieveRelevantChunks, formatChunksForPrompt } from "@/lib/resume/retrieve";
 import {
   isStaleSubmit,
   runTurn,
@@ -22,9 +21,9 @@ import {
   turnRowFor,
   type TurnContext,
 } from "@/lib/interview/turn";
-import { SessionId, TurnBody } from "@/lib/schemas";
+import { QuestionPlan, SessionId, TurnBody } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
-import type { RoleProfile } from "@/lib/jd/distill";
+import { formatRoleForPrompt, type RoleProfile } from "@/lib/jd/distill";
 
 export async function POST(
   request: Request,
@@ -57,7 +56,7 @@ export async function POST(
   const [{ data: session }, { data: recentTurns }] = await Promise.all([
     supabase
       .from("interview_sessions")
-      .select("id, engine_state, resume_id, status, role_text")
+      .select("id, engine_state, resume_id, status, role_text, question_plan")
       .eq("id", id)
       .maybeSingle(),
     supabase
@@ -97,8 +96,12 @@ export async function POST(
     );
   }
 
+  // Parsed, not trusted: a malformed plan means the fixed openings, not a 500.
+  const planParse = QuestionPlan.safeParse(session.question_plan);
+  const plan = planParse.success ? planParse.data : null;
+
   // Distilled facts go in every prompt — a fixed prefix, cheap and
-  // reproducible. Retrieval only grounds a resume-led opening.
+  // reproducible.
   let resumeFacts: string | null = null;
   let role: RoleProfile | null = null;
 
@@ -121,19 +124,13 @@ export async function POST(
     captureMs: body.captureMs,
     resumeFacts,
     role,
-    // The job description pasted for THIS session outranks the resume's.
-    roleText: session.role_text ?? null,
+    // THIS session's job outranks the resume's. The plan's distilled summary
+    // is preferred to the raw posting: shorter prompt, same signal.
+    roleText: plan?.role
+      ? formatRoleForPrompt(plan.role)
+      : (session.role_text ?? null),
     priorThreadTurns: threadHistory(state, recentTurns ?? []),
-    excerptFor: async (itemId) => {
-      const item = state.resumeItems.find((i) => i.id === itemId);
-      if (!session.resume_id || !item) return item?.label ?? "";
-      const chunks = await retrieveRelevantChunks(
-        session.resume_id,
-        item.label,
-        3,
-      );
-      return formatChunksForPrompt(chunks) || item.label;
-    },
+    plan,
   };
 
   const result = await runTurn(turnCtx);
@@ -205,7 +202,8 @@ export async function POST(
     kind: "turn",
     move: result.move,
     notepad: result.notepad,
-    next: result.next,
+    // `lead` (a new thread only) is spoken before `text`, never shown alone.
+    next: result.next ? { ...result.next, lead: result.lead } : null,
     done: result.done,
     wrapLine: result.wrapLine,
     progress: {

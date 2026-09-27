@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { EvalError, type RawEvaluation } from "../ai/evaluate";
+import { fallbackResumeQuestion } from "../ai/resume-questions";
+import { questionFor } from "../engine/bank";
 import { SCORING_FAILED_LINE } from "../engine/notepad";
 import { initState } from "../engine/policy";
-import type { EngineState, Question, Scores } from "../engine/types";
+import type { EngineState, Question, ResumeItem, Scores } from "../engine/types";
+import type { QuestionPlan } from "../schemas";
 import {
   degradedReasonFor,
   isStaleSubmit,
@@ -239,5 +242,98 @@ describe("isStaleSubmit", () => {
   it("does not mistake other failures for a race", () => {
     expect(isStaleSubmit({ code: "42501" })).toBe(false);
     expect(isStaleSubmit(null)).toBe(false);
+  });
+});
+
+describe("runTurn — openings come from the question plan", () => {
+  const ACME: ResumeItem = {
+    id: "role-0-backend-intern-at-acme",
+    kind: "role",
+    label: "Backend Intern at Acme",
+    employer: "Acme",
+    chunkSeqs: [0],
+    relevanceToRole: 0.9,
+    covered: false,
+  };
+
+  const TAILORED_L2 =
+    "Tell me about a time you pushed back on a senior engineer's service design.";
+  const ACME_OPENING = "Walk me through the hardest bug you fixed at Acme.";
+
+  const PLAN: QuestionPlan = {
+    version: 1,
+    role: null,
+    topics: { conflict: { l2: TAILORED_L2 } },
+    resume: { [ACME.id]: { text: ACME_OPENING, topic: "problem_solving" } },
+  };
+
+  /**
+   * Two great answers: the engine deepens, then resolves the thread one level
+   * harder and opens the next — bank topic 2 without a resume, the resume
+   * item with one (sources alternate).
+   */
+  async function nextThread(items: ResumeItem[], plan: QuestionPlan | null) {
+    const state = initState({
+      mode: "quick",
+      topics: ["teamwork", "conflict", "pressure", "leadership"],
+      resumeItems: items,
+      firstQuestion: FIRST,
+    });
+    const base = ctx({ state, plan, evaluate: async () => raw(flat(4)) });
+
+    const first = await runTurn(base);
+    if (first.kind !== "turn") throw new Error("expected a turn");
+    expect(first.move).toBe("deepen");
+    // A follow-up continues the thread, so there is nothing to transition.
+    expect(first.lead).toBeUndefined();
+
+    const second = await runTurn({ ...base, state: first.state });
+    if (second.kind !== "turn") throw new Error("expected a turn");
+    expect(second.move).toBe("opening");
+    return second;
+  }
+
+  it("uses the role-tailored wording at the new difficulty", async () => {
+    const result = await nextThread([], PLAN);
+    expect(result.next).toMatchObject({ topic: "conflict", difficulty: 2, text: TAILORED_L2 });
+    expect(result.lead).toMatch(/switch gears|something different|somewhere else/);
+  });
+
+  it("falls back to the bank's fixed text without a plan", async () => {
+    const result = await nextThread([], null);
+    expect(result.next?.text).toBe(questionFor("conflict", 2));
+  });
+
+  it("opens a resume thread with the planned question and its competency", async () => {
+    const result = await nextThread([ACME], PLAN);
+    expect(result.next).toMatchObject({
+      source: "resume",
+      resumeItemId: ACME.id,
+      text: ACME_OPENING,
+      topic: "problem_solving",
+    });
+    expect(result.lead).toMatch(/resume|experience/);
+  });
+
+  /** A rate limit at session start costs polish, never coverage. */
+  it("still opens on the resume item without a plan, naming it", async () => {
+    const result = await nextThread([ACME], null);
+    expect(result.next?.text).toBe(fallbackResumeQuestion(ACME));
+    expect(result.next?.text).toContain("Acme");
+  });
+
+  it("makes no model call to word an opening", async () => {
+    const evaluate = vi.fn(async () => raw(flat(4)));
+    const state = initState({
+      mode: "quick",
+      topics: ["teamwork", "conflict", "pressure", "leadership"],
+      resumeItems: [ACME],
+      firstQuestion: FIRST,
+    });
+    const first = await runTurn(ctx({ state, plan: PLAN, evaluate }));
+    if (first.kind !== "turn") throw new Error("expected a turn");
+    await runTurn(ctx({ state: first.state, plan: PLAN, evaluate }));
+    // One evaluation per answer, and nothing else.
+    expect(evaluate).toHaveBeenCalledTimes(2);
   });
 });
