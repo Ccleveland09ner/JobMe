@@ -15,8 +15,10 @@ import { NextResponse } from "next/server";
 
 import { embedMany } from "@/lib/ai/embeddings";
 import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { MAX_JD_CHARS, distillJobDescription } from "@/lib/jd/distill";
 import { chunkResume } from "@/lib/resume/chunk";
 import { distillResume } from "@/lib/resume/distill";
+import { buildResumeItems, rankItemsAgainstRole } from "@/lib/resume/items";
 import { ResumeParseError, parseResumePdf } from "@/lib/resume/parse";
 import { redact } from "@/lib/resume/redact";
 import { ResumeStoreError, storeResume } from "@/lib/resume/store";
@@ -45,8 +47,9 @@ export async function POST(request: Request) {
   }
 
   let file: File | null = null;
+  let form: FormData | null = null;
   try {
-    const form = await request.formData();
+    form = await request.formData();
     const value = form.get("file");
     if (value instanceof File) file = value;
   } catch {
@@ -117,16 +120,26 @@ export async function POST(request: Request) {
     );
   }
 
+  /**
+   * Optional job description. When present it does not change WHAT gets
+   * covered — every role and project still gets a question — only the ORDER,
+   * so an interview that runs out of budget has still covered the experience
+   * closest to the job being applied for.
+   */
+  const jdText = String(form?.get("roleText") ?? "").slice(0, MAX_JD_CHARS);
+
   // ---- embed and distill, in parallel ------------------------------------
   let vectors: number[][];
   let facts;
+  let role;
   try {
-    [vectors, facts] = await Promise.all([
+    [vectors, facts, role] = await Promise.all([
       embedMany(
         chunks.map((c) => c.content),
         "RETRIEVAL_DOCUMENT",
       ),
       distillResume(redaction.text),
+      jdText ? distillJobDescription(jdText) : Promise.resolve(null),
     ]);
   } catch (err) {
     return NextResponse.json(
@@ -140,6 +153,17 @@ export async function POST(request: Request) {
     );
   }
 
+  /**
+   * The coverage list, ordered most-relevant-to-the-target-role first. Ranking
+   * reuses the chunk vectors we just computed, so it costs one extra embedding
+   * call for the role query rather than a second pass over the resume.
+   */
+  const items = await rankItemsAgainstRole(
+    buildResumeItems(facts, chunks),
+    chunks,
+    role,
+  );
+
   // ---- store -------------------------------------------------------------
   try {
     const stored = await storeResume({
@@ -148,12 +172,22 @@ export async function POST(request: Request) {
       chunks,
       vectors,
       facts,
+      role,
+      items,
     });
 
     return NextResponse.json({
       resumeId: stored.id,
       chunkCount: stored.chunkCount,
       pageCount: parsed.pageCount,
+      /** What the interview will work through, in ask order. */
+      coverage: items.map((i) => ({
+        id: i.id,
+        kind: i.kind,
+        label: i.label,
+        relevance: Number(i.relevanceToRole.toFixed(3)),
+      })),
+      role: role ? { title: role.title, seniority: role.seniority } : null,
       /**
        * The client must show the extracted text for confirmation when this is
        * set — a flattened two-column layout parses into plausible-looking

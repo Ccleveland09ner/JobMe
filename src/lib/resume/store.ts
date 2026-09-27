@@ -13,6 +13,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 
+import type { ResumeItem } from "@/lib/engine/types";
+import type { RoleProfile } from "@/lib/jd/distill";
+
 import type { Chunk } from "./chunk";
 import type { RedactionResult } from "./redact";
 import type { ParsedResume } from "./parse";
@@ -48,8 +51,12 @@ export async function storeResume(args: {
   chunks: Chunk[];
   vectors: number[][];
   facts: ResumeFacts | null;
+  /** Distilled target role, when a job description was pasted. */
+  role?: RoleProfile | null;
+  /** Coverage list, already ranked. Seeds `EngineState.resumeItems`. */
+  items?: ResumeItem[];
 }): Promise<StoredResume> {
-  const { parsed, redaction, chunks, vectors, facts } = args;
+  const { parsed, redaction, chunks, vectors, facts, role, items } = args;
 
   if (chunks.length !== vectors.length) {
     throw new ResumeStoreError(
@@ -68,6 +75,8 @@ export async function storeResume(args: {
       layout_suspect: parsed.layoutSuspect,
       page_count: parsed.pageCount,
       redaction_report: redaction.removed,
+      role_profile: role ?? null,
+      coverage_items: items ?? [],
     })
     .select("id")
     .single();

@@ -36,6 +36,14 @@ create table if not exists public.resumes (
   page_count int,
   -- What redaction removed, by category. Diagnostics only, never prompted.
   redaction_report jsonb,
+  -- Distilled target role from a pasted job description. Drives the ORDER of
+  -- resume coverage, not what gets covered: every role and project still gets
+  -- at least one question, but the ones closest to the job applied for come
+  -- first, so a truncated interview still covered what mattered.
+  role_profile jsonb,
+  -- The ranked coverage list (roles + projects). Seeds EngineState.resumeItems
+  -- at session creation so the ordering survives a refresh.
+  coverage_items jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
