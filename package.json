@@ -14,7 +14,8 @@
     "check:db": "tsx scripts/check-supabase.ts",
     "embed:bank": "tsx scripts/embed-bank.ts",
     "gen:acks": "tsx scripts/gen-ack-clips.ts",
-    "probe:eval": "tsx scripts/probe-evaluator.ts"
+    "probe:eval": "tsx scripts/probe-evaluator.ts",
+    "rehearse": "tsx scripts/rehearse.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

@@ -60,6 +60,17 @@ export interface TurnContext {
   role?: RoleProfile | null;
   /** Resume text backing the next item, when a resume-led opening is due. */
   excerptFor?: (itemId: string) => Promise<string>;
+  /**
+   * Override the evaluator. Production leaves this unset; the rehearsal
+   * harness supplies a scripted one so a 20-turn full-mode session can be
+   * validated without spending 20 requests against a 15/minute free tier.
+   *
+   * Everything downstream — banding, hysteresis, the engine, question
+   * selection, coverage — runs identically either way, which is the point.
+   */
+  evaluate?: typeof evaluateAndDraft;
+  /** Same seam for resume-led openings, which are a second model call. */
+  generateQuestion?: typeof generateResumeQuestion;
 }
 
 export interface NotepadEntry {
@@ -112,8 +123,10 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   let drafts: { deepen: string; clarify: string } | null = null;
   let degraded = false;
 
+  const evaluate = ctx.evaluate ?? evaluateAndDraft;
+
   try {
-    const evaluation = await evaluateAndDraft({
+    const evaluation = await evaluate({
       topic: state.currentQuestion.topic,
       questionText: state.currentQuestion.text,
       questionType: state.currentQuestion.type,
@@ -170,7 +183,8 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
       const excerpt = ctx.excerptFor
         ? await ctx.excerptFor(spec.resumeItem.id)
         : spec.resumeItem.label;
-      const generated = await generateResumeQuestion({
+      const generate = ctx.generateQuestion ?? generateResumeQuestion;
+      const generated = await generate({
         item: spec.resumeItem,
         excerpt,
         role: ctx.role ?? null,
