@@ -106,6 +106,8 @@ Concretely:
 
 1. **`off_topic` is a single model boolean** that drives `weak` → `clarify`. Gate it: require `off_topic && relevance <= 2`, or derive it from the answer-vs-question cosine you already compute. Make it engine-derivable rather than model-dictated.
 
+   **This is confirmed, not theoretical.** Running the evaluator against a scripted strong answer (`npm run probe:eval`) produced `avg 3.60, min 2, ownership 4` — and the band came out **weak**, because the answer described a solo performance fix in response to a *teamwork* question and the model set `off_topic: true`. The model's judgement was correct; the failure is that one boolean outranked five scores averaging 3.6. Without the gate, a strong candidate who slightly mis-frames an answer gets treated identically to someone who said nothing. Reproduce it by reverting the STRONG fixture in `scripts/probe-evaluator.ts` to a non-teamwork story.
+
 2. **The anchor downgrade in `classify.ts`** turns `great` into `mediocre` when `simWeak - simStrong > 0.05`. That is an uncalibrated threshold over embeddings that shift with any change to the exemplar bank, the model, or `outputDimensionality`. It is the most likely cause of "the scripted weak answer produced Deepen" on stage. **Put it behind a flag that defaults to off**, and leave a comment saying it must be calibrated against a frozen `data/bank-embeddings.json` before being enabled.
 
 3. **Add a deterministic pre-classifier that runs before the model is consulted.** Under 25 words, or no concrete noun and no number → force `weak`. Relevance is blended from a float and fed into `avg >= 3.5 && min >= 3`, so a ±1 swing otherwise flips the band and therefore the move. This rule is the demo insurance.
