@@ -2,27 +2,22 @@
  * Prompt text, kept out of the logic files so it can be tuned without touching
  * control flow.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Evaluator
+ * PROMPT INJECTION: the answer, role text and resume are all untrusted —
+ * anyone can upload or say anything — so each is wrapped in
+ * `asUntrustedData()`. The model cannot change flow regardless of what it is
+ * told: the state machine owns that, and only consumes scores and wording.
  *
- * PROMPT INJECTION. The candidate's answer, their role text and their resume
- * are all untrusted input — anyone can upload or say anything. Every one of
- * them is wrapped in `asUntrustedData()` and labelled as data. The model also
- * cannot change the interview's flow regardless of what it is told, because
- * the state machine owns that decision and only ever consumes scores and
- * draft wording from this call.
+ * Ref: TechDesign > Evaluator
  */
 
-/** Wraps untrusted candidate text so the model treats it as data, not orders. */
+/** Marks candidate text as data, not orders. */
 export function asUntrustedData(label: string, text: string): string {
   return `<${label}>\n${text}\n</${label}>`;
 }
 
 /**
- * The scoring rubric, with explicit anchors per dimension.
- *
- * Anchors are spelled out at every level because "score 1-4" alone produces
- * drift between runs, and drift in `relevance` in particular flips the band —
- * and therefore the interview's next move.
+ * Anchors are spelled out at every level because "score 1-4" alone drifts
+ * between runs, and drift in `relevance` flips the band and the next move.
  */
 const RUBRIC = `
 Score each dimension 1-4.
@@ -115,16 +110,12 @@ export function evaluatorSystemFor(questionType: string): string {
 }
 
 /**
- * Extra instruction for a follow-up answer.
- *
  * A follow-up is graded on what it ADDS, not on whether it re-tells a whole
- * STAR story — the situation was already established, and demanding it again
- * would penalise exactly the focused answer we asked for.
+ * STAR story — demanding that would penalise the focused answer we asked for.
  *
- * The dimension set stays identical to the opening's on purpose: the engine
- * compares `threadScores` across turns to detect a plateau ("no dimension rose
- * by >= 1"), and that comparison is meaningless if the two turns were scored
- * on different axes. So the axes are fixed and their INTERPRETATION shifts.
+ * The dimensions stay identical to the opening's on purpose: the engine
+ * compares `threadScores` across turns to detect a plateau, which is
+ * meaningless if the axes shift. So the axes are fixed and the reading shifts.
  */
 export const FOLLOWUP_GUIDANCE = [
   "",
@@ -152,7 +143,7 @@ export const REPORT_SYSTEM = [
   "interview, which is worse than no rewrite at all.",
 ].join("\n");
 
-/** Builds the per-turn user prompt. Order matters: context, then the ask. */
+/** Context first, then the ask. */
 export function buildTurnPrompt(args: {
   topic: string;
   questionText: string;

@@ -1,28 +1,21 @@
 /**
  * Splits redacted resume text into embeddable chunks.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Embedding Checks
+ * Pure and estimate-based: `countTokens` is accurate but costs a network call
+ * per chunk against a 15 RPM free tier, so 30 chunks would spend two minutes
+ * of quota just measuring. A pessimistic chars-per-token ratio is used here
+ * and verified once, in the test, against the real tokenizer.
  *
- * `gemini-embedding-001` accepts a hard maximum of 2048 input tokens per item,
- * so an oversized chunk is an API error rather than a quality problem. We aim
- * well under it.
+ * Chunks follow resume structure rather than a fixed window — retrieval
+ * quality depends on a chunk being about one thing. The 2048-token model limit
+ * is hard, so an oversized chunk is an API error, not a quality problem.
  *
- * Chunking is PURE and estimate-based on purpose. The accurate way to count is
- * `ai.models.countTokens`, but that is a network call per chunk against a
- * 15 RPM free tier — 30 chunks would exhaust two minutes of quota just to
- * measure. Instead we use a deliberately pessimistic characters-per-token
- * ratio here and verify the assumption once, in the test, against the real
- * tokenizer.
- *
- * Chunks follow resume structure (a role, a project, an education entry)
- * rather than a fixed window, because retrieval quality depends on a chunk
- * being about one thing.
+ * Ref: TechDesign > Embedding Checks
  */
 
 /**
- * Pessimistic on purpose. English averages ~4 chars/token; resumes skew lower
- * because of punctuation, bullets and acronyms. Under-estimating the ratio
- * means over-estimating the token count, which fails safe.
+ * Pessimistic on purpose: English averages ~4 chars/token and resumes skew
+ * lower, so a low ratio over-estimates tokens and fails safe.
  */
 export const CHARS_PER_TOKEN = 3;
 
@@ -68,9 +61,8 @@ export function estimateTokens(text: string): number {
 }
 
 /**
- * A heading is a short standalone line that is either all-caps or matches a
- * known section word. Requiring shortness avoids treating a bullet that
- * happens to start with "Skills" as a heading.
+ * A short standalone line, all-caps or a known section word. Shortness stops a
+ * bullet beginning "Skills" being read as a heading.
  */
 export function isSectionHeading(line: string): boolean {
   const t = line.trim().replace(/[:\s]+$/, "");
@@ -93,8 +85,8 @@ function splitOversized(block: string, budget: number): string[] {
   const out: string[] = [];
   let current = "";
   for (const line of block.split(/\r?\n/)) {
-    // A single line longer than the budget is pathological; emit it alone and
-    // let the caller's token assertion catch it rather than silently truncate.
+    // Pathological: emit alone so the token assertion catches it rather than
+    // silently truncating.
     if (line.length > budget) {
       if (current.trim()) out.push(current.trim());
       out.push(line.trim());
@@ -167,8 +159,7 @@ export function chunkResume(text: string): Chunk[] {
         ? splitOversized(block.content, budget)
         : [block.content];
     for (const piece of pieces) {
-      // Prefix the section so an isolated bullet still carries its context
-      // into the embedding — "Reduced p99 by 40%" means more under EXPERIENCE.
+      // Prefix the section: "Reduced p99 by 40%" means more under EXPERIENCE.
       const content = block.section ? `${block.section}\n${piece}` : piece;
       chunks.push({
         index: chunks.length,

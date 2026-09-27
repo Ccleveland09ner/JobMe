@@ -1,21 +1,17 @@
 /**
- * The speech-recognition state machine, as a pure reducer.
+ * Speech recognition as a pure reducer. Split from the browser adapter because
+ * every capture bug is a state bug, and a reducer is the only part testable
+ * without a microphone.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Speech Input
- *
- * Separated from the browser adapter because every bug in speech capture is a
- * state bug, and a reducer is the only part of this that can be tested without
- * a microphone. The adapter (stt.ts) does nothing but translate DOM events
- * into the events below and run the effects that come back.
- *
- * Web Speech is far less forgiving than it looks:
- *   - Recognition ends on its own, at no documented interval. Long answers
- *     MUST be stitched from several sessions.
- *   - `onend` fires for your own `stop()` too, so restart logic needs to know
- *     whether the user asked to stop.
- *   - `event.resultIndex` resets per session, so re-walking results from 0
- *     across a restart duplicates the transcript.
+ * Web Speech is less forgiving than it looks:
+ *   - Recognition ends on its own at no documented interval, so long answers
+ *     must be stitched from several sessions.
+ *   - `onend` fires for your own `stop()` too.
+ *   - `event.resultIndex` resets per session, so re-walking from 0 after a
+ *     restart duplicates the transcript.
  *   - Interim results are not guaranteed and are frequently revised.
+ *
+ * Ref: TechDesign > Speech Input
  */
 
 export type Phase = "idle" | "starting" | "running" | "restarting" | "stopping";
@@ -85,7 +81,7 @@ export const END_WATCHDOG_MS = 250;
 /** Force resolution if `stop()` never produces `onend`. */
 export const STOP_DEADLINE_MS = 900;
 
-/** Errors that must not be retried — restarting cannot fix them. */
+/** Restarting cannot fix these. */
 const FATAL: SttErrorCode[] = [
   "not-allowed",
   "service-not-allowed",
@@ -121,8 +117,7 @@ export function reduce(
 ): { state: MachineState; effects: Effect[] } {
   switch (ev.t) {
     case "HOLD_START": {
-      // Pointerdown and Space on a focused button both fire; the second is a
-      // no-op rather than a second session.
+      // Pointerdown and Space both fire; the second is a no-op.
       if (s.wantListening) return { state: s, effects: [] };
       return {
         state: {
@@ -136,9 +131,8 @@ export function reduce(
     }
 
     case "STARTED": {
-      // Release landed while the session was still opening. A session is
-      // coming whether we want it or not, so stop it now that it exists —
-      // this is the transition that otherwise leaves the mic indicator lit.
+      // Released while opening. The session arrives regardless, so stop it
+      // now — otherwise the mic indicator stays lit after release.
       if (s.phase === "stopping") {
         return { state: s, effects: [{ e: "STOP" }] };
       }
@@ -160,7 +154,7 @@ export function reduce(
     }
 
     case "RESULT": {
-      // A late result after the promise resolved must not mutate anything.
+      // A late result must not mutate anything after resolution.
       if (s.phase === "idle") return { state: s, effects: [] };
 
       const effects: Effect[] = [];
@@ -168,8 +162,8 @@ export function reduce(
       let interim = "";
       let highWater = s.finalHighWater;
 
-      // Start from the greater of the event's index and our own high-water
-      // mark. Walking from 0 across a restart is what duplicates transcripts.
+      // Max of the event index and our high-water mark: walking from 0
+      // across a restart is what duplicates transcripts.
       for (let i = Math.max(ev.resultIndex, s.finalHighWater); i < ev.results.length; i++) {
         const r = ev.results[i];
         if (!r) continue;
@@ -203,10 +197,9 @@ export function reduce(
     }
 
     case "ERROR": {
-      // ERROR never restarts. It records, and arms a watchdog in case the
-      // implementation does not follow up with `onend` — which closes the
-      // InvalidStateError window structurally rather than by catching an error
-      // the spec does not actually promise.
+      // ERROR never restarts: it records and arms a watchdog in case `onend`
+      // never comes. Closes the InvalidStateError window structurally, rather
+      // than catching an error the spec does not actually promise.
       const fatal = FATAL.includes(ev.code);
       return {
         state: {
@@ -267,7 +260,7 @@ export function reduce(
         };
       }
 
-      // Still held: recognition stopped on its own, so stitch another session.
+      // Still held: stopped on its own, so stitch another session.
       const backoff =
         NO_SPEECH_BACKOFF[
           Math.min(base.consecutiveNoSpeech, NO_SPEECH_BACKOFF.length - 1)
@@ -280,7 +273,7 @@ export function reduce(
     }
 
     case "RESTART_TICK": {
-      // Phase-guarded: a timer that fires after the user let go is a no-op.
+      // Phase-guarded: a timer firing after release is a no-op.
       if (s.phase !== "restarting" || !s.wantListening) {
         return { state: s, effects: [] };
       }
@@ -307,14 +300,14 @@ export function reduce(
           };
 
         case "starting":
-          // No session yet to stop. Park in `stopping`; STARTED will issue it.
+          // Nothing to stop yet. Park here; STARTED will issue it.
           return {
             state: { ...stopped, phase: "stopping" },
             effects: [{ e: "ARM", timer: "stopDeadline", ms: STOP_DEADLINE_MS }],
           };
 
         case "restarting":
-          // Nothing is running, so there is nothing to flush.
+          // Nothing running, nothing to flush.
           return {
             state: { ...stopped, phase: "idle" },
             effects: [{ e: "RESOLVE" }],
@@ -329,8 +322,8 @@ export function reduce(
     }
 
     case "STOP_DEADLINE": {
-      // `stop()` should flush a final result. If it never does, resolve anyway
-      // so the promise settles exactly once and the UI is not stuck.
+      // `stop()` should flush a final. If it never does, resolve anyway so
+      // the promise settles exactly once.
       if (s.phase !== "stopping") return { state: s, effects: [] };
       return {
         state: { ...s, phase: "idle", endedBy: s.endedBy ?? "user" },

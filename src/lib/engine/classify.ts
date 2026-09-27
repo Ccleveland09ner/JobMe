@@ -1,11 +1,9 @@
 /**
- * Band classification. Pure, no I/O, unit-tested.
+ * Band classification. Pure and deterministic — the band decides the next
+ * move, which is what makes "the scripted weak answer always gets a Clarify" a
+ * guarantee rather than a hope.
  *
- * Ref: docs/PRD-JobMe-MVP.md > Adaptive Engine (Bands)
- *
- * The band decides the next move, so everything here is deterministic: same
- * inputs, same band, every run. That is what makes "the scripted weak answer
- * always gets a Clarify" a guarantee rather than a hope.
+ * Ref: PRD > Adaptive Engine (Bands)
  */
 
 import {
@@ -29,24 +27,17 @@ export const GREAT_FLOOR = 3.5;
 export const GREAT_MIN_DIMENSION = 3;
 
 /**
- * How far past a threshold a score must land before it may leave the band it
- * was in last turn.
- *
- * Measured motivation: the same borderline answer scored 2.00 on one run and
- * 1.55 on the next, flipping mediocre/weak. Both produce a Clarify so the move
- * was unaffected, but they differ in tone and in the resolution rule ("a weak
- * thread that stayed weak after one clarify resolves the topic"), so a flicker
- * can end a topic early for no reason the candidate can perceive.
+ * How far past a threshold a score must land to leave last turn's band.
+ * Observed: one borderline answer scored 2.00 then 1.55, flipping
+ * mediocre/weak. Both clarify, but the resolution rules differ, so a flicker
+ * can end a topic early for no perceptible reason.
  */
 export const HYSTERESIS = 0.15;
 
 /**
- * An `off_topic` claim only forces `weak` when the relevance score agrees.
- *
- * Without this gate one model boolean outranks eight scores. Observed live: a
- * genuinely strong answer averaging 3.60 was flagged off-topic and banded
- * `weak`, treating a strong candidate who mis-framed an answer identically to
- * one who said nothing.
+ * `off_topic` forces `weak` only when relevance agrees. Without this gate one
+ * model boolean outranks eight scores — observed live, a 3.60-average answer
+ * banded `weak` for mis-framing.
  */
 export const OFF_TOPIC_RELEVANCE_CEILING = 2;
 
@@ -71,9 +62,8 @@ export interface ClassifyOptions {
   previousBand?: Band | null;
   anchor?: AnchorSimilarity;
   /**
-   * The anchor downgrade runs on an uncalibrated 0.05 threshold over
-   * embeddings that shift with any change to the exemplar bank or the
-   * embedding model. Off by default: a false downgrade turns a Deepen into a
+   * Uncalibrated 0.05 threshold over embeddings that shift with the exemplar
+   * bank or model. Off by default: a false downgrade turns a Deepen into a
    * Clarify on stage.
    */
   anchorDowngradeEnabled?: boolean;
@@ -86,11 +76,7 @@ function rawBand(avg: number, min: number, offTopic: boolean): Band {
   return "mediocre";
 }
 
-/**
- * Keeps the previous band unless the new average clears the threshold by
- * `HYSTERESIS`. Only ever resists CHANGE — it can never invent a band that the
- * raw scores do not support by more than the margin.
- */
+/** Resists change only; never invents a band the scores do not nearly support. */
 function applyHysteresis(raw: Band, previous: Band, avg: number): Band {
   if (raw === previous) return raw;
 
@@ -139,10 +125,8 @@ export function classifyBand(
 }
 
 /**
- * Lowest-scoring dimension across all eight, ties broken by GAP_PRIORITY.
- *
- * Recomputed in code and allowed to override the model, so the gap shown on
- * the notepad always matches the scores shown beside it.
+ * Lowest of all eight, ties broken by GAP_PRIORITY. Overrides the model so the
+ * gap on the notepad always matches the scores beside it.
  */
 export function computePrimaryGap(scores: Scores): Dimension {
   let best: Dimension = GAP_PRIORITY[0];
@@ -153,11 +137,8 @@ export function computePrimaryGap(scores: Scores): Dimension {
 }
 
 /**
- * True when a follow-up failed to lift anything: no dimension rose by >= 1
- * against the previous answer in the thread.
- *
- * This is what stops a topic grinding on after the candidate has given what
- * they have.
+ * No dimension rose by >= 1 against the previous answer. Stops a topic
+ * grinding on after the candidate has given what they have.
  */
 export function noDimensionRose(previous: Scores, current: Scores): boolean {
   return GAP_PRIORITY.every((d) => current[d] - previous[d] < 1);

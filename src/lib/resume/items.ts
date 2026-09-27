@@ -1,14 +1,10 @@
 /**
- * Turns a distilled resume into the coverage list the interview works through.
+ * Builds the coverage list the interview works through. Two jobs: enumerate
+ * every role and project so full mode can guarantee each gets a question, and
+ * order them by match against the job applied for, so an interview that runs
+ * out of budget still covered what mattered most.
  *
- * Ref: EngineState.resumeItems in src/lib/engine/types.ts
- *
- * Two jobs:
- *   1. Enumerate every role and project, so full mode can guarantee each gets
- *      at least one question.
- *   2. Order them by how closely each matches the job being applied for, so a
- *      quick interview — or one that runs out of budget — still covered the
- *      experience that mattered most for that application.
+ * Ref: EngineState.resumeItems
  */
 
 import { cosine, embedMany } from "@/lib/ai/embeddings";
@@ -19,7 +15,7 @@ import type { Chunk } from "./chunk";
 import type { ResumeItem } from "@/lib/engine/types";
 import type { ResumeFacts } from "./store";
 
-/** Matching a fact to its chunks: cheap containment, case-insensitive. */
+/** Fact to chunks: cheap containment, case-insensitive. */
 function chunksMentioning(chunks: Chunk[], ...needles: string[]): number[] {
   const terms = needles
     .filter(Boolean)
@@ -44,12 +40,10 @@ function slug(prefix: string, label: string, i: number): string {
 }
 
 /**
- * Builds the coverage list from distilled facts, backed by chunk indices so a
- * question about an item can retrieve the underlying resume text.
- *
- * Items with no matching chunk are kept, not dropped: the candidate listed the
- * role, so they should still be asked about it. They just cannot be ranked by
- * content, and fall back to resume order.
+ * Backed by chunk indices, so a question about an item can retrieve the
+ * underlying text. Items with no matching chunk are kept, not dropped — the
+ * candidate listed the role, so it still gets asked about; it just falls back
+ * to resume order for ranking.
  */
 export function buildResumeItems(
   facts: ResumeFacts | null,
@@ -68,8 +62,7 @@ export function buildResumeItems(
       label,
       employer: role.employer,
       chunkSeqs: chunksMentioning(chunks, role.employer ?? "", role.title ?? ""),
-      // Resume order until ranked: most resumes are reverse-chronological, so
-      // this is a sane default when there is no job description to rank by.
+      // Resume order until ranked — most resumes are reverse-chronological.
       relevanceToRole: 1 - i * 0.01,
       covered: false,
     });
@@ -92,14 +85,10 @@ export function buildResumeItems(
 }
 
 /**
- * Scores each item against the target role and re-sorts, most relevant first.
- *
- * Uses the MAXIMUM cosine across an item's chunks rather than the mean: one
- * strongly matching bullet makes a role worth asking about, and averaging
- * would let a long role full of routine duties bury its best line.
- *
- * Falls back to the unranked list on any failure — an unranked interview still
- * covers everything, just in resume order.
+ * Re-sorts most relevant first, using the MAXIMUM cosine across an item's
+ * chunks rather than the mean: one strong bullet makes a role worth asking
+ * about, and averaging lets a long role full of routine duties bury its best
+ * line. Falls back to the unranked list — still complete, just in resume order.
  */
 export async function rankItemsAgainstRole(
   items: ResumeItem[],
@@ -127,8 +116,8 @@ export async function rankItemsAgainstRole(
 
       return {
         ...item,
-        // No backing chunk: keep its resume-order score rather than sinking it
-        // to zero, which would push a listed role behind every project.
+        // No backing chunk: keep its resume-order score rather than sinking
+        // a listed role behind every project.
         relevanceToRole: sims.length
           ? Math.max(...sims)
           : item.relevanceToRole * 0.5,

@@ -1,19 +1,17 @@
 "use client";
 
 /**
- * The Web Audio graph that drives the avatar's mouth.
+ * The Web Audio graph driving the avatar's mouth. Three hazards, all of which
+ * fail loudly on stage:
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Voice Output
- *
- * Three hazards here, all of which fail loudly on stage:
- *
- *   1. `createMediaElementSource` may be called ONCE per element. A second
+ *   1. `createMediaElementSource` may be called ONCE per element — a second
  *      call throws, so the source is cached against the element.
- *   2. Once an element is routed through a node, you MUST connect onward to
- *      `destination` or the page goes completely silent — the audio now flows
- *      through the graph instead of to the speakers.
- *   3. An `AudioContext` starts suspended and can only be resumed inside a
- *      user gesture, which is why this is created on the Begin click.
+ *   2. Once routed through a node you MUST connect onward to `destination`,
+ *      or the page goes silent: audio flows through the graph, not to speakers.
+ *   3. `AudioContext` starts suspended and resumes only inside a user gesture,
+ *      which is why this is created on the Begin click.
+ *
+ * Ref: TechDesign > Voice Output
  */
 
 import { getSharedAudio } from "./tts";
@@ -47,7 +45,7 @@ export function createAudioGraph(
       : undefined;
 
   if (!Ctor) {
-    // No Web Audio: the avatar simply does not lip-sync. Everything else works.
+    // No Web Audio: no lip-sync, everything else works.
     return {
       readMouth: () => 0,
       setSyntheticSpeaking: () => {},
@@ -69,7 +67,7 @@ export function createAudioGraph(
     sources.set(element, source);
   }
   source.connect(analyser);
-  // Without this the page is silent. It is not optional.
+  // Not optional — without it the page is silent.
   analyser.connect(ctx.destination);
 
   const buffer = new Uint8Array(analyser.frequencyBinCount);
@@ -82,8 +80,8 @@ export function createAudioGraph(
 
     let target: number;
     if (synthetic) {
-      // The browser-voice path has no stream to analyse, so the analyser would
-      // read silence and the mouth would freeze while the recruiter speaks.
+      // The browser-voice path exposes no stream, so the analyser would read
+      // silence and the mouth would freeze mid-sentence.
       target = 0.35 + 0.3 * Math.abs(Math.sin(performance.now() / 90));
     } else {
       analyser.getByteTimeDomainData(buffer);

@@ -1,18 +1,11 @@
 /**
- * Core engine types. Pure TypeScript, no runtime dependencies.
+ * Core engine types. Pure, no runtime dependencies — every engine, AI and UI
+ * module types against these.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Data Model > `EngineState`
- *      docs/TechDesign-JobMe-MVP.md > Adaptive Engine
- *
- * These are written out in full (not stubbed) because every other engine,
- * AI and UI module types against them.
+ * Ref: TechDesign > Data Model, > Adaptive Engine
  */
 
-/**
- * The behavioural topic bank, drawn from the questions that actually recur in
- * behavioural screens. A session covers a subset; which subset depends on the
- * mode and on what the candidate's resume evidences.
- */
+/** The topic bank. A session covers a subset, chosen by mode and resume. */
 export type TopicId =
   | "teamwork"
   | "conflict"
@@ -41,12 +34,8 @@ export const TOPIC_IDS: readonly TopicId[] = [
 ] as const;
 
 /**
- * Scoring dimensions.
- *
- * The first four are the STAR components, scored individually rather than
- * rolled into one "structure" number, so the notepad can name exactly which
- * part of the story is missing ("no Result" reads better, and coaches better,
- * than "structure: 2").
+ * Scoring dimensions. STAR is scored per-component rather than as one
+ * "structure" number so the notepad can say "no Result" instead of "structure: 2".
  */
 export type StarDimension = "situation" | "task" | "action" | "result";
 
@@ -73,13 +62,9 @@ export const DIMENSIONS: readonly Dimension[] = [
 ] as const;
 
 /**
- * Tie-break order for `primary_gap` when several dimensions share the lowest
- * score. Recomputed in code so the gap is deterministic and never drifts from
- * the model's own opinion.
- *
- * Ordered by how much a follow-up on that gap improves the answer. Ownership
- * and outcome are what recruiters actually chase; Situation and Task are
- * scene-setting and rarely worth a whole follow-up.
+ * Tie-break order for `primary_gap`, computed in code so it never drifts from
+ * the model's opinion. Ordered by what a follow-up actually gains: recruiters
+ * chase ownership and outcome; Situation and Task are scene-setting.
  */
 export const GAP_PRIORITY: readonly Dimension[] = [
   "ownership",
@@ -96,16 +81,10 @@ export const GAP_PRIORITY: readonly Dimension[] = [
 export type Scores = Record<Dimension, number>;
 
 /**
- * Mean of the four STAR components — the band's stand-in for the old single
- * `structure` score.
- *
- * WHY BANDING USES THIS RATHER THAN ALL EIGHT DIMENSIONS. The `great` rule is
- * `avg >= 3.5 && min >= 3`. Going from 5 dimensions to 8 gives three more
- * chances to trip the `min` clause, and Task is the component speakers most
- * often fold into Situation, so `great` would become nearly unreachable and
- * the weak-vs-strong contrast the demo depends on would collapse. Rolling
- * STAR up keeps the band computed over five comparable values while the eight
- * individual scores stay visible and individually targetable as gaps.
+ * Mean of the STAR components, used for banding instead of all eight
+ * dimensions: `great` needs `min >= 3`, and eight dimensions give three extra
+ * chances to trip it — Task especially, which speakers fold into Situation.
+ * Banding over five keeps `great` reachable; all eight stay visible as gaps.
  */
 export function starRollup(scores: Scores): number {
   const total = STAR_DIMENSIONS.reduce((sum, d) => sum + scores[d], 0);
@@ -130,19 +109,14 @@ export type Band = "weak" | "mediocre" | "great";
 export type QuestionType = "opening" | "deepen" | "clarify";
 
 /**
- * Where a question came from.
- *
- * A realistic screen alternates: some threads open with a standard behavioural
- * question and only get personal in the follow-ups, others open directly on
- * something from the resume. Tracking the source lets the policy keep that
- * balance instead of drifting into all-generic or all-resume.
+ * Where a question came from. Tracked so the policy can alternate the way a
+ * real screen does, instead of drifting into all-generic or all-resume.
  */
 export type QuestionSource = "bank" | "resume";
 
 /**
- * Quick is the practice/demo format: bank-led, bounded, reproducible.
- * Full guarantees coverage of every role and project, so its length scales
- * with the resume.
+ * Quick: bank-led, bounded, reproducible — the practice and demo format.
+ * Full: covers every role and project, so its length scales with the resume.
  */
 export type InterviewMode = "quick" | "full";
 
@@ -156,9 +130,8 @@ export interface ResumeItem {
   /** Chunk indices backing this item, for retrieval at question time. */
   chunkSeqs: number[];
   /**
-   * 0..1 — how closely this item matches the target role, from the job
-   * description. Drives ask order: the most relevant experience gets covered
-   * first, so a truncated interview still covered what mattered.
+   * 0..1 match against the job description. Drives ask order, so a truncated
+   * interview still covered the most relevant experience.
    */
   relevanceToRole: number;
   /** True once the candidate has answered at least one question about it. */
@@ -182,9 +155,8 @@ export interface Question {
 }
 
 /**
- * Live source of truth for a session, persisted as
- * `interview_sessions.engine_state` (jsonb) and rewritten every turn.
- * Serverless-safe and refresh-resumable.
+ * Source of truth for a session. Persisted as `interview_sessions.engine_state`
+ * jsonb and rewritten every turn — serverless-safe and refresh-resumable.
  */
 export interface EngineState {
   mode: InterviewMode;
@@ -201,11 +173,7 @@ export interface EngineState {
   threadScores: Scores[];
   /** Scored questions asked. Stops at `questionCap`. */
   questionCount: number;
-  /**
-   * Hard ceiling for this session. Fixed at QUICK_QUESTION_CAP in quick mode;
-   * in full mode derived from the number of resume items to cover, so a thin
-   * resume still yields a short interview.
-   */
+  /** Ceiling for this session: fixed in quick mode, resume-derived in full. */
   questionCap: number;
   /** Answered turns. Used for submit idempotency via `clientTurnSeq`. */
   turnSeq: number;
@@ -214,12 +182,9 @@ export interface EngineState {
   askedQuestions: string[];
 
   /**
-   * Resume coverage, ordered most-relevant-to-the-target-role first.
-   *
-   * Full mode will not wrap while any of these is uncovered; quick mode
-   * covers as many as its cap allows, which is why the ordering matters —
-   * a truncated interview must still have covered the experience closest to
-   * the job being applied for.
+   * Coverage list, most relevant to the target role first. Full mode will not
+   * wrap while any is uncovered; quick mode covers as many as its cap allows,
+   * which is why the ordering matters.
    */
   resumeItems: ResumeItem[];
   /** Index of the item the current resume-led thread is about. */
@@ -240,9 +205,8 @@ export const FULL_QUESTION_CAP_MAX = 24;
 export const FULL_QUESTION_CAP_MIN = 8;
 
 /**
- * Full mode budgets roughly one opening plus one follow-up per resume item,
- * plus a few bank questions so competencies the resume does not evidence
- * still get probed.
+ * One opening plus one follow-up per resume item, plus a few bank questions
+ * for competencies the resume does not evidence.
  */
 export function fullModeCap(resumeItemCount: number): number {
   const budget = resumeItemCount * 2 + 4;
@@ -258,10 +222,8 @@ export function uncoveredItems(state: EngineState): ResumeItem[] {
 }
 
 /**
- * One scored answer. `scores` is the blended result: the LLM's judgement with
- * Relevance averaged against the embedding similarity signal.
- *
- * Ref: TechDesign > Evaluator, > Embedding Checks
+ * One scored answer. `scores` blends the model's judgement with the embedding
+ * relevance signal. Ref: TechDesign > Evaluator, > Embedding Checks
  */
 export interface Evaluation {
   scores: Scores;

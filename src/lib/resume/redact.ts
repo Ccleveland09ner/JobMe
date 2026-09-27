@@ -1,31 +1,23 @@
 /**
  * Strips identifying details from resume text before it leaves the server.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Security (prompt injection + privacy)
+ * ORDER MATTERS: PROTECT metric spans -> REDACT identity -> RESTORE metrics.
+ * To a regex, `1,200 ms` and `555 123 4567` are both digit runs with
+ * separators, so redacting first eats the evidence `impact` and `specificity`
+ * are built on — invisibly, producing only blander questions.
  *
- * WHY THE ORDER MATTERS. A phone-number pattern and a metric look alike to a
- * regex: `1,200 ms`, `$1.2M` and `555 123 4567` are all digit runs with
- * separators. Redacting first would eat exactly the evidence the `impact` and
- * `specificity` scores are built on, and the damage would be invisible — the
- * resume would simply produce blander questions.
+ * This is defence-in-depth and token reduction, NOT compliance. "Senior SRE,
+ * 2021-2024, cut p99 40%" still resolves to one person, and spoken answers are
+ * richer PII that cannot be redacted at all. The real fix is a paid tier.
  *
- * So: PROTECT metric spans -> REDACT identity -> RESTORE metrics.
- *
- * This is defense-in-depth and token reduction, NOT a compliance story. A
- * redacted resume is still personal data: "Senior SRE, 2021-2024, cut p99 40%"
- * resolves to one person given a search engine. The spoken answers are richer
- * PII again and cannot be redacted at all, since they are the thing being
- * scored. The real fix is a paid API tier that does not train on input.
+ * Ref: TechDesign > Security
  */
 
 /** A span temporarily swapped out so identity patterns cannot match inside it. */
 const PROTECT_PREFIX = "\u0000P";
 const PROTECT_SUFFIX = "\u0000";
 
-/**
- * Spans that must survive redaction intact. These ARE the scoring signal:
- * without numbers there is no measurable impact to grade.
- */
+/** Must survive redaction: without numbers there is no impact to grade. */
 const PROTECTED_PATTERNS: RegExp[] = [
   // Currency: $1.2M, $45,000, £2k
   /[$£€]\s?\d[\d,]*(?:\.\d+)?\s*[KkMmBb]?\b/g,
@@ -68,9 +60,8 @@ export interface RedactionResult {
 }
 
 /**
- * Best-effort name detection: resumes almost always open with the name on its
- * own line. Requires a short, digit-free, symbol-free line so headings like
- * "CURRICULUM VITAE" or a job title do not get mistaken for it.
+ * Resumes almost always open with the name on its own line. Requires a short,
+ * digit-free line so a heading or job title is not mistaken for it.
  */
 export function detectName(text: string): string | null {
   for (const raw of text.split(/\r?\n/).slice(0, 6)) {
@@ -81,10 +72,9 @@ export function detectName(text: string): string | null {
     if (words.length < 2 || words.length > 4) continue;
     if (/^(curriculum vitae|resume|cv)$/i.test(line)) continue;
     /**
-     * Each word is either capitalised (allowing an initial's trailing period,
-     * as in "Jane Q. Doe") or a lowercase nobiliary particle ("van", "de").
-     * The trailing period is easy to forget and silently disables the whole
-     * redactor, since a name that is never detected is never stripped.
+     * Capitalised, allowing an initial's trailing period ("Jane Q. Doe"), or a
+     * lowercase particle ("van", "de"). Forgetting the period silently
+     * disables the redactor: an undetected name is never stripped.
      */
     const titleCase = words.every(
       (w) =>
@@ -143,8 +133,7 @@ export function redact(raw: string): RedactionResult {
     const escaped = candidateName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     swap(new RegExp(escaped, "gi"), "[CANDIDATE]", "name");
 
-    // Surname alone is common in headers and footers. Only replace name tokens
-    // that are >= 3 chars, to avoid mangling initials and short words.
+    // Surnames appear alone in headers. >= 3 chars, to spare initials.
     for (const part of candidateName.split(/\s+/)) {
       if (part.length < 3) continue;
       const p = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -1,36 +1,28 @@
 /**
  * Embedding calls and vector maths.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Embedding Checks
+ * MEASURED against the live API: `gemini-embedding-001` with an array of
+ * strings returns one vector per input (3 in, 3 out), honours
+ * `outputDimensionality: 768`, costs ~523ms for a batch of 3, and scores 0.78
+ * cosine between unrelated chunks — usefully spread rather than all alike.
  *
- * MEASURED 2026-09-26 against the live API:
- *   - `gemini-embedding-001` with an array of strings returns ONE VECTOR PER
- *     INPUT (3 in -> 3 out), which is what chunked retrieval needs.
- *   - `outputDimensionality: 768` is honoured.
- *   - A batch of 3 costs ~523ms.
- *   - Cosine between two unrelated resume chunks was 0.78, so this model's
- *     vectors are usefully spread rather than all-alike.
+ * Do NOT switch to `gemini-embedding-2`: it aggregates multiple inputs into
+ * one vector and dropped `taskType`. The failure is silent — one vector back,
+ * and a retrieval feature that quietly does nothing.
  *
- * Do NOT switch to `gemini-embedding-2`: it AGGREGATES multiple inputs into a
- * single vector unless each is wrapped as its own Content object, and it
- * dropped `taskType` entirely. Both are wrong here, and the failure is silent
- * — you get one vector back and a retrieval feature that quietly does nothing.
+ * Ref: TechDesign > Embedding Checks
  */
 
 import type { AnchorSimilarity } from "../engine/classify";
 import { EMBED_DIMS, EMBED_MODEL, genai } from "./llm";
 
-/**
- * Per-request batch size. The API's item limit is undocumented, so this is a
- * deliberately conservative number rather than a measured ceiling.
- */
+/** Conservative: the API's item limit is undocumented, not measured. */
 export const EMBED_BATCH_SIZE = 16;
 
 /**
- * `RETRIEVAL_DOCUMENT` when indexing, `RETRIEVAL_QUERY` when searching. The
- * asymmetry is the point: the model embeds a question and a passage into the
- * same space differently, and using one task type for both measurably degrades
- * retrieval.
+ * The asymmetry is the point: the model embeds a question and a passage into
+ * the same space differently, and using one task type for both degrades
+ * retrieval measurably.
  */
 export type EmbedTask = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY";
 
@@ -42,9 +34,8 @@ export class EmbeddingError extends Error {
 }
 
 /**
- * Embeds many texts, batched. Returns exactly one vector per input, in order —
- * asserted rather than assumed, because the aggregation trap above fails
- * silently and would be very hard to notice downstream.
+ * One vector per input, in order — asserted rather than assumed, because the
+ * aggregation trap above fails silently and is hard to notice downstream.
  */
 export async function embedMany(
   texts: string[],
@@ -88,9 +79,8 @@ export async function embed(
 }
 
 /**
- * Cosine similarity. Pure, and the only vector maths we need: retrieval is
- * always scoped to one user's own handful of chunks, so an exact scan in
- * TypeScript beats a database round trip.
+ * The only vector maths we need: retrieval is always scoped to one user's
+ * handful of chunks, so an exact scan beats a database round trip.
  */
 export function cosine(a: number[], b: number[]): number {
   if (a.length !== b.length) {
@@ -124,12 +114,11 @@ export function rankBySimilarity<T>(
 }
 
 /**
- * Similarity -> 1-4 relevance score.
+ * Similarity -> 1-4 relevance.
  *
- * TODO(slice 7): CALIBRATE against the bank exemplars before trusting this.
- * The thresholds below are a starting guess, and blending an uncalibrated
- * value into `relevance` can flip a band — and therefore the interview's next
- * move. Ref: docs/TechDesign-JobMe-MVP.md > Embedding Checks
+ * TODO(slice 7): CALIBRATE against the bank exemplars first. These thresholds
+ * are a guess, and an uncalibrated value blended into `relevance` can flip a
+ * band, and therefore the next move.
  */
 export const SIM_THRESHOLDS = { s2: 0.55, s3: 0.65, s4: 0.75 };
 

@@ -1,26 +1,17 @@
 /**
- * The single LLM call per turn: score the answer AND draft both possible
- * follow-ups, so the deterministic policy can pick a move without a second
- * round trip.
+ * One LLM call per turn: score the answer AND draft both follow-ups, so the
+ * policy picks a move without a second round trip.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Evaluator
+ * THE INVARIANT: this returns scores and wording, never a move. `RawEvaluation`
+ * gaining `move`, `action` or `next_question` is the one change that breaks
+ * the architecture — reviewable in five seconds.
  *
- * THE INVARIANT: this module returns scores and candidate wording. It must
- * never return a move. `RawEvaluation` gaining a field named `move`, `action`
- * or `next_question` is the one change that breaks the architecture, and it is
- * reviewable in five seconds.
+ * `primary_gap` and `evidence` are computed in code instead of asked for:
+ * the gap was already overridden by `computePrimaryGap()`, and models
+ * paraphrase rather than quote, so extracting evidence locally guarantees the
+ * scorecard highlight matches. Decode dominates latency, so both are speedups.
  *
- * Two fields the tech design asked the model for are computed in code instead:
- *
- *   primary_gap — `computePrimaryGap()` already overrode whatever the model
- *     said, so asking for it was paying decode tokens for a discarded value.
- *
- *   evidence — models paraphrase instead of quoting, so a verbatim check was
- *     needed anyway. Extracting it locally guarantees the scorecard's
- *     highlight matches the transcript, removes a hallucination class, and
- *     stops round-tripping the candidate's exact words through the model.
- *
- * Decode dominates this call's latency, so both removals are also speedups.
+ * Ref: TechDesign > Evaluator
  */
 
 import { Type } from "@google/genai";
@@ -41,15 +32,14 @@ export class EvalError extends Error {
   }
 }
 
-/** Raw model output. Deliberately small — see the note above. */
+/** Raw model output. Deliberately small — see above. */
 export interface RawEvaluation {
   scores: Scores;
   observation: string;
   off_topic: boolean;
   /**
-   * Only meaningful on a follow-up: the candidate restated the earlier answer
-   * instead of expanding it. A follow-up is supposed to ADD, so a repeat is a
-   * distinct failure from a merely weak answer and deserves different copy.
+   * Follow-ups only: restated the earlier answer instead of expanding it. A
+   * distinct failure from a weak answer, and it gets different copy.
    */
   repeats_previous: boolean;
   drafts: { deepen: string; clarify: string };
@@ -128,12 +118,9 @@ export function validateEvaluation(value: unknown): RawEvaluation {
 }
 
 /**
- * Picks the most quotable sentence from the answer.
- *
- * Scored by evidence density — numbers and first-person ownership language are
- * what the rubric actually cares about — with a length preference so the quote
- * is a sentence rather than a fragment. The result is guaranteed to be a
- * verbatim substring, which is what makes the scorecard highlight reliable.
+ * The most quotable sentence, scored by evidence density — numbers and
+ * first-person language, which is what the rubric cares about. Guaranteed to
+ * be a verbatim substring, which is what makes the scorecard highlight work.
  */
 export function extractEvidence(answer: string, maxWords = 20): string {
   const sentences = answer
@@ -154,15 +141,13 @@ export function extractEvidence(answer: string, maxWords = 20): string {
 
   const best = sentences.reduce((a, b) => (score(b) > score(a) ? b : a));
   const words = best.split(/\s+/);
-  // Truncating must not break the verbatim guarantee, so cut on a word
-  // boundary and keep the prefix — still an exact substring of the answer.
+  // Cut on a word boundary: the prefix is still an exact substring.
   return words.length <= maxWords ? best : words.slice(0, maxWords).join(" ");
 }
 
 /**
- * One call. Retries once on a validation failure, because a malformed payload
- * is usually a transient sampling artefact — but NOT on a rate limit, where
- * retrying immediately just burns the next request in a 15/minute budget.
+ * Retries once on a validation failure (usually a transient sampling artefact)
+ * but never on a rate limit, where retrying burns the next of 15 per minute.
  */
 export async function evaluateAndDraft(args: {
   topic: string;

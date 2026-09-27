@@ -1,13 +1,11 @@
 "use client";
 
 /**
- * Voice output: neural voice via the /api/tts proxy, browser speech synthesis
- * as the fallback that is always there.
+ * Neural voice via the /api/tts proxy, browser synthesis as the fallback that
+ * is always there. The interview must never go silent — that outranks voice
+ * quality, so every path degrades rather than throws.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > Voice Output
- *
- * The governing constraint is that the interview must never go silent. That
- * outranks voice quality, so every path here degrades rather than throws.
+ * Ref: TechDesign > Voice Output
  */
 
 import {
@@ -20,11 +18,9 @@ import {
 } from "./config";
 
 /**
- * Incremented every time playback is superseded.
- *
- * Without it, a slow neural request that arrives at 6s — long after the
- * fallback started speaking — plays over the top and the recruiter says the
- * question twice, simultaneously.
+ * Bumped whenever playback is superseded. Without it a slow neural response
+ * arriving at 6s plays over the fallback, and the recruiter says the question
+ * twice at once.
  */
 let playbackEpoch = 0;
 
@@ -41,9 +37,8 @@ export function getSharedAudio(): HTMLAudioElement {
 }
 
 /**
- * `getVoices()` returns an empty array on first call in Chrome; the list
- * arrives asynchronously via `voiceschanged`. Awaiting it once at startup
- * avoids a first question that is silently spoken by nothing.
+ * `getVoices()` is empty on first call in Chrome; the list arrives via
+ * `voiceschanged`. Awaiting it once avoids a silently unspoken first question.
  */
 export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   if (voicesReady) return voicesReady;
@@ -106,8 +101,8 @@ async function playNeural(
 ): Promise<boolean> {
   const audio = getSharedAudio();
 
-  // Probe the route first so a 503 (browser-voice mode) or a stall costs the
-  // first-byte timeout rather than the whole audio budget.
+  // Probe first: a 503 or a stall then costs the first-byte timeout rather
+  // than the whole audio budget.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TTS_FIRST_BYTE_TIMEOUT_MS);
   options.signal?.addEventListener("abort", () => controller.abort());
@@ -176,8 +171,8 @@ async function playBrowser(
 
   const voices = await loadVoices();
   if (!voices.length) {
-    // Nothing can speak. Captions carry the question; that is why they are
-    // always on rather than a setting.
+    // Nothing can speak. Captions carry it — which is why they are always
+    // on rather than a setting.
     options.onFallback?.("no voices available");
     return;
   }
@@ -216,9 +211,8 @@ const ackPool: HTMLAudioElement[] = [];
 const fillerPool: HTMLAudioElement[] = [];
 
 /**
- * Preloads the static clips. Must run on the Begin click: the first `play()`
- * also unlocks audio, and if that happens at submit time the 0.3s ack target
- * is unreachable.
+ * Must run on the Begin click: the first `play()` also unlocks audio, and if
+ * that happens at submit time the 0.3s ack target is unreachable.
  */
 export function preloadClips(): void {
   if (typeof window === "undefined") return;
@@ -246,7 +240,7 @@ function playRandom(pool: HTMLAudioElement[]): HTMLAudioElement | null {
   return clip;
 }
 
-/** Plays within ~0.3s of submit. This is what covers the turn's latency. */
+/** Within ~0.3s of submit — this is what covers the turn's latency. */
 export function playAck(): void {
   playRandom(ackPool);
 }

@@ -1,20 +1,19 @@
 /**
  * The turn pipeline: one answer in, one next question out.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > The Core Journey Through the System (8)
+ * Separate from the route handler so the HTTP path and the rehearsal harness
+ * run identical code — a rehearsal exercising different logic proves nothing.
  *
- * Deliberately separate from the route handler so the same code path runs
- * under the HTTP route AND under the headless rehearsal harness. A rehearsal
- * that exercised different logic than production would prove nothing.
- *
- * Order matters and is load-bearing:
+ * The order is load-bearing:
  *   1. pre-classifier (deterministic, no model call)
- *   2. evaluate + embed IN PARALLEL   <- the only reason a turn fits 1.5s
- *   3. band (with hysteresis against the previous answer in this thread)
- *   4. recompute the gap in code, overriding the model
- *   5. extract evidence locally, guaranteeing a verbatim substring
- *   6. step() — the engine, and the ONLY thing that picks the move
- *   7. resolve the next question's wording, validated, with a bank fallback
+ *   2. evaluate, aborting at EVAL_TIMEOUT_MS
+ *   3. band, with hysteresis against this thread's previous answer
+ *   4. gap recomputed in code, overriding the model
+ *   5. evidence extracted locally, guaranteeing a verbatim substring
+ *   6. step() — the engine, and the only thing that picks the move
+ *   7. wording resolved, validated, with a bank fallback
+ *
+ * Ref: TechDesign > The Core Journey (8)
  */
 
 import { classifyBand, computePrimaryGap } from "@/lib/engine/classify";
@@ -61,12 +60,8 @@ export interface TurnContext {
   /** Resume text backing the next item, when a resume-led opening is due. */
   excerptFor?: (itemId: string) => Promise<string>;
   /**
-   * Override the evaluator. Production leaves this unset; the rehearsal
-   * harness supplies a scripted one so a 20-turn full-mode session can be
-   * validated without spending 20 requests against a 15/minute free tier.
-   *
-   * Everything downstream — banding, hysteresis, the engine, question
-   * selection, coverage — runs identically either way, which is the point.
+   * Test seam. The rehearsal harness scripts this so a 20-turn session costs
+   * nothing against a 15/minute free tier; everything downstream is identical.
    */
   evaluate?: typeof evaluateAndDraft;
   /** Same seam for resume-led openings, which are a second model call. */
@@ -107,8 +102,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   const { state, transcript } = ctx;
 
   // ---- 1. too short to score --------------------------------------------
-  // Not a turn: no scoring, no cap increment, no turnSeq increment. Otherwise
-  // a cough costs the candidate one of ten questions.
+  // No scoring, no cap increment, no turnSeq. A cough must not cost a question.
   if (wordCount(transcript) < MIN_ANSWER_WORDS) {
     return { kind: "nudge", line: NUDGE_LINE, state };
   }
@@ -143,9 +137,8 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     repeatsPrevious = evaluation.repeats_previous;
     drafts = evaluation.drafts;
   } catch (err) {
-    // The degraded path. This is simultaneously the latency fallback, the
-    // quota fallback (free tier is 15 req/min), and a live demonstration that
-    // the engine can run an interview with the model completely unavailable.
+    // The degraded path: latency fallback, quota fallback, and a live proof
+    // that the engine runs an interview with the model unavailable.
     degraded = true;
     scores = heuristicScores(transcript);
     observation = SCORING_FAILED_LINE;
@@ -195,8 +188,8 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     } else if (spec.type === "opening") {
       text = questionFor(spec.topic, spec.difficulty);
     } else {
-      // A follow-up: prefer the model's draft, fall back to a bank seed aimed
-      // at the same gap. Either way the ENGINE chose which move this is.
+      // Prefer the draft, fall back to a seed for the same gap. Either way
+      // the ENGINE chose the move.
       const chosen = chooseQuestionText({
         draft: spec.type === "deepen" ? drafts?.deepen : drafts?.clarify,
         seeds:

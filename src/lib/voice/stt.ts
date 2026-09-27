@@ -1,11 +1,8 @@
 "use client";
 
 /**
- * Browser adapter for speech recognition.
- *
- * All decisions live in `sttMachine.ts`. This file only translates DOM events
- * into machine events and runs the effects that come back — so the fiddly
- * parts stay testable without a microphone.
+ * Browser adapter. All decisions live in `sttMachine.ts`; this only translates
+ * DOM events into machine events and runs the effects that come back.
  */
 
 import {
@@ -68,9 +65,8 @@ function ctor(): SpeechRecognitionCtor | null {
 }
 
 /**
- * Constructor presence is necessary but not sufficient — Firefox preview
- * builds expose it and throw on `start()`. Callers that need certainty should
- * probe inside a user gesture.
+ * Necessary but not sufficient: Firefox preview builds expose the constructor
+ * and throw on `start()`. Probe inside a user gesture for certainty.
  */
 export function isSttSupported(): boolean {
   return ctor() !== null;
@@ -90,7 +86,7 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
     timers.delete(name);
   }
 
-  /** Detaches handlers BEFORE aborting, so a dying instance emits nothing. */
+  /** Detach BEFORE aborting, so a dying instance emits nothing. */
   function detach(recognition: SpeechRecognitionLike | null) {
     if (!recognition) return;
     recognition.onstart = null;
@@ -114,8 +110,8 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
           send({ t: "ERROR", code: "not-allowed" });
           return;
         }
-        // A fresh instance per session: a wedged recognizer can refuse to
-        // restart, and a new object always can.
+        // Fresh instance per session: a wedged recognizer refuses to
+        // restart, a new object never does.
         detach(current);
         const recognition = new Ctor();
         current = recognition;
@@ -124,8 +120,8 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         recognition.interimResults = true;
         recognition.lang = "en-US";
         recognition.maxAlternatives = 1;
-        // Chrome 139+ desktop only. Keeps audio on-device, which removes the
-        // whole `network` error class and is a real privacy answer.
+        // Chrome 139+ desktop only. On-device: removes the `network` error
+        // class entirely, and is a real privacy answer.
         try {
           recognition.processLocally = true;
         } catch {
@@ -135,7 +131,7 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         const guard =
           (fn: (e: never) => void) =>
           (e: unknown) => {
-            // Events from a superseded instance are dropped.
+            // Drop events from a superseded instance.
             if (recognition !== current) return;
             fn(e as never);
           };
@@ -157,8 +153,8 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         try {
           recognition.start();
         } catch {
-          // Guarded by phase already; if it still throws, treat it as an end
-          // so the machine can decide whether to retry.
+          // Phase already guards this; if it still throws, treat it as an
+          // end and let the machine decide whether to retry.
           send({ t: "ENDED", now: now() });
         }
         return;
@@ -225,15 +221,15 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
   }
 
   return {
-    /** Call on pointerdown / keydown. Ignores auto-repeat via the machine. */
+    /** pointerdown / keydown. The machine ignores auto-repeat. */
     start() {
       send({ t: "HOLD_START", now: now() });
     },
 
     /**
-     * Call on pointerup, and ALSO on blur, visibilitychange->hidden,
-     * pointercancel and contextmenu. A lost keyup — alt-tabbing mid-answer —
-     * otherwise leaves the microphone open indefinitely.
+     * pointerup, and ALSO blur, visibilitychange->hidden, pointercancel and
+     * contextmenu: a lost keyup (alt-tab mid-answer) otherwise leaves the
+     * microphone open indefinitely.
      */
     stop(): Promise<SttResult> {
       return new Promise<SttResult>((settle) => {

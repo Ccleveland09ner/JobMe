@@ -1,16 +1,13 @@
 /**
- * The adaptive state machine. This is the kernel: it decides every next move,
- * and no AI output is ever allowed to decide one.
+ * The adaptive state machine — the kernel. Every next move is decided here;
+ * the model only ever supplies WORDING, which is validated and replaceable by
+ * a bank seed.
  *
- * Ref: docs/PRD-JobMe-MVP.md > Adaptive Engine
+ * `step()` is pure: no I/O, no Date.now(), no Math.random(). Randomness lives
+ * in `initState()`, captured into `topics` and never re-rolled, so a session
+ * survives a refresh and a scripted run repeats exactly.
  *
- * `step()` is pure — no I/O, no Date.now(), no Math.random(). Randomness lives
- * in `initState()`, where it is captured into `EngineState.topics` and never
- * re-rolled, so a session survives a refresh and a scripted run is repeatable.
- *
- * The model's only influence is the WORDING of a follow-up, and even that is
- * validated and can be replaced by a bank seed. Which move happens, which
- * topic comes next, whether the interview ends — all decided here.
+ * Ref: PRD > Adaptive Engine
  */
 
 import { noDimensionRose } from "./classify";
@@ -32,7 +29,7 @@ import {
 export const MAX_FOLLOW_UPS = 2;
 export const MAX_DIFFICULTY = 3;
 
-/** What `step()` needs to know about the answer just given. */
+/** What `step()` needs about the answer just given. */
 export interface StepInput {
   scores: Scores;
   band: Band;
@@ -41,14 +38,13 @@ export interface StepInput {
   repeatsPrevious?: boolean;
 }
 
-/** What `step()` decided. `question` is null only when `move === 'wrap'`. */
+/** `next` is null only when `move === 'wrap'`. */
 export interface StepResult {
   state: EngineState;
   move: Move;
   /**
-   * Which item the next question must be about. The caller turns this into
-   * text — from the bank for `bank`, or via the resume question generator for
-   * `resume` — then writes it back with `commitQuestion()`.
+   * What the next question must be about. The caller resolves it to text, then
+   * writes it back with `commitQuestion()`.
    */
   next: NextQuestionSpec | null;
 }
@@ -67,7 +63,7 @@ export interface NextQuestionSpec {
 export interface InitArgs {
   mode: InterviewMode;
   topics: TopicId[];
-  /** Ranked most-relevant-to-the-target-role first. */
+  /** Ranked most relevant to the target role first. */
   resumeItems: ResumeItem[];
   firstQuestion: Question;
 }
@@ -105,11 +101,7 @@ export function isPlateau(state: EngineState, input: StepInput): boolean {
   return noDimensionRose(previous, input.scores);
 }
 
-/**
- * Should this thread end?
- *
- * Ref: docs/PRD-JobMe-MVP.md > Adaptive Engine (resolution rules)
- */
+/** Should this thread end? Ref: PRD > Adaptive Engine (resolution rules) */
 export function shouldResolveTopic(
   state: EngineState,
   input: StepInput,
@@ -133,12 +125,9 @@ export function uncovered(state: EngineState): ResumeItem[] {
 }
 
 /**
- * Whether the next thread should open on a resume item or a bank question.
- *
- * A real screen alternates — the interviewer has read your resume but is also
- * working through their own list — so the default is simply "not what we did
- * last time". Full mode overrides that when it is running out of room: an
- * uncovered item outranks variety, because coverage is the mode's promise.
+ * Resume item or bank question next? A real screen alternates, so the default
+ * is "not what we did last time". Full mode overrides that when short on
+ * budget — coverage is the mode's promise, and it outranks variety.
  */
 export function nextSource(state: EngineState): QuestionSource {
   const remaining = uncovered(state);
@@ -165,11 +154,9 @@ function markCurrentCovered(state: EngineState): ResumeItem[] {
 }
 
 /**
- * True when the interview has nothing left to ask.
- *
- * Full mode will NOT wrap while a resume item is uncovered — that is the whole
- * point of the mode — unless the cap has been reached, which is the backstop
- * that stops a pathological resume producing an endless interview.
+ * Nothing left to ask. Full mode will not wrap while an item is uncovered —
+ * that is the mode — unless the cap is hit, the backstop against a
+ * pathological resume producing an endless interview.
  */
 export function shouldWrap(state: EngineState): boolean {
   if (state.questionCount >= state.questionCap) return true;
@@ -182,8 +169,7 @@ export function shouldWrap(state: EngineState): boolean {
 }
 
 export function step(state: EngineState, input: StepInput): StepResult {
-  // Record the answer against the current thread before anything else, so the
-  // plateau check on the NEXT turn compares like with like.
+  // Record first, so the next turn's plateau check compares like with like.
   const threadScores = [...state.threadScores, input.scores];
   const turnSeq = state.turnSeq + 1;
 
@@ -198,8 +184,7 @@ export function step(state: EngineState, input: StepInput): StepResult {
 
   // ---- continue the current thread ---------------------------------------
   if (!resolving) {
-    // The cap is checked BEFORE issuing a follow-up: an interview that has run
-    // out of room must wrap rather than start something it cannot finish.
+    // Checked BEFORE issuing a follow-up: never start what we cannot finish.
     if (base.questionCount >= base.questionCap) {
       return wrap(base);
     }
@@ -263,8 +248,7 @@ export function step(state: EngineState, input: StepInput): StepResult {
         next: {
           source: "resume",
           type: "opening",
-          // A resume-led question still belongs to a competency, for the
-          // notepad and for difficulty. The generator may refine it.
+          // Still belongs to a competency, for the notepad and difficulty.
           topic: resolved.topics[resolved.topicIndex] ?? resolved.topics[0],
           difficulty: resolved.difficulty,
           resumeItem: item,
@@ -304,11 +288,8 @@ function wrap(state: EngineState): StepResult {
 }
 
 /**
- * Writes the chosen question text back into the state.
- *
- * Separate from `step()` because producing the text may require a model call
- * (a resume-led opening, a drafted follow-up), and `step()` must stay pure and
- * synchronous. The caller resolves the text, then commits it here.
+ * Writes the chosen question text back into state. Separate from `step()`
+ * because resolving the text may need a model call, and `step()` stays pure.
  */
 export function commitQuestion(
   state: EngineState,

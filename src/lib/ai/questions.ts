@@ -1,13 +1,10 @@
 /**
- * The gate between model-drafted wording and the candidate.
+ * The gate between model-drafted wording and the candidate. The engine decides
+ * the MOVE; this only decides whether the wording for it is usable, and
+ * substitutes a bank seed when it is not. Nothing here may change the move —
+ * that would put flow control in the AI.
  *
- * Ref: docs/PRD-JobMe-MVP.md > Adaptive Engine
- *
- * The engine decides the MOVE. This module decides whether the model's wording
- * for that move is usable, and substitutes a bank seed when it is not. Nothing
- * here may change which move happens — that would move flow control into the
- * AI and break the guarantee that a scripted weak answer always gets a
- * Clarify.
+ * Ref: PRD > Adaptive Engine
  */
 
 import { GAP_PRIORITY } from "../engine/types";
@@ -29,10 +26,7 @@ export interface DraftCheck {
   reason?: DraftRejection;
 }
 
-/**
- * Mechanical checks only — never a judgement about quality, which would be
- * another model call on the critical path.
- */
+/** Mechanical only — a quality judgement would mean another model call. */
 export function checkDraft(draft: string, askedQuestions: string[] = []): DraftCheck {
   const text = draft.trim();
 
@@ -44,14 +38,13 @@ export function checkDraft(draft: string, askedQuestions: string[] = []): DraftC
 
   if (!text.endsWith("?")) return { ok: false, reason: "not_a_question" };
 
-  // Two questions in one turn gives the candidate a choice about what to
-  // answer, which is exactly the gap-dodging the follow-up exists to close.
+  // Two questions lets the candidate pick which to answer — exactly the
+  // gap-dodging the follow-up exists to close.
   if ((text.match(/\?/g) ?? []).length > 1) {
     return { ok: false, reason: "multi_question" };
   }
 
-  // A redaction placeholder reaching the candidate would be jarring and would
-  // also reveal that we rewrote their resume.
+  // A placeholder reaching the candidate reveals that we rewrote their resume.
   if (/\[(CANDIDATE|EMAIL|PHONE|ADDRESS|LINK|metric|timeframe)\]/i.test(text)) {
     return { ok: false, reason: "placeholder_leak" };
   }
@@ -79,8 +72,7 @@ export function chooseQuestionText(args: {
     const seed = pickSeed(args.seeds, asked);
     if (seed) return { text: seed, source: "seed", rejected: check.reason };
 
-    // No seed available: a flawed question beats no question, since silence
-    // ends the interview. Repairs are cosmetic and preserve the wording.
+    // No seed: a flawed question beats silence. Repairs are cosmetic.
     return {
       text: repairDraft(args.draft),
       source: "draft",
@@ -112,13 +104,10 @@ export function repairDraft(draft: string): string {
 }
 
 /**
- * Deterministic pre-classifier. Runs BEFORE the model is consulted.
- *
- * This is the demo's insurance policy. `relevance` is blended from a float and
- * fed into `avg >= 3.5 && min >= 3`, so a one-point swing flips the band and
- * therefore the move. An answer this thin cannot be strong under any rubric,
- * so deciding it in code removes the model's vote entirely and makes
- * "scripted weak answer always gets a Clarify" true rather than likely.
+ * Runs BEFORE the model — the demo's insurance policy. A one-point relevance
+ * swing flips the band and therefore the move, and an answer this thin cannot
+ * be strong under any rubric, so deciding it in code makes "scripted weak
+ * answer always gets a Clarify" true rather than likely.
  */
 export const MIN_SUBSTANTIVE_WORDS = 25;
 
@@ -134,14 +123,11 @@ function hasNumber(text: string): boolean {
 }
 
 /**
- * A capitalised word that is NOT the first word of a sentence — a proxy for
- * naming an actual system, tool, company or person.
- *
- * Done by walking sentences rather than with one regex: the obvious pattern
- * (`/[.!?]\s+[A-Z][a-z]+/`) matches the word AFTER a full stop, which is
- * sentence-initial and therefore exactly what must be excluded. That bug made
- * every multi-sentence answer look like it named something, which silently
- * disabled the pre-classifier for the answers it most needed to catch.
+ * A capitalised word that is NOT sentence-initial — a proxy for naming a real
+ * system, tool or company. Walks sentences rather than using one regex,
+ * because the obvious pattern matches the word AFTER a full stop, which is
+ * precisely what must be excluded; that bug silently disabled this check for
+ * every multi-sentence answer.
  */
 export function hasProperNoun(text: string): boolean {
   for (const sentence of text.split(/(?<=[.!?])\s+/)) {
@@ -161,11 +147,9 @@ export function hasProperNoun(text: string): boolean {
 }
 
 /**
- * Heuristic scores for the degraded turn, when the evaluator is unavailable.
- *
- * Crude on purpose — the point is that an interview continues through a 429 or
- * a timeout, not that these numbers are good. The turn is persisted with
- * `scores: null` so these never pollute an average or a trend line.
+ * Degraded-turn scores. Crude on purpose: the point is that an interview
+ * survives a 429, not that the numbers are good. The turn persists with
+ * `scores: null`, so these never reach an average or a trend line.
  */
 export function heuristicScores(answer: string): Scores {
   const words = answer.trim().split(/\s+/).filter(Boolean).length;
@@ -176,9 +160,8 @@ export function heuristicScores(answer: string): Scores {
   const firstPerson = /\b(I|my)\b/.test(answer);
   const hedges = /\b(we|our)\b/i.test(answer);
 
-  // Crude keyword proxies for each STAR component. Good enough to pick a
-  // plausible gap for a fallback question; not good enough to show as a score,
-  // which is why the turn is persisted with `scores: null`.
+  // Keyword proxies per STAR component: enough to pick a plausible gap for a
+  // fallback question, not enough to show as a score.
   const situation = /\b(when|while|during|at the time|last (year|term|semester))\b/i.test(answer) ? 3 : 2;
   const task = /\b(my job|my role|I was responsible|I owned|assigned|tasked)\b/i.test(answer) ? 3 : 1;
   const action = /\b(then|so I|I built|I wrote|I changed|I proposed|I ran)\b/i.test(answer) ? 3 : 2;
