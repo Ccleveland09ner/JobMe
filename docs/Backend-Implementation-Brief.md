@@ -79,7 +79,26 @@ The tech design's `Evaluation` schema has the model return both. Decision taken:
 
 Your `notepad.ts`, stats, and report code should assume `evidence` is a locally-derived string that is **guaranteed** to be an exact substring of the answer.
 
-### 2.6 There are two answer durations, not one
+### 2.6 The rubric is now eight dimensions, but banding uses five
+
+`structure` was split into the four STAR components, so `Dimension` is now `situation | task | action | result | specificity | impact | ownership | relevance`. `src/lib/engine/types.ts` is already updated — read it rather than the tech design.
+
+**Do not band over all eight.** The `great` rule is `avg >= 3.5 && min >= 3`, and eight dimensions give three extra chances to trip the `min` clause — Task especially, since speakers routinely fold it into Situation. Banding over all eight makes `great` nearly unreachable and kills the weak-vs-strong demo contrast.
+
+`types.ts` exports `starRollup(scores)` and `bandingValues(scores)` for this. `classifyBand` must compute over `bandingValues()` — the STAR mean plus the other four — while `computePrimaryGap` still considers all eight, so the notepad can say "no Result" rather than "structure: 2". This is verified live: a perfect answer scores `[S4 T4 A4 R4]` and still reaches `great`.
+
+### 2.7 Two interview modes, and a coverage guarantee
+
+`EngineState` gained `mode`, `questionCap`, `resumeItems`, `resumeItemIndex` and `lastQuestionSource`.
+
+- **Quick** (`QUICK_QUESTION_CAP = 10`) is the practice and demo format: bank-led and bounded.
+- **Full** derives its cap from the resume via `fullModeCap(itemCount)` — roughly two questions per item plus four bank questions, clamped to 8–24 — and **must not wrap while `uncoveredItems(state)` is non-empty**, unless the cap is hit first.
+
+`resumeItems` arrives pre-ranked by relevance to the pasted job description, most relevant first. Preserve that order: a session that runs out of budget must still have covered the experience closest to the job being applied for. Mark an item `covered` once the candidate has answered at least one question about it.
+
+`Question` gained `source: 'bank' | 'resume'` and an optional `resumeItemId`. A realistic screen alternates, so the policy should interleave bank-opened threads (which become personal in the follow-ups) with threads opened directly on a resume item — `lastQuestionSource` is the bookkeeping for that. `src/lib/ai/resume-questions.ts` generates the resume-led wording and has a deterministic fallback, so a rate limit costs polish, never coverage.
+
+### 2.8 There are two answer durations, not one
 
 `turns.wpm` implies one. There are two, and the distinction is load-bearing:
 
@@ -133,28 +152,32 @@ Match the existing file's conventions exactly: RLS enabled, policies `to authent
 
 `src/lib/engine/types.ts` is already written in full — `EngineState`, `Band`, `Move`, `Dimension`, `Scores`, `GAP_PRIORITY`, `NotepadEntry`. **Do not change it.** Everything else types against it.
 
-### 5.1 `bank.ts`
+### 5.1 `bank.ts` — already done, do not rewrite
 
-Currently only `teamwork` is sketched, and `BANK` is typed `Partial<Record<TopicId, TopicEntry>>` deliberately — a cast over four missing topics would have surfaced as a confusing runtime crash instead of a compile error.
+All **11** topics are authored (the 10 standard behavioural questions plus `technical_challenge`), each with L1/L2/L3 openings, deepen seeds, gap-keyed clarify seeds and weak/strong exemplars. `BANK` is a complete `Record<TopicId, TopicEntry>`.
 
-Author all five topics (`teamwork`, `handling_failure`, `technical_challenge`, `conflict`, `learning_fast`). Each needs `opening` (L1), `harder` (L2), `hardest` (L3), `seeds.deepen[3]`, `seeds.clarify[dimension]` for every dimension, and `exemplars.{weak,strong}`. **Then tighten the type to the full `Record<TopicId, TopicEntry>`.**
+Exported helpers you should use rather than reimplement: `questionFor(topic, difficulty)`, `clarifySeeds(topic, gap)` (falls back to generic seeds so every one of the eight gaps has coverage), `deepenSeeds(topic)`, and `pickTopics(count, exclude)`.
 
-`seeds.clarify` is not decoration — it is the fallback whenever a model draft is unusable or the evaluator fails, so every dimension needs real coverage.
-
-Implement `pickTopics()` (4 of 5, shuffled) and `questionFor(topic, difficulty)`.
+Openings are **fixed text and never generated** — that is what makes the demo reproducible and what guarantees there is always something to ask when the model is rate limited.
 
 ### 5.2 `classify.ts`
 
 ```
-classifyBand(scores, offTopic, anchor?) — check in this exact order:
-  1. offTopic || avg < 2.0                      -> weak
-  2. avg >= 3.5 && min >= 3                     -> great
-  3. otherwise                                  -> mediocre
-  4. anchor downgrade (FLAG OFF by default):
+classifyBand(scores, offTopic, anchor?)
+  let values = bandingValues(scores)   // STAR roll-up + the other four
+  let avg = mean(values), min = min(values)
+
+  1. offTopic && relevance <= 2                 -> weak   (see §3.1)
+  2. avg < 2.0                                  -> weak
+  3. avg >= 3.5 && min >= 3                     -> great
+  4. otherwise                                  -> mediocre
+  5. anchor downgrade (FLAG OFF by default):
      great && (simWeak - simStrong) > 0.05      -> mediocre
 ```
 
-`computePrimaryGap(scores)` returns the lowest-scoring dimension, ties broken by `GAP_PRIORITY` (already exported from `types.ts`: ownership > impact > specificity > structure > relevance).
+`computePrimaryGap(scores)` considers **all eight** dimensions, ties broken by `GAP_PRIORITY` (exported from `types.ts`: ownership > impact > result > action > specificity > task > situation > relevance).
+
+**Known instability at the weak/mediocre boundary.** A genuinely borderline answer scored 2.00 on one run and 1.55 on the next — the same answer, different band. Weak and mediocre both produce a Clarify, so the *move* is unaffected, but they differ in tone and in the resolution rule ("a weak thread that stayed weak after one clarify resolves the topic"). The deterministic pre-classifier in `src/lib/ai/questions.ts` catches the thin cases before the model sees them; if flicker persists on real answers, add hysteresis here rather than tightening the prompt.
 
 ### 5.3 `policy.ts` — `step(state, evaluation) -> { state, move, question }`
 
@@ -170,10 +193,13 @@ classifyBand(scores, offTopic, anchor?) — check in this exact order:
 
 **Resolved:**
 - thread ended `great` → `difficulty = min(3, difficulty + 1)`
-- advance to the next topic, ask its opening at the current difficulty
-- no topics left **or** `questionCount >= 10` → `wrap`
+- if the thread was resume-led, mark its `ResumeItem.covered = true`
+- choose the next thread, alternating `source` so the interview mixes bank-opened and resume-opened threads (see §2.7)
+- **full mode:** never `wrap` while `uncoveredItems(state)` is non-empty — pull the next uncovered item instead, in ranked order
+- **quick mode:** advance through `topics`, opportunistically covering the highest-ranked uncovered items
+- no topics left, nothing uncovered, **or** `questionCount >= state.questionCap` → `wrap`
 
-**The hard cap is checked BEFORE any follow-up is issued.** `questionCount >= 10` wraps even mid-thread.
+**The cap is checked BEFORE any follow-up is issued**, and it is `state.questionCap`, not a literal 10 — quick mode sets it to `QUICK_QUESTION_CAP`, full mode to `fullModeCap(itemCount)`.
 
 `step()` must be pure: same inputs, same outputs, no I/O, no `Date.now()`, no `Math.random()`. Randomness belongs in `pickTopics()` at session creation, where it is captured into `EngineState.topics` and never re-rolled.
 
@@ -283,7 +309,11 @@ This path is simultaneously the latency fallback, the quota fallback, and a live
 - [ ] `npm test` green, including both scripted sessions and the stubbed-evaluator full-session test
 - [ ] `npm run typecheck && npm run build` green
 - [ ] Migration applies cleanly; RLS verified **against the hosted database** with two users — user A's cookie against user B's session returns 404 and zero rows. Policy typos are the classic Supabase failure and local testing hides them.
-- [ ] `BANK` is a complete `Record<TopicId, TopicEntry>` with clarify seeds for every dimension
+- [ ] Banding computes over `bandingValues()`, not all eight dimensions; a `[S4 T4 A4 R4]` answer still reaches `great`
+- [ ] Full mode does not wrap while any resume item is uncovered
+- [ ] Quick mode still caps at 10 and stays reproducible for the demo
+- [ ] Resume items are asked in ranked order (most relevant to the pasted job description first)
+- [ ] Question `source` alternates rather than drifting all-bank or all-resume
 - [ ] Double-submit test: the same `clientTurnSeq` twice produces one `turns` row and a 409
 - [ ] Nudge test: a 3-word answer does not increment `questionCount` or `turnSeq`
 - [ ] Degraded-turn test: with the evaluator forced to fail, a full session still completes and reaches a scorecard
