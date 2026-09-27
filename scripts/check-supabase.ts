@@ -61,15 +61,37 @@ async function main(): Promise<void> {
 
   let missing = 0;
   for (const table of EXPECTED_TABLES) {
-    const { error } = await supabase
-      .from(table)
-      .select("*", { head: true, count: "exact" });
-    if (error) {
-      missing++;
-      console.log(`  ABSENT  ${table.padEnd(20)} (${error.code ?? "?"})`);
-    } else {
-      console.log(`  ok      ${table}`);
+    /**
+     * A real GET, NOT `{ head: true }`.
+     *
+     * A HEAD response carries no body, so PostgREST's JSON error payload never
+     * reaches supabase-js and `error` stays null even for a table that does
+     * not exist. This script previously used `head: true` and cheerfully
+     * reported a completely empty database as fully migrated.
+     */
+    const { error } = await supabase.from(table).select("*").limit(1);
+
+    if (!error) {
+      console.log(`  ok        ${table}`);
+      continue;
     }
+
+    /**
+     * `42501 permission denied` means the table EXISTS and the grants are
+     * doing their job — this script authenticates with the publishable key
+     * and no user session, so it acts as `anon`, and JobMe grants nothing to
+     * `anon` because it has no public data.
+     *
+     * A genuinely missing table reports PGRST205 (PostgREST cannot find it in
+     * its schema cache) or 42P01.
+     */
+    if (error.code === "42501") {
+      console.log(`  ok        ${table.padEnd(20)} (exists; anon correctly denied)`);
+      continue;
+    }
+
+    missing++;
+    console.log(`  ABSENT    ${table.padEnd(20)} (${error.code ?? "?"})`);
   }
 
   if (missing) {

@@ -42,7 +42,11 @@ export async function retrieveRelevantChunks(
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("match_resume_chunks", {
     p_resume_id: resumeId,
-    p_query: queryVector as unknown as string,
+    // pgvector parses its own literal syntax, and `[0.1,0.2,...]` is exactly
+    // what JSON.stringify of a number[] produces. Passing text rather than a
+    // vector-typed parameter is what lets the function resolve the `vector`
+    // type at call time — see the migration for why that matters.
+    p_query: JSON.stringify(queryVector),
     p_match_count: topK,
   });
 
