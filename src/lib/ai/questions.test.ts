@@ -12,7 +12,10 @@ import {
 
 const VALID = {
   scores: {
-    structure: 3,
+    situation: 3,
+    task: 2,
+    action: 3,
+    result: 1,
     specificity: 2,
     impact: 1,
     ownership: 1,
@@ -20,6 +23,7 @@ const VALID = {
   },
   observation: "Says we throughout; own role unclear",
   off_topic: false,
+  repeats_previous: false,
   drafts: {
     deepen: "What trade-off did you weigh when you chose that approach?",
     clarify: "You said the team fixed it. What did you change?",
@@ -216,12 +220,41 @@ describe("heuristicScores — degraded turn", () => {
   it("picks the lowest dimension, tie-broken by priority", () => {
     expect(
       heuristicGap({
-        structure: 3,
+        situation: 3,
+        task: 3,
+        action: 3,
+        result: 3,
         specificity: 3,
         impact: 1,
         ownership: 1,
         relevance: 3,
       }),
     ).toBe("ownership");
+  });
+
+  it("chases the missing STAR component when that is the weakest part", () => {
+    expect(
+      heuristicGap({
+        situation: 4,
+        task: 4,
+        action: 4,
+        result: 1,
+        specificity: 3,
+        impact: 3,
+        ownership: 3,
+        relevance: 4,
+      }),
+    ).toBe("result");
+  });
+
+  it("credits an explicitly stated responsibility as Task", () => {
+    expect(heuristicScores("I was responsible for the billing service").task)
+      .toBeGreaterThan(heuristicScores("we shipped the billing service").task);
+  });
+
+  it("credits a number as Result evidence", () => {
+    expect(heuristicScores("it cut errors by 40%").result).toBeGreaterThan(
+      heuristicScores("it went well in the end").result,
+    );
   });
 });

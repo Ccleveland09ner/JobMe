@@ -26,9 +26,10 @@
 import { Type } from "@google/genai";
 
 import { LlmError, generateJson } from "./llm";
-import { buildTurnPrompt, EVALUATOR_SYSTEM } from "./prompts";
+import { buildTurnPrompt, evaluatorSystemFor } from "./prompts";
 
-import type { Dimension, Scores } from "../engine/types";
+import { DIMENSIONS } from "../engine/types";
+import type { Scores } from "../engine/types";
 
 export class EvalError extends Error {
   constructor(
@@ -45,6 +46,12 @@ export interface RawEvaluation {
   scores: Scores;
   observation: string;
   off_topic: boolean;
+  /**
+   * Only meaningful on a follow-up: the candidate restated the earlier answer
+   * instead of expanding it. A follow-up is supposed to ADD, so a repeat is a
+   * distinct failure from a merely weak answer and deserves different copy.
+   */
+  repeats_previous: boolean;
   drafts: { deepen: string; clarify: string };
 }
 
@@ -57,16 +64,20 @@ const EVAL_SCHEMA = {
     scores: {
       type: Type.OBJECT,
       properties: {
-        structure: SCORE,
+        situation: SCORE,
+        task: SCORE,
+        action: SCORE,
+        result: SCORE,
         specificity: SCORE,
         impact: SCORE,
         ownership: SCORE,
         relevance: SCORE,
       },
-      required: ["structure", "specificity", "impact", "ownership", "relevance"],
+      required: [...DIMENSIONS],
     },
     observation: { type: Type.STRING },
     off_topic: { type: Type.BOOLEAN },
+    repeats_previous: { type: Type.BOOLEAN },
     drafts: {
       type: Type.OBJECT,
       properties: {
@@ -76,16 +87,14 @@ const EVAL_SCHEMA = {
       required: ["deepen", "clarify"],
     },
   },
-  required: ["scores", "observation", "off_topic", "drafts"],
+  required: [
+    "scores",
+    "observation",
+    "off_topic",
+    "repeats_previous",
+    "drafts",
+  ],
 } as const;
-
-const DIMENSIONS: Dimension[] = [
-  "structure",
-  "specificity",
-  "impact",
-  "ownership",
-  "relevance",
-];
 
 /** Rejects a malformed payload before it can reach the engine. */
 export function validateEvaluation(value: unknown): RawEvaluation {
@@ -110,6 +119,7 @@ export function validateEvaluation(value: unknown): RawEvaluation {
     scores: v.scores as Scores,
     observation: String(v.observation ?? "").slice(0, 90),
     off_topic: Boolean(v.off_topic),
+    repeats_previous: Boolean(v.repeats_previous),
     drafts: {
       deepen: String(v.drafts.deepen),
       clarify: String(v.drafts.clarify),
@@ -179,7 +189,7 @@ export async function evaluateAndDraft(args: {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { value } = await generateJson<unknown>({
-        systemInstruction: EVALUATOR_SYSTEM,
+        systemInstruction: evaluatorSystemFor(args.questionType),
         prompt,
         responseSchema: EVAL_SCHEMA,
         temperature: 0.2,

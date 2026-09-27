@@ -10,6 +10,7 @@
  * Clarify.
  */
 
+import { GAP_PRIORITY } from "../engine/types";
 import type { Band, Dimension, Scores } from "../engine/types";
 
 /** Drafts longer than this stop sounding like a spoken question. */
@@ -142,40 +143,36 @@ export function preClassify(answer: string): Band | null {
  */
 export function heuristicScores(answer: string): Scores {
   const words = answer.trim().split(/\s+/).filter(Boolean).length;
-  const clamp = (n: number) => Math.max(1, Math.min(4, n)) as number;
+  const clamp = (n: number) => Math.max(1, Math.min(4, n));
 
   const length = words < 25 ? 1 : words < 60 ? 2 : words < 140 ? 3 : 4;
-  const impact = /\d/.test(answer) ? 3 : 1;
-  const ownership = /\b(I|my)\b/.test(answer)
-    ? /\b(we|our)\b/i.test(answer)
-      ? 2
-      : 3
-    : 1;
-  const structure = /\b(then|after|because|so that|as a result|finally)\b/i.test(
-    answer,
-  )
-    ? 3
-    : 2;
+  const hasNumber = /\d/.test(answer);
+  const firstPerson = /\b(I|my)\b/.test(answer);
+  const hedges = /\b(we|our)\b/i.test(answer);
+
+  // Crude keyword proxies for each STAR component. Good enough to pick a
+  // plausible gap for a fallback question; not good enough to show as a score,
+  // which is why the turn is persisted with `scores: null`.
+  const situation = /\b(when|while|during|at the time|last (year|term|semester))\b/i.test(answer) ? 3 : 2;
+  const task = /\b(my job|my role|I was responsible|I owned|assigned|tasked)\b/i.test(answer) ? 3 : 1;
+  const action = /\b(then|so I|I built|I wrote|I changed|I proposed|I ran)\b/i.test(answer) ? 3 : 2;
+  const result = hasNumber ? 3 : /\b(as a result|in the end|ended up|which meant)\b/i.test(answer) ? 2 : 1;
 
   return {
-    structure: clamp(Math.min(structure, length)),
+    situation: clamp(Math.min(situation, length)),
+    task: clamp(task),
+    action: clamp(Math.min(action, length)),
+    result: clamp(result),
     specificity: clamp(length),
-    impact: clamp(impact),
-    ownership: clamp(ownership),
+    impact: clamp(hasNumber ? 3 : 1),
+    ownership: clamp(firstPerson ? (hedges ? 2 : 3) : 1),
     relevance: clamp(2),
   };
 }
 
 /** Deterministic gap for the degraded path, matching GAP_PRIORITY ordering. */
 export function heuristicGap(scores: Scores): Dimension {
-  const order: Dimension[] = [
-    "ownership",
-    "impact",
-    "specificity",
-    "structure",
-    "relevance",
-  ];
-  return order.reduce((lowest, d) =>
+  return GAP_PRIORITY.reduce((lowest, d) =>
     scores[d] < scores[lowest] ? d : lowest,
   );
 }
