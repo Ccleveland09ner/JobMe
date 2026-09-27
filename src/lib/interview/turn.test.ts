@@ -354,3 +354,21 @@ describe("runTurn — nudge", () => {
     expect(evaluate).not.toHaveBeenCalled();
   });
 });
+
+describe("runTurn — telemetry", () => {
+  it("reports how long the evaluation took, whether it succeeded or failed", async () => {
+    const ok = await runTurn(ctx());
+    const failed = await runTurn(
+      ctx({
+        evaluate: async () => {
+          throw new EvalError("boom");
+        },
+      }),
+    );
+    for (const result of [ok, failed]) {
+      if (result.kind !== "turn") throw new Error("expected a turn");
+      expect(Number.isInteger(result.evalMs)).toBe(true);
+      expect(result.evalMs).toBeGreaterThanOrEqual(0);
+    }
+  });
+});

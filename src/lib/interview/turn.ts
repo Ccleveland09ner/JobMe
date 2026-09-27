@@ -149,6 +149,8 @@ export type TurnResult =
       /** Persisted on the turn row; null means unscored. */
       persistedScores: Scores | null;
       degradedReason: DegradedReason | null;
+      /** How long the evaluator took, success or failure — telemetry only. */
+      evalMs: number;
     };
 
 export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
@@ -173,6 +175,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
 
   const evaluate = ctx.evaluate ?? evaluateAndDraft;
   const signal = AbortSignal.timeout(EVAL_TIMEOUT_MS);
+  const evalStarted = performance.now();
 
   try {
     const evaluation = await evaluate({
@@ -202,6 +205,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
       console.warn(`[turn] unexpected evaluator failure: ${String(err)}`);
     }
   }
+  const evalMs = Math.round(performance.now() - evalStarted);
 
   // ---- 3. band ----------------------------------------------------------
   const band =
@@ -288,6 +292,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     wrapLine: result.move === "wrap" ? WRAP_LINE : undefined,
     persistedScores: degraded ? null : scores,
     degradedReason,
+    evalMs,
     stats: {
       wpm: speakingRate,
       fillers: fillerCount(transcript),

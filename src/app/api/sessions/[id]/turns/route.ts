@@ -29,6 +29,7 @@ export async function POST(
   request: Request,
   ctx: RouteContext<"/api/sessions/[id]/turns">,
 ) {
+  const started = performance.now();
   const { id } = await ctx.params;
 
   const user = await getUserOrNull();
@@ -169,12 +170,14 @@ export async function POST(
    * in one transaction, and only from the turnSeq read above — so a
    * double-fired submit racing this one cannot overwrite it.
    */
+  const saveStarted = performance.now();
   const { error: submitError } = await supabase.rpc("submit_turn", {
     p_session_id: id,
     p_seq: result.state.turnSeq,
     p_engine_state: result.state,
     p_turn: turnRowFor(turnCtx, result),
   });
+  const saveMs = Math.round(performance.now() - saveStarted);
 
   if (isStaleSubmit(submitError)) {
     // Lost the race: the other submit's turn is the one that counts, and the
@@ -208,13 +211,26 @@ export async function POST(
   }
 
   // Telemetry only. `after()` runs even when the response errored, so nothing
-  // here may be load-bearing.
+  // here may be load-bearing. One line per turn is how the latency budget is
+  // measured (PRD > Success Metrics: "timing logged in dev console"): eval is
+  // the model call, save the atomic write, total everything up to the reply.
+  // No transcript or other candidate text goes in the log.
+  // TODO(integration): TTS prewarm belongs here once /api/tts has a cache.
+  const totalMs = Math.round(performance.now() - started);
   after(() => {
-    if (result.degradedReason) {
-      console.warn(
-        `[turn] session ${id} seq ${result.state.turnSeq} degraded: ${result.degradedReason}`,
-      );
-    }
+    const line = {
+      event: "turn",
+      session: id,
+      seq: result.state.turnSeq,
+      move: result.move,
+      band: result.notepad.band,
+      degraded: result.degradedReason,
+      evalMs: result.evalMs,
+      saveMs,
+      totalMs,
+    };
+    if (result.degradedReason) console.warn(`[turn] ${JSON.stringify(line)}`);
+    else console.info(`[turn] ${JSON.stringify(line)}`);
   });
 
   const covered = result.state.resumeItems.filter((i) => i.covered).length;
