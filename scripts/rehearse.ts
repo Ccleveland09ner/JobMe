@@ -76,9 +76,7 @@ function scriptedEvaluator(
   plan: (turn: number) => { band: Band; repeats?: boolean },
 ) {
   let turn = 0;
-  const evaluate = async (args: {
-    answer: string;
-  }): Promise<RawEvaluation> => {
+  const evaluate = async (): Promise<RawEvaluation> => {
     const { band, repeats } = plan(turn++);
     const scores =
       band === "weak" ? flat(1) : band === "great" ? flat(4) : flat(2);
