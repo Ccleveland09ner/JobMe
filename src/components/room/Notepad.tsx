@@ -1,33 +1,65 @@
 /**
  * The Recruiter's Notepad. This is the differentiator - the thing that makes
  * the adaptivity visible DURING the interview rather than after it.
- *
- * TODO(slice 2): implement.
  * Ref: docs/PRD-JobMe-MVP.md > Recruiter's Notepad
  *
- * Each entry shows:
- *   - question label (topic, move type)
- *   - 5 score bars, each WITH its number (colour never carries meaning alone)
- *   - band badge
- *   - primary gap
- *   - evidence quote, verbatim, in the mono face
- *   - one deterministic reason line, e.g.
- *     "No measurable result -> asking for impact"
+ * The latest entry is shown in full; earlier entries collapse into a
+ * scrollable history of <details>, so the panel stays scannable at question
+ * twenty of a Full interview.
  *
- * Timing is a requirement: it updates BEFORE or WHILE the next question audio
- * plays, never after.
+ * Timing is a requirement: the room appends the entry as soon as the turn
+ * response arrives — BEFORE the next question is spoken, never after.
  *
- * Earlier entries collapse into a scrollable history.
- * Never raw JSON, model names or stack traces.
+ * Never raw JSON, model names or stack traces: entries render only the
+ * NoteView fields.
  */
 
-export function Notepad() {
+import type { NoteView } from "@/lib/frontend/types";
+
+import { NotepadEntry, noteLabel } from "./NotepadEntry";
+
+export function Notepad({ notes }: { notes: NoteView[] }) {
+  const latest = notes.at(-1);
+  const history = notes.slice(0, -1).reverse();
+
   return (
-    <aside className="rounded-lg border border-muted/20 p-4">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+    <aside
+      aria-labelledby="notepad-title"
+      className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto"
+    >
+      <h2 id="notepad-title" className="text-xs font-semibold uppercase tracking-wide text-muted">
         Recruiter&rsquo;s notepad
       </h2>
-      {/* TODO(slice 2): current entry + collapsible history */}
+
+      <div aria-live="polite">
+        {latest ? (
+          <NotepadEntry key={latest.seq} note={latest} />
+        ) : (
+          <p className="text-sm text-muted">
+            After each answer, you&rsquo;ll see what the recruiter noticed and why they ask what they ask next.
+          </p>
+        )}
+      </div>
+
+      {history.length > 0 && (
+        <section aria-labelledby="notepad-history" className="flex flex-col gap-2 border-t border-line pt-4">
+          <h3 id="notepad-history" className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Earlier notes
+          </h3>
+          <ul className="flex flex-col gap-1">
+            {history.map((note) => (
+              <li key={note.seq}>
+                <details className="group rounded-lg border border-line px-3 py-2">
+                  <summary className="cursor-pointer text-sm text-ink marker:text-muted">{noteLabel(note)}</summary>
+                  <div className="mt-3">
+                    <NotepadEntry note={note} headingLevel="h4" />
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </aside>
   );
 }
