@@ -19,13 +19,28 @@
  */
 export const CHARS_PER_TOKEN = 3;
 
-/** Target ceiling per chunk. The API's hard limit is 2048. */
+/** Hard ceiling per chunk. The API rejects anything past 2048. */
 export const MAX_CHUNK_TOKENS = 1800;
+
+/**
+ * Size a chunk is split toward, well below the hard ceiling.
+ *
+ * Without this, splitting only happened at MAX, so a compact one-page resume
+ * produced one enormous chunk per section — a real resume put four separate
+ * projects into a single 1822-character chunk, which made every one of them
+ * look identical to retrieval.
+ *
+ * Deliberately NOT a fixed token window: windows cut mid-sentence and split a
+ * bullet from the role it belongs to. Splitting on line boundaries toward a
+ * target keeps a chunk about one thing while making the count predictable.
+ */
+export const TARGET_CHUNK_TOKENS = 240;
 
 /** Below this, a chunk is merged into its neighbour rather than embedded alone. */
 export const MIN_CHUNK_CHARS = 80;
 
 const MAX_CHUNK_CHARS = MAX_CHUNK_TOKENS * CHARS_PER_TOKEN;
+const TARGET_CHUNK_CHARS = TARGET_CHUNK_TOKENS * CHARS_PER_TOKEN;
 
 /** Headings that mark a new resume section. */
 const SECTION_WORDS = [
@@ -153,7 +168,12 @@ export function chunkResume(text: string): Chunk[] {
   for (const block of merged) {
     // Reserve room for the section prefix added below, plus its newline.
     const prefixCost = block.section ? block.section.length + 1 : 0;
-    const budget = MAX_CHUNK_CHARS - prefixCost;
+    // Split toward the target, not the hard ceiling, so sections break into
+    // retrieval-sized pieces instead of one block each.
+    const budget = Math.max(
+      MIN_CHUNK_CHARS,
+      TARGET_CHUNK_CHARS - prefixCost,
+    );
     const pieces =
       block.content.length > budget
         ? splitOversized(block.content, budget)

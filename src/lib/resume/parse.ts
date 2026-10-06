@@ -78,9 +78,85 @@ export function detectSuspectLayout(text: string): boolean {
   return veryShort / lines.length > 0.5 && normal / lines.length < 0.15;
 }
 
+/**
+ * Section headings a resume is likely to use. Used only to repair
+ * letter-spaced text, never to decide what a heading is.
+ */
+const HEADING_WORDS = [
+  "PROFESSIONAL", "TECHNICAL", "RELEVANT", "ADDITIONAL", "EXTRACURRICULAR",
+  "EDUCATION", "EXPERIENCE", "EMPLOYMENT", "SKILLS", "PROJECTS", "PROJECT",
+  "CERTIFICATIONS", "CERTIFICATES", "AWARDS", "HONORS", "LEADERSHIP",
+  "ACTIVITIES", "SUMMARY", "OBJECTIVE", "PROFILE", "PUBLICATIONS",
+  "INTERESTS", "LANGUAGES", "VOLUNTEER", "VOLUNTEERING", "COURSEWORK",
+  "WORK", "HISTORY", "ACHIEVEMENTS", "REFERENCES", "CONTACT", "ABOUT",
+];
+
+/**
+ * Greedily splits a despaced run into known heading words.
+ *
+ * Returns null unless the WHOLE run is consumed, so a near-miss is left alone
+ * rather than mangled: repairing nothing beats inventing a heading.
+ */
+export function splitHeadingWords(run: string): string | null {
+  const words: string[] = [];
+  let rest = run;
+
+  while (rest.length > 0) {
+    // Longest match first, so PROJECTS wins over PROJECT.
+    const match = HEADING_WORDS.filter((w) => rest.startsWith(w)).sort(
+      (a, b) => b.length - a.length,
+    )[0];
+    if (!match) return null;
+    words.push(match);
+    rest = rest.slice(match.length);
+  }
+
+  return words.length ? words.join(" ") : null;
+}
+
+/**
+ * True when a line looks like letter-spaced display text rather than prose.
+ *
+ * Requires several tokens, most too short to be words, and no lowercase or
+ * digits — the signature of tracking applied to a heading. "Data Structures
+ * and Algorithms" fails the lowercase test; "GPA 3.81 May 2028" fails both.
+ */
+export function looksLetterSpaced(line: string): boolean {
+  const tokens = line.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2 || tokens.length > 8) return false;
+  if (/[a-z0-9]/.test(line)) return false;
+  if (!/[A-Z]/.test(line)) return false;
+
+  const short = tokens.filter((t) => t.length <= 4).length;
+  return short / tokens.length >= 0.5;
+}
+
+/**
+ * Repairs headings whose letters were spaced apart by the authoring tool.
+ *
+ * Observed on a real resume: `EDUC ATIO N`, `T EC HNIC AL SKILLS`. These are
+ * NOT an extraction artifact — pdfjs reports them as single text items with
+ * the spaces already inside, because the PDF genuinely contains them. No
+ * extractor setting can fix that, so the text is repaired here instead.
+ *
+ * Deliberately conservative: a line is rewritten only when it looks
+ * letter-spaced AND its despaced form is entirely known heading vocabulary.
+ * Everything else is returned untouched.
+ */
+export function repairLetterSpacing(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      if (!looksLetterSpaced(line)) return line;
+      const repaired = splitHeadingWords(line.replace(/\s+/g, ""));
+      return repaired ?? line;
+    })
+    .join("\n");
+}
+
 /** Collapses the ragged whitespace PDF extraction always produces. */
 export function normalizeText(raw: string): string {
-  return raw
+  const collapsed = raw
     .replace(/\r\n?/g, "\n")
     .replace(/ /g, " ")
     // Join words hyphenated across a line break.
@@ -89,6 +165,9 @@ export function normalizeText(raw: string): string {
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+  // After collapsing, so a heading split across runs is one line by now.
+  return repairLetterSpacing(collapsed);
 }
 
 export async function parseResumePdf(bytes: Uint8Array): Promise<ParsedResume> {

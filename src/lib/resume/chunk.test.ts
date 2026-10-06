@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHARS_PER_TOKEN,
   MAX_CHUNK_TOKENS,
+  TARGET_CHUNK_TOKENS,
   chunkResume,
   estimateTokens,
   isSectionHeading,
@@ -107,5 +108,60 @@ describe("estimateTokens", () => {
 
   it("scales with length", () => {
     expect(estimateTokens("a".repeat(300))).toBe(100);
+  });
+});
+
+describe("chunk granularity", () => {
+  /** A real section: four projects that previously became one chunk. */
+  const projects = [
+    "PROJECTS",
+    "",
+    ...Array.from({ length: 4 }, (_, i) =>
+      [
+        `Project ${i} — a service built with Python and PostgreSQL`,
+        `- Designed the ingestion path and reduced failures from 4% to 0.1%`,
+        `- Added structured logging and a dead letter queue for retries`,
+        `- Cut build time from 9 minutes to under 2 by reordering layers`,
+      ].join("\n"),
+    ),
+  ].join("\n\n");
+
+  it("splits a large section instead of emitting one chunk for it", () => {
+    const chunks = chunkResume(projects);
+    expect(chunks.length).toBeGreaterThan(1);
+  });
+
+  it("keeps chunks near the target rather than near the hard ceiling", () => {
+    for (const c of chunkResume(projects)) {
+      // The old behaviour split only at MAX, producing chunks ~7x this size.
+      expect(c.estimatedTokens).toBeLessThanOrEqual(TARGET_CHUNK_TOKENS * 1.5);
+    }
+  });
+
+  it("never exceeds the API's hard limit", () => {
+    for (const c of chunkResume(projects)) {
+      expect(c.estimatedTokens).toBeLessThanOrEqual(MAX_CHUNK_TOKENS);
+    }
+  });
+
+  it("is deterministic — the same text always chunks the same way", () => {
+    const a = chunkResume(projects);
+    const b = chunkResume(projects);
+    expect(b.map((c) => c.content)).toEqual(a.map((c) => c.content));
+  });
+
+  it("splits on line boundaries, never mid-line", () => {
+    const lines = new Set(
+      projects.split("\n").map((l) => l.trim()).filter(Boolean),
+    );
+    for (const c of chunkResume(projects)) {
+      for (const line of c.content.split("\n").slice(1)) {
+        if (line.trim()) expect(lines.has(line.trim())).toBe(true);
+      }
+    }
+  });
+
+  it("tags every piece of a split section with that section", () => {
+    for (const c of chunkResume(projects)) expect(c.section).toBe("PROJECTS");
   });
 });
