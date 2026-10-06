@@ -8,7 +8,12 @@
  */
 
 import { pickTopics, questionFor } from "../src/lib/engine/bank";
-import { commitQuestion, step, uncovered } from "../src/lib/engine/policy";
+import {
+  commitQuestion,
+  initState,
+  step,
+  uncovered,
+} from "../src/lib/engine/policy";
 import type {
   Band,
   EngineState,
@@ -58,8 +63,11 @@ function measure(itemCount: number, bands: Band[]) {
   };
 
   let state: EngineState = {
-    ...require("../src/lib/engine/policy").initState({
-      mode: "full", topics, resumeItems: items(itemCount), firstQuestion: first,
+    ...initState({
+      mode: "full",
+      topics,
+      resumeItems: items(itemCount),
+      firstQuestion: first,
     }),
     // Unbounded, so we measure what the policy WANTS to spend.
     questionCap: 500,

@@ -15,7 +15,9 @@
     "embed:bank": "tsx scripts/embed-bank.ts",
     "gen:acks": "tsx scripts/gen-ack-clips.ts",
     "probe:eval": "tsx scripts/probe-evaluator.ts",
-    "rehearse": "tsx scripts/rehearse.ts"
+    "rehearse": "tsx scripts/rehearse.ts",
+    "cleanup:test": "tsx scripts/cleanup-test-data.ts",
+    "measure": "tsx scripts/measure-pacing.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

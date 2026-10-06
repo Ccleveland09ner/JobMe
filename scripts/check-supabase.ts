@@ -45,14 +45,34 @@ async function main(): Promise<void> {
 
   const supabase = createClient(url, key);
 
-  const { error: authError } = await supabase.auth.getSession();
-  if (authError) {
-    console.error(`\n  FAIL  auth unreachable: ${authError.message}`);
-    console.error("        A paused free project looks exactly like this.");
-    console.error("        Open the Supabase dashboard to wake it, then retry.");
+  /**
+   * A real network request, NOT `auth.getSession()`.
+   *
+   * `getSession()` reads the local session and returns without touching the
+   * network, so it reported "reachable" against a project whose DNS had been
+   * withdrawn — and every table then looked ABSENT, blaming the schema for a
+   * paused project. Detecting exactly that is the point of this check, so it
+   * has to actually make a request.
+   */
+  try {
+    const res = await fetch(`${url}/auth/v1/health`, {
+      headers: { apikey: key },
+      signal: AbortSignal.timeout(10_000),
+    });
+    console.log(`  reachable: yes (auth health ${res.status})` + "\n");
+  } catch (err) {
+    const cause = (err as Error & { cause?: Error }).cause?.message ?? "";
+    console.error(`\n  FAIL  project unreachable: ${(err as Error).message}`);
+    if (/ENOTFOUND|EAI_AGAIN/.test(cause)) {
+      console.error("        DNS does not resolve this project at all.");
+      console.error("        A PAUSED free project looks exactly like this —");
+      console.error("        Supabase withdraws the hostname while it sleeps.");
+      console.error("        Restore it from the dashboard, then retry.");
+    } else if (cause) {
+      console.error(`        cause: ${cause}`);
+    }
     process.exit(1);
   }
-  console.log("  auth: reachable\n");
 
   let missing = 0;
   for (const table of EXPECTED_TABLES) {
