@@ -13,17 +13,29 @@
  * block has been removed because a dark inversion would have made these token
  * values wrong half the time. Revisit if dark mode is ever scoped in.
  *
+ * Every colour a component uses comes from here. A hex value inside a
+ * component is a bug.
+ *
  * Avoid: purple-gradient AI styling, chat bubbles, walls of text in the room.
  */
 
 @theme {
   /* Ground and text */
   --color-bg: #faf8f5; /* warm off-white */
+  --color-surface: #ffffff; /* cards and panels sitting on the ground */
+  --color-sunken: #f2eee8; /* wells: transcript box, bar tracks */
   --color-ink: #1c1b1a; /* deep ink */
   --color-muted: #6b6660;
+  --color-line: #e4ded5; /* hairline borders */
 
   /* One confident accent - talk button, active states. (PRD OQ4: teal) */
   --color-accent: #0f766e; /* teal-700 */
+  --color-accent-strong: #115e59; /* teal-800, hover/pressed */
+  --color-accent-soft: #e6f2f0; /* tinted backgrounds, selected options */
+
+  /* Errors and destructive actions. Same family as score-1. */
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
 
   /*
    * Score colours, 1-4. ALWAYS rendered alongside the number - colour never
@@ -34,6 +46,9 @@
   --color-score-2: #b54708;
   --color-score-3: #a16207;
   --color-score-4: #15803d;
+
+  /* Evidence highlight in the transcript. */
+  --color-highlight: #fdf2c4;
 
   /* Geist ships with the starter. Mono is for notepad evidence quotes. */
   --font-sans: var(--font-geist-sans);
@@ -50,4 +65,24 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+/* Native <dialog> backdrop, used by components/ui/Dialog. */
+dialog::backdrop {
+  background: rgb(28 27 26 / 0.4);
+}
+
+/*
+ * Reduced motion: transitions collapse to instant. The avatar reads
+ * prefers-reduced-motion itself (mouth only, no nod).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

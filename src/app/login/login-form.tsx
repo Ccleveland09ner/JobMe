@@ -54,23 +54,25 @@ export function LoginForm() {
   if (step === "email") {
     return (
       <form onSubmit={sendCode} className="flex flex-col gap-3">
-        <label className="text-sm text-zinc-600 dark:text-zinc-400">
+        <label htmlFor="login-email" className="text-sm text-muted">
           Email
         </label>
         <input
+          id="login-email"
           type="email"
+          autoComplete="email"
           required
           autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
-          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-ink"
         />
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button
           type="submit"
           disabled={loading}
-          className="rounded-lg bg-black px-4 py-2 font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-strong disabled:opacity-50"
         >
           {loading ? "Sending code…" : "Send code"}
         </button>
@@ -80,12 +82,14 @@ export function LoginForm() {
 
   return (
     <form onSubmit={verifyCode} className="flex flex-col gap-3">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="text-sm text-muted">
         We sent a 6-digit code to <span className="font-medium">{email}</span>
       </p>
       <input
         type="text"
         inputMode="numeric"
+        autoComplete="one-time-code"
+        aria-label="6-digit code"
         pattern="[0-9]{6}"
         maxLength={6}
         required
@@ -93,13 +97,13 @@ export function LoginForm() {
         value={code}
         onChange={(e) => setCode(e.target.value)}
         placeholder="123456"
-        className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-center text-lg tracking-[0.5em] text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+        className="rounded-lg border border-line bg-surface px-3 py-2 text-center text-lg tracking-[0.5em] text-ink"
       />
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <button
         type="submit"
         disabled={loading}
-        className="rounded-lg bg-black px-4 py-2 font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+        className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-strong disabled:opacity-50"
       >
         {loading ? "Verifying…" : "Verify code"}
       </button>
@@ -110,7 +114,7 @@ export function LoginForm() {
           setCode("");
           setError(null);
         }}
-        className="text-sm text-zinc-500 underline dark:text-zinc-400"
+        className="text-sm text-muted underline"
       >
         Use a different email
       </button>

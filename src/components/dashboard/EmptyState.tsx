@@ -1,12 +1,23 @@
 /**
  * First-use dashboard state.
- *
- * TODO(slice 1): implement.
  * Ref: docs/PRD-JobMe-MVP.md > States and Boundaries
- *
- * Copy: "Your first interview takes about 8 minutes" + Start interview.
  */
 
+import Link from "next/link";
+
+import { EmptyState as CommonEmptyState } from "@/components/common/EmptyState";
+import { buttonClasses } from "@/components/ui/Button";
+
 export function EmptyState() {
-  return <div className="text-sm text-muted">{/* TODO(slice 1) */}</div>;
+  return (
+    <CommonEmptyState
+      title="No interviews yet"
+      message="Your first interview takes about 8 minutes. You'll see what the recruiter noticed after every answer."
+      action={
+        <Link href="/interview/new" className={buttonClasses()}>
+          Start interview
+        </Link>
+      }
+    />
+  );
 }
