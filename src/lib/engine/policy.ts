@@ -12,8 +12,11 @@
 
 import { noDimensionRose } from "./classify";
 import {
+  FULL_BANK_THREADS,
   QUICK_QUESTION_CAP,
+  TURNS_PER_RESUME_THREAD,
   fullModeCap,
+  maxCoverableItems,
   type Band,
   type Dimension,
   type EngineState,
@@ -27,6 +30,8 @@ import {
 } from "./types";
 
 export const MAX_FOLLOW_UPS = 2;
+/** Full-mode resume threads: see maxFollowUpsFor. */
+export const MAX_FOLLOW_UPS_FULL_RESUME = 1;
 export const MAX_DIFFICULTY = 3;
 
 /** What `step()` needs about the answer just given. */
@@ -69,7 +74,20 @@ export interface InitArgs {
 }
 
 export function initState(args: InitArgs): EngineState {
-  const items = args.resumeItems.map((i) => ({ ...i, covered: false }));
+  const all = args.resumeItems.map((i) => ({ ...i, covered: false }));
+
+  /**
+   * A resume with more items than the cap can reach is trimmed HERE, to the
+   * best-matching ones, rather than carried and quietly left uncovered.
+   *
+   * The alternative is a session that reports twelve items to cover, covers
+   * ten, and wraps - which reads as a bug and breaks the promise the mode
+   * exists to make. Trimming keeps `coverageTotal` honest; the items are
+   * already ranked against the job description, so what survives is what
+   * matters most for this application. The caller reports the difference.
+   */
+  const items =
+    args.mode === "full" ? all.slice(0, maxCoverableItems()) : all;
   return {
     mode: args.mode,
     topics: args.topics,
@@ -102,11 +120,25 @@ export function isPlateau(state: EngineState, input: StepInput): boolean {
 }
 
 /** Should this thread end? Ref: PRD > Adaptive Engine (resolution rules) */
+/**
+ * Follow-ups this thread may spend.
+ *
+ * A full-mode resume thread gets one, not two. Full mode promises to cover
+ * every role and project, and measurement showed a second follow-up on each
+ * put six items 36 turns out of reach. Breadth over depth is the distinction
+ * between the modes: quick mode still digs the full two.
+ */
+export function maxFollowUpsFor(state: EngineState): number {
+  return state.mode === "full" && state.currentQuestion.source === "resume"
+    ? MAX_FOLLOW_UPS_FULL_RESUME
+    : MAX_FOLLOW_UPS;
+}
+
 export function shouldResolveTopic(
   state: EngineState,
   input: StepInput,
 ): boolean {
-  if (state.followUpsUsed >= MAX_FOLLOW_UPS) return true;
+  if (state.followUpsUsed >= maxFollowUpsFor(state)) return true;
   if (isPlateau(state, input)) return true;
   if (state.lastMove === "deepen" && input.band === "great") return true;
   if (
@@ -132,13 +164,23 @@ export function uncovered(state: EngineState): ResumeItem[] {
 export function nextSource(state: EngineState): QuestionSource {
   const remaining = uncovered(state);
   if (remaining.length === 0) return "bank";
-  if (state.topicIndex >= state.topics.length) return "resume";
+
+  // No bank topic left to advance to. `topicIndex` is the LAST used index, so
+  // the guard is against length - 1; comparing against length let the caller
+  // pick bank, find nothing, and wrap with items still uncovered.
+  if (state.topicIndex >= state.topics.length - 1) return "resume";
 
   if (state.mode === "full") {
+    // Bank threads are a fixed budget here, not an alternating half of the
+    // interview. `topicIndex` counts the bank threads already opened.
+    if (state.topicIndex + 1 >= FULL_BANK_THREADS) return "resume";
+
+    // Even inside the budget, coverage wins once the remaining turns would
+    // not otherwise fit every uncovered item.
     const questionsLeft = state.questionCap - state.questionCount;
-    // Two questions per item is the budget full mode was sized against; below
-    // that, stop alternating and spend everything on coverage.
-    if (questionsLeft <= remaining.length * 2) return "resume";
+    if (questionsLeft <= remaining.length * TURNS_PER_RESUME_THREAD) {
+      return "resume";
+    }
   }
 
   return state.lastQuestionSource === "resume" ? "bank" : "resume";
@@ -234,32 +276,20 @@ export function step(state: EngineState, input: StepInput): StepResult {
 
   if (source === "resume") {
     const item = uncovered(resolved)[0];
-    if (item) {
-      const itemIndex = resolved.resumeItems.findIndex((i) => i.id === item.id);
-      return {
-        state: {
-          ...resolved,
-          resumeItemIndex: itemIndex,
-          lastMove: "opening",
-          lastQuestionSource: "resume",
-          questionCount: resolved.questionCount + 1,
-        },
-        move: "opening",
-        next: {
-          source: "resume",
-          type: "opening",
-          // Still belongs to a competency, for the notepad and difficulty.
-          topic: resolved.topics[resolved.topicIndex] ?? resolved.topics[0],
-          difficulty: resolved.difficulty,
-          resumeItem: item,
-        },
-      };
-    }
+    if (item) return openResumeThread(resolved, item);
   }
 
   // ---- next bank topic ---------------------------------------------------
   const topicIndex = resolved.topicIndex + 1;
-  if (topicIndex >= resolved.topics.length) return wrap(resolved);
+  if (topicIndex >= resolved.topics.length) {
+    // Out of bank topics. Running out of VARIETY must not end an interview
+    // that still owes the candidate coverage, so fall back to the next item
+    // rather than wrapping. Without this, coverage silently capped at the
+    // number of bank topics however large the resume or the cap.
+    const fallback = uncovered(resolved)[0];
+    if (fallback) return openResumeThread(resolved, fallback);
+    return wrap(resolved);
+  }
 
   return {
     state: {
@@ -275,6 +305,29 @@ export function step(state: EngineState, input: StepInput): StepResult {
       type: "opening",
       topic: resolved.topics[topicIndex],
       difficulty: resolved.difficulty,
+    },
+  };
+}
+
+/** Opens a thread about one resume item. Shared by both paths into it. */
+function openResumeThread(state: EngineState, item: ResumeItem): StepResult {
+  const itemIndex = state.resumeItems.findIndex((i) => i.id === item.id);
+  return {
+    state: {
+      ...state,
+      resumeItemIndex: itemIndex,
+      lastMove: "opening",
+      lastQuestionSource: "resume",
+      questionCount: state.questionCount + 1,
+    },
+    move: "opening",
+    next: {
+      source: "resume",
+      type: "opening",
+      // Still belongs to a competency, for the notepad and difficulty.
+      topic: state.topics[state.topicIndex] ?? state.topics[0],
+      difficulty: state.difficulty,
+      resumeItem: item,
     },
   };
 }

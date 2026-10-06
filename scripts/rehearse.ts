@@ -11,13 +11,15 @@
 
 import { questionFor, pickTopics } from "../src/lib/engine/bank";
 import { initState } from "../src/lib/engine/policy";
-import type {
-  Band,
-  EngineState,
-  InterviewMode,
-  Question,
-  ResumeItem,
-  Scores,
+import {
+  FULL_QUESTION_CAP_MAX,
+  maxCoverableItems,
+  type Band,
+  type EngineState,
+  type InterviewMode,
+  type Question,
+  type ResumeItem,
+  type Scores,
 } from "../src/lib/engine/types";
 import type { RawEvaluation } from "../src/lib/ai/evaluate";
 import { runTurn } from "../src/lib/interview/turn";
@@ -247,8 +249,16 @@ async function resumeHeavy(): Promise<void> {
     covered.length === items.length,
     `${covered.length}/${items.length}`,
   );
-  check("cap is clamped at 24", trace.state.questionCap <= 24,
-    `cap ${trace.state.questionCap}`);
+  check(
+    "cap is clamped at the ceiling",
+    trace.state.questionCap <= FULL_QUESTION_CAP_MAX,
+    `cap ${trace.state.questionCap}`,
+  );
+  check(
+    "an over-long resume is trimmed to a coverable count, not left uncovered",
+    trace.state.resumeItems.length <= maxCoverableItems(),
+    `${trace.state.resumeItems.length} items kept`,
+  );
 
   // A truncated interview must still have covered the most relevant items.
   const order = trace.state.resumeItems.map((i) => i.relevanceToRole);

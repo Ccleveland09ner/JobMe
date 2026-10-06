@@ -11,6 +11,8 @@ import {
   commitQuestion,
   initState,
   isPlateau,
+  maxFollowUpsFor,
+  nextSource,
   shouldResolveTopic,
   shouldWrap,
   step,
@@ -18,8 +20,10 @@ import {
   type StepInput,
 } from "./policy";
 import {
+  FULL_BANK_THREADS,
   QUICK_QUESTION_CAP,
   fullModeCap,
+  maxCoverableItems,
   type Band,
   type EngineState,
   type Question,
@@ -526,5 +530,148 @@ describe("scripted sessions", () => {
     // cheapest place to notice.
     expect(typeof step).toBe("function");
     expect(step.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pacing — full mode must be able to keep its coverage promise
+// ---------------------------------------------------------------------------
+
+describe("full-mode pacing", () => {
+  const BANDS: Band[][] = [
+    ["mediocre"],
+    ["weak"],
+    ["great"],
+    ["weak", "mediocre", "great"],
+    ["great", "weak", "weak", "mediocre"],
+  ];
+
+  function manyItems(n: number): ResumeItem[] {
+    return Array.from({ length: n }, (_, i) => ({
+      ...item(`item-${i}`),
+      relevanceToRole: 1 - i * 0.05,
+    }));
+  }
+
+  /** Drives a full session; returns the state it finished in. */
+  function runFull(itemCount: number, bands: Band[]): EngineState {
+    let state = initState({
+      mode: "full",
+      topics: ["teamwork", "conflict", "leadership"] as TopicId[],
+      resumeItems: manyItems(itemCount),
+      firstQuestion: question(),
+    });
+
+    for (let i = 0; i < 300 && !state.done; i++) {
+      const band = bands[i % bands.length];
+      const scores = band === "weak" ? WEAK : band === "great" ? GREAT : MEDIOCRE;
+      const result = step(state, input(scores, band));
+      state = result.state;
+      if (result.next) {
+        state = commitQuestion(
+          state,
+          question({
+            text: `q${i}`,
+            type: result.next.type,
+            topic: result.next.topic,
+            source: result.next.source,
+            resumeItemId: result.next.resumeItem?.id,
+          }),
+        );
+      }
+    }
+    return state;
+  }
+
+  /**
+   * The regression this whole section exists for. Six items previously needed
+   * 36 turns against a cap of 16, and anything past the bank topic count was
+   * never covered at all because running out of VARIETY ended the interview.
+   */
+  it.each([1, 2, 3, 4, 6, 8, 10])(
+    "covers all %i items within the cap, whatever the answers",
+    (count) => {
+      for (const bands of BANDS) {
+        const state = runFull(count, bands);
+        expect(state.done).toBe(true);
+        expect(uncovered(state)).toHaveLength(0);
+        expect(state.questionCount).toBeLessThanOrEqual(state.questionCap);
+      }
+    },
+  );
+
+  it("covers more items than there are bank topics", () => {
+    // Three topics, eight items: the old policy wrapped at the third topic.
+    const state = runFull(8, ["mediocre"]);
+    expect(uncovered(state)).toHaveLength(0);
+  });
+
+  it("trims an over-long resume rather than reporting uncoverable items", () => {
+    const state = initState({
+      mode: "full",
+      topics: ["teamwork"] as TopicId[],
+      resumeItems: manyItems(40),
+      firstQuestion: question(),
+    });
+    expect(state.resumeItems).toHaveLength(maxCoverableItems());
+    // Trimmed by rank, so the most relevant survive.
+    expect(state.resumeItems[0].id).toBe("item-0");
+  });
+
+  it("keeps every item in quick mode, which makes no coverage promise", () => {
+    const state = initState({
+      mode: "quick",
+      topics: ["teamwork"] as TopicId[],
+      resumeItems: manyItems(40),
+      firstQuestion: question(),
+    });
+    expect(state.resumeItems).toHaveLength(40);
+  });
+
+  it("caps full-mode resume threads at one follow-up", () => {
+    const state = makeState({
+      mode: "full",
+      followUpsUsed: 1,
+      lastMove: "clarify",
+      currentQuestion: question({ source: "resume", resumeItemId: "a" }),
+    });
+    expect(maxFollowUpsFor(state)).toBe(1);
+    // An improving answer would otherwise earn a second follow-up.
+    const better = { ...MEDIOCRE, result: 4 };
+    expect(shouldResolveTopic(state, input(better, "mediocre"))).toBe(true);
+  });
+
+  it("still allows two follow-ups on a bank thread", () => {
+    const state = makeState({
+      mode: "full",
+      followUpsUsed: 1,
+      lastMove: "clarify",
+      threadScores: [MEDIOCRE],
+      currentQuestion: question({ source: "bank" }),
+    });
+    expect(maxFollowUpsFor(state)).toBe(2);
+    const better = { ...MEDIOCRE, result: 4 };
+    expect(shouldResolveTopic(state, input(better, "mediocre"))).toBe(false);
+  });
+
+  it("spends only a fixed bank budget before switching to coverage", () => {
+    const state = makeState({
+      mode: "full",
+      topics: ["teamwork", "conflict", "leadership", "pressure"] as TopicId[],
+      topicIndex: FULL_BANK_THREADS - 1,
+      resumeItems: manyItems(4),
+      lastQuestionSource: "resume",
+    });
+    // Alternation alone would say bank here; the budget is spent.
+    expect(nextSource(state)).toBe("resume");
+  });
+
+  it("cap always exceeds the measured worst case", () => {
+    for (const count of [1, 2, 3, 4, 6, 8, 10]) {
+      for (const bands of BANDS) {
+        const state = runFull(count, bands);
+        expect(state.questionCount).toBeLessThanOrEqual(fullModeCap(count));
+      }
+    }
   });
 });

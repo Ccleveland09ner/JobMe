@@ -199,20 +199,55 @@ export interface EngineState {
 export const QUICK_QUESTION_CAP = 10;
 
 /** Full mode never exceeds this, however long the resume. */
-export const FULL_QUESTION_CAP_MAX = 24;
+export const FULL_QUESTION_CAP_MAX = 30;
 
 /** Full mode is at least this long even for a one-line resume. */
 export const FULL_QUESTION_CAP_MIN = 8;
 
 /**
- * One opening plus one follow-up per resume item, plus a few bank questions
- * for competencies the resume does not evidence.
+ * Bank threads full mode spends before it switches to pure coverage.
+ *
+ * Fixed rather than alternating. Measured: 1:1 alternation spent half the
+ * interview on bank questions (12 bank turns against 12 resume turns for six
+ * items), which is why coverage could not finish inside any sane cap.
+ */
+export const FULL_BANK_THREADS = 3;
+
+/**
+ * Turns a thread costs: one opening plus its follow-ups.
+ *
+ * MEASURED by scripts/measure-pacing.ts across five band patterns. A bank
+ * thread runs to the full two follow-ups on an answer that keeps improving;
+ * a full-mode resume thread is capped at one follow-up so breadth wins over
+ * depth, which is the distinction between the modes.
+ */
+export const TURNS_PER_BANK_THREAD = 3;
+export const TURNS_PER_RESUME_THREAD = 2;
+
+/**
+ * Sized so every resume item can be covered, with the bank budget on top.
+ *
+ * The previous formula assumed two turns per item and no bank overhead, which
+ * left six items needing 36 turns against a cap of 16 — the mode could not
+ * keep its own promise. Derived from measurement instead, plus one turn of
+ * slack so a thread that resolves late is not truncated.
  */
 export function fullModeCap(resumeItemCount: number): number {
-  const budget = resumeItemCount * 2 + 4;
+  const budget =
+    resumeItemCount * TURNS_PER_RESUME_THREAD +
+    FULL_BANK_THREADS * TURNS_PER_BANK_THREAD +
+    1;
   return Math.max(
     FULL_QUESTION_CAP_MIN,
     Math.min(FULL_QUESTION_CAP_MAX, budget),
+  );
+}
+
+/** Items a full-mode session can cover inside FULL_QUESTION_CAP_MAX. */
+export function maxCoverableItems(): number {
+  return Math.floor(
+    (FULL_QUESTION_CAP_MAX - FULL_BANK_THREADS * TURNS_PER_BANK_THREAD - 1) /
+      TURNS_PER_RESUME_THREAD,
   );
 }
 
