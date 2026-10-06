@@ -59,6 +59,22 @@ async function main(): Promise<void> {
       headers: { apikey: key },
       signal: AbortSignal.timeout(10_000),
     });
+    if (!res.ok) {
+      /**
+       * The gateway answered but the service behind it did not. A restoring
+       * project sits here for minutes: 502 from auth, 521 from PostgREST.
+       * Calling that "reachable" and moving on makes a WAKING project look
+       * like an unmigrated one, which is the same misreading this check was
+       * rewritten to stop.
+       */
+      console.error(
+        `\n  FAIL  project is waking, not ready (auth health ${res.status}).`,
+      );
+      console.error("        Services behind the gateway are still starting.");
+      console.error("        Wait for ACTIVE_HEALTHY and retry:");
+      console.error("          npx supabase projects list");
+      process.exit(1);
+    }
     console.log(`  reachable: yes (auth health ${res.status})` + "\n");
   } catch (err) {
     const cause = (err as Error & { cause?: Error }).cause?.message ?? "";
