@@ -60,8 +60,25 @@ import type { RoleProfile } from "../jd/distill";
 import type { QuestionPlan } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
-/** Aborts a slow evaluation so the turn degrades instead of hanging. */
-export const EVAL_TIMEOUT_MS = 2200;
+/**
+ * Aborts a slow evaluation so the turn degrades instead of hanging.
+ *
+ * MEASURED LIVE, against a real resume and a real job description: successful
+ * evaluations ran 1227-2045ms, and the previous 2200ms abort clipped the tail
+ * of that distribution — 4 of 22 turns came back `degraded: timeout` with
+ * `evalMs` of 2202-2218, i.e. cut off rather than failed. An 18% unscored rate
+ * on answers the model was about to score.
+ *
+ * The bare-prompt figure this was originally sized against (964ms p50) is not
+ * the live prompt: a turn now carries distilled resume facts, a role summary
+ * and the question plan, which is most of the difference.
+ *
+ * Set well clear of the observed tail. A slow scored turn beats a fast
+ * unscored one — an unscored turn loses the notepad entry, the band and the
+ * trend point, which is the product's whole claim — and the ack plus filler
+ * clip already cover several seconds of perceived latency.
+ */
+export const EVAL_TIMEOUT_MS = 4000;
 
 export interface TurnContext {
   state: EngineState;

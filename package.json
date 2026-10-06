@@ -17,7 +17,8 @@
     "probe:eval": "tsx scripts/probe-evaluator.ts",
     "rehearse": "tsx scripts/rehearse.ts",
     "cleanup:test": "tsx scripts/cleanup-test-data.ts",
-    "measure": "tsx scripts/measure-pacing.ts"
+    "measure": "tsx scripts/measure-pacing.ts",
+    "verify:live": "tsx scripts/verify-live.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

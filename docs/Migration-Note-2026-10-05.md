@@ -110,10 +110,29 @@ missing grant above looked like a clean run for exactly that reason.
 npx supabase db push --linked
 ```
 
-`20261005120000_service_role_grants.sql` is **not yet applied**: the Supabase
-project is paused (free tier, ~1 week of inactivity) and its DNS is withdrawn
-while it sleeps. Restore it from the dashboard, then push.
+All migrations are applied, verified live on 2026-10-05.
 
 `npm run check:db` now detects that state. It previously reported
 `auth: reachable` against an unreachable project, because `getSession()` reads
 the local session without touching the network.
+
+
+## Follow-up found by live verification — 2026-10-05
+
+`EVAL_TIMEOUT_MS` was 2200ms, sized against a 964ms bare-prompt measurement.
+The live prompt carries distilled resume facts, a role summary and the question
+plan, and the real distribution runs wider: measured over a 22-turn interview,
+successful evaluations took **1121-3367ms**.
+
+The old limit clipped that tail. Four of 22 turns returned
+`degraded: timeout` with `evalMs` of 2202-2218 — cut off at the abort rather
+than failed. An 18% unscored rate on answers the model was about to score.
+
+Raised to **4000ms**, which halved it to 2 of 22. The two that remain sat at
+~4010ms with a clean gap from the scored maximum of 3367ms, so they were
+genuinely slow rather than marginally over; that residual is what the degraded
+path exists for.
+
+The lever if it needs to go lower is prompt size, not a longer timeout: decode
+dominates this call, and the turn prompt grew when resume personalisation
+landed.
