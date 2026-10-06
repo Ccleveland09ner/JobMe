@@ -31,7 +31,14 @@ export function Notepad({ notes }: { notes: NoteView[] }) {
         Recruiter&rsquo;s notepad
       </h2>
 
-      <div aria-live="polite">
+      {/* Announce the gist, not eight score bars: observation and next move. */}
+      <p aria-live="polite" className="sr-only">
+        {latest
+          ? `Notepad updated. ${latest.degraded ? "Scoring unavailable for this answer." : latest.observation} ${latest.reason}`
+          : ""}
+      </p>
+
+      <div>
         {latest ? (
           <NotepadEntry key={latest.seq} note={latest} />
         ) : (

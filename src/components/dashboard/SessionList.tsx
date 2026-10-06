@@ -65,6 +65,7 @@ export function SessionList({ sessions }: { sessions: SessionSummary[] }) {
       <Dialog
         open={target !== null}
         onClose={close}
+        dismissable={!deleting}
         title="Delete this interview?"
         description={
           target && (

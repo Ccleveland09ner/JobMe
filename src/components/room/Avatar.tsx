@@ -50,7 +50,9 @@ export function Avatar({ state, mouth }: AvatarProps) {
           </g>
         )}
       </svg>
-      <figcaption className="text-xs text-muted" aria-live="polite">
+      {/* Not a live region: phase changes are already announced through the
+          captions and the answer controls, and repeating them here is noise. */}
+      <figcaption className="text-xs text-muted">
         {STATE_TEXT[state]}
       </figcaption>
     </figure>

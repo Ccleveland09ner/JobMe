@@ -7,8 +7,8 @@ import { LoginForm } from "./login-form";
 
 /**
  * Sign-in shell. The OTP flow itself lives in login-form.tsx and is the
- * starter's, unchanged; only this frame is styled to the JobMe tokens.
- * TODO(visual pass): the form's own zinc classes -> tokens.
+ * starter's, logic unchanged; the form's classes were moved to the JobMe
+ * tokens because its dark: variants clashed with the light-only palette.
  */
 export default async function LoginPage() {
   const supabase = await createClient();

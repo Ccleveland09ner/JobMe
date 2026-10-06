@@ -19,9 +19,19 @@ export interface DialogProps {
   children?: ReactNode;
   /** Footer actions. Put the safe action first in the DOM. */
   actions?: ReactNode;
+  /** False while an action is in flight: Escape and backdrop clicks are ignored. */
+  dismissable?: boolean;
 }
 
-export function Dialog({ open, onClose, title, description, children, actions }: DialogProps) {
+export function Dialog({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  actions,
+  dismissable = true,
+}: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const titleId = useId();
@@ -48,9 +58,13 @@ export function Dialog({ open, onClose, title, description, children, actions }:
         onClose();
         returnFocus.current?.focus();
       }}
+      // Escape fires `cancel` before `close`; blocking it keeps a busy dialog open.
+      onCancel={(e) => {
+        if (!dismissable) e.preventDefault();
+      }}
       // A click on the backdrop targets the dialog element itself.
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (dismissable && e.target === e.currentTarget) onClose();
       }}
       className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl border border-line bg-surface p-0 text-ink shadow-lg"
     >
