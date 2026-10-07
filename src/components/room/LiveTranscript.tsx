@@ -2,10 +2,10 @@
  * The answer as it is being recognised.
  * Ref: docs/TechDesign-JobMe-MVP.md > Components > Interview Room
  *
- * Interim results render grey, finals render in ink. Showing this before submit
- * is the mitigation for STT mishearing - the candidate can Re-record.
- *
- * Used by the voice path (TODO(voice): fed by lib/voice/stt.ts).
+ * Shown while recording, so a misheard word is visible as it happens and can
+ * be corrected out loud — there is no review step after Send. Interim words
+ * may render grey and confirmed words in ink; the room currently passes the
+ * combined text as `final`.
  */
 
 export function LiveTranscript({ interim, final }: { interim: string; final: string }) {

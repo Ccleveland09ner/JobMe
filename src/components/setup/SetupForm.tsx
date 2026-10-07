@@ -10,8 +10,8 @@
  * sessionStorage, keyed by session id. It is a nicety: if storage is
  * unavailable the room simply opens on the first question.
  *
- * TODO(voice): create the AudioContext here, inside the Begin click —
- * browsers only allow it from a user gesture (lib/voice/audio-graph.ts).
+ * Begin also unlocks audio (unlockAudio): the AudioContext and the ack clips
+ * must start inside a user gesture (lib/voice/audio-graph.ts).
  */
 
 import { useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/Card";
 import type { InterviewMode } from "@/lib/engine/types";
 import { friendlyError } from "@/lib/frontend/adapters";
 import { saveIntro } from "@/lib/frontend/handoff";
+import { unlockAudio } from "@/lib/frontend/voiceSession";
 import type { CreateSessionResponse, InputMode, ResumeSummary } from "@/lib/frontend/types";
 import { LIMITS } from "@/lib/schemas";
 
@@ -52,6 +53,9 @@ export function SetupForm({
 
   async function begin(e: React.FormEvent) {
     e.preventDefault();
+    // Inside the click: browsers only start audio from a user gesture, and the
+    // recruiter speaks the first question as soon as the room opens.
+    unlockAudio();
     setSubmitting(true);
     setError(null);
 
