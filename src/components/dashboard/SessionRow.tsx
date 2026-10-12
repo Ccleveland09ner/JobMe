@@ -15,6 +15,7 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { displayAverage } from "@/lib/frontend/adapters";
 import { MODE_LABELS } from "@/lib/frontend/labels";
 import type { SessionSummary } from "@/lib/frontend/types";
+import { unlockAudio } from "@/lib/frontend/voiceSession";
 
 export function SessionRow({
   session,
@@ -51,7 +52,12 @@ export function SessionRow({
             View report
           </Link>
         ) : (
-          <Link href={`/interview/${session.id}`} className={buttonClasses({ size: "sm" })}>
+          <Link
+            href={`/interview/${session.id}`}
+            // The click is the gesture that lets the recruiter speak on arrival.
+            onClick={unlockAudio}
+            className={buttonClasses({ size: "sm" })}
+          >
             Resume
           </Link>
         )}

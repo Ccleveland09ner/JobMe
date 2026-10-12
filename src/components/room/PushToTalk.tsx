@@ -1,21 +1,21 @@
 "use client";
 
 /**
- * The answer input. Typed mode is a textarea; voice mode is hold-to-talk
- * (pointer or Space) followed by Submit / Re-record.
- * Ref: docs/PRD-JobMe-MVP.md > Interview Room: Voice Loop
- *      docs/TechDesign-JobMe-MVP.md > Components > Interview Room
+ * The answer controls.
  *
- * Push-to-talk, deliberately NOT voice-activity detection: no false triggers,
- * no interruption bugs, which are the usual live-demo failures.
+ * Voice (user decision, 2026-10-07):
+ *   - While the interviewer speaks, the mic button is shown but DISABLED.
+ *   - Then it enables: tap "Start answering" (or press Space) to record.
+ *   - While recording: live transcript, and "Send" (or Space) to send at once.
+ *     After IDLE_SEND_MS without a new word it sends by itself; the last
+ *     IDLE_WARN_MS show a countdown so it never surprises anyone.
+ *   - No review step. Once sent, it goes to the interviewer.
  *
- * Space handling, the two details that bite otherwise:
- *   - key repeat while Space is held must not restart recording
- *   - Space typed inside a text field, or on a focused button, is not a
- *     talk key
+ * Typed: the same turn-taking with a text box — disabled while the
+ * interviewer speaks, then type and Send (Ctrl+Enter).
  *
- * Voice mode renders and handles keys today, but the room does not enable it
- * until the recognizer is wired. TODO(voice).
+ * Space is ignored on key repeat, and whenever focus is in a text field or on
+ * another control, so it never hijacks typing or a focused button.
  */
 
 import { useEffect, useId, useRef } from "react";
@@ -30,62 +30,54 @@ import type { Phase } from "./roomMachine";
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName);
+  return ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName);
 }
 
 export function PushToTalk({
   inputMode,
   phase,
   draft,
-  interim = "",
+  secondsLeft,
   onDraftChange,
   onSubmit,
   onRecordStart,
-  onRecordStop,
-  onRerecord,
 }: {
   inputMode: InputMode;
   phase: Phase;
   draft: string;
-  interim?: string;
+  /** Idle countdown, only inside the warning window. */
+  secondsLeft: number | null;
   onDraftChange: (text: string) => void;
   onSubmit: () => void;
   onRecordStart: () => void;
-  onRecordStop: () => void;
-  onRerecord: () => void;
 }) {
   const id = useId();
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const canAnswer = phase === "awaitingAnswer" || phase === "reviewing";
+  const yourTurn = phase === "awaitingAnswer";
+  const recording = phase === "recording";
   const submitting = phase === "submitting";
 
   // Typed mode: put the caret in the box when it is the candidate's turn.
   useEffect(() => {
-    if (inputMode === "typed" && phase === "awaitingAnswer") textarea.current?.focus();
-  }, [inputMode, phase]);
+    if (inputMode === "typed" && yourTurn) textarea.current?.focus();
+  }, [inputMode, yourTurn]);
 
-  // Voice mode: Space to talk, anywhere except inside a control.
-  const recording = phase === "recording";
+  // Voice mode: Space starts recording on your turn, and sends while recording.
   useEffect(() => {
     if (inputMode !== "voice") return;
-    const down = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat || isTypingTarget(e.target)) return;
-      if (phase !== "awaitingAnswer") return;
-      e.preventDefault();
-      onRecordStart();
+      if (yourTurn) {
+        e.preventDefault();
+        onRecordStart();
+      } else if (recording) {
+        e.preventDefault();
+        onSubmit();
+      }
     };
-    const up = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || !recording) return;
-      e.preventDefault();
-      onRecordStop();
-    };
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-    };
-  }, [inputMode, phase, recording, onRecordStart, onRecordStop]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [inputMode, yourTurn, recording, onRecordStart, onSubmit]);
 
   if (inputMode === "typed") {
     return (
@@ -104,7 +96,7 @@ export function PushToTalk({
           ref={textarea}
           rows={6}
           value={draft}
-          disabled={!canAnswer}
+          disabled={!yourTurn}
           onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -117,54 +109,69 @@ export function PushToTalk({
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p id={`${id}-hint`} className="text-xs text-muted">
-            Answer as you would out loud. Ctrl+Enter to submit.
+            {phase === "speaking" ? "The interviewer is speaking…" : "Answer as you would out loud. Ctrl+Enter to send."}
           </p>
-          <Button type="submit" disabled={!canAnswer || !draft.trim()}>
-            {submitting ? "Submitting…" : "Submit answer"}
+          <Button type="submit" disabled={!yourTurn || !draft.trim()}>
+            {submitting ? "Sending…" : "Send"}
           </Button>
         </div>
       </form>
     );
   }
 
+  // A send failed: the transcript is kept, so it can go again as-is.
+  const retry = yourTurn && draft.trim().length > 0;
+
   return (
-    <div className="flex flex-col gap-3">
-      <LiveTranscript final={draft} interim={interim} />
-      {phase === "reviewing" ? (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="secondary" onClick={onRerecord}>
-            Re-record
-          </Button>
-          <Button onClick={onSubmit}>Submit answer</Button>
-        </div>
-      ) : (
-        <div className="flex flex-col items-center gap-2">
-          <Button
-            size="lg"
-            aria-pressed={recording}
-            disabled={!(phase === "awaitingAnswer" || recording)}
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              if (phase === "awaitingAnswer") onRecordStart();
-            }}
-            onPointerUp={() => recording && onRecordStop()}
-            onPointerCancel={() => recording && onRecordStop()}
-            // Keyboard users on the button itself: Enter toggles.
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              e.preventDefault();
-              if (recording) onRecordStop();
-              else if (phase === "awaitingAnswer") onRecordStart();
-            }}
-            className="min-w-56"
-          >
-            {recording ? "Listening… release to stop" : "Hold to talk"}
-          </Button>
-          <p className="text-xs text-muted">
-            Or hold <kbd className="rounded border border-line px-1 font-mono">Space</kbd>
-          </p>
-        </div>
-      )}
+    <div className="flex flex-col gap-4">
+      {(recording || submitting || retry) && <LiveTranscript final={draft} interim="" />}
+
+      <div className="flex flex-col items-center gap-2">
+        {recording ? (
+          <>
+            <p className="flex items-center gap-2 text-sm font-medium text-accent-strong">
+              <span aria-hidden="true" className="size-2.5 animate-pulse rounded-full bg-danger" />
+              Listening…
+            </p>
+            <Button size="lg" onClick={onSubmit} className="min-w-56">
+              Send answer
+            </Button>
+            <p aria-live="polite" className="min-h-5 text-xs text-muted">
+              {secondsLeft !== null
+                ? draft.trim()
+                  ? `No new words — sending in ${secondsLeft}…`
+                  : `Didn't catch anything — stopping in ${secondsLeft}…`
+                : "Press Space or Send when you're done. Pausing for 10 seconds also sends."}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap justify-center gap-2">
+              {retry && (
+                <Button size="lg" onClick={onSubmit}>
+                  Send again
+                </Button>
+              )}
+              <Button
+                size="lg"
+                variant={retry ? "secondary" : "primary"}
+                onClick={onRecordStart}
+                disabled={!yourTurn}
+                className="min-w-56"
+              >
+                {submitting ? "Sending…" : retry ? "Record a new answer" : "Start answering"}
+              </Button>
+            </div>
+            <p className="min-h-5 text-xs text-muted">
+              {phase === "speaking"
+                ? "The mic turns on when the interviewer finishes."
+                : yourTurn
+                  ? "Press Start answering or Space, then speak."
+                  : null}
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
