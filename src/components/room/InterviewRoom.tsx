@@ -36,7 +36,7 @@ import { readMouth, setSyntheticSpeaking, unlockAudio } from "@/lib/frontend/voi
 import { isSttSupported } from "@/lib/voice/stt";
 import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 
-import { Avatar } from "./Avatar";
+import { RecruiterStage } from "./RecruiterStage";
 import { Captions } from "./Captions";
 import { EndInterviewDialog } from "./EndInterviewDialog";
 import { Notepad } from "./Notepad";
@@ -299,7 +299,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
       <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
         <section aria-label="Interview" className="flex min-w-0 flex-col gap-6 rounded-xl border border-line bg-surface p-5 sm:p-8">
           <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-            <Avatar state={avatarState(state.phase)} readMouth={readMouth} />
+            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} />
             <Captions text={state.question.text} lead={state.question.lead} intro={state.intro} />
           </div>
 
