@@ -57,6 +57,25 @@ npx @gltf-transform/cli@4.5.1 optimize \
 
 Then check the result at `http://localhost:3000/dev/recruiter` (`npm run dev`).
 
+### d) Refresh the fallback still
+
+`public/models/recruiter-still.png` is what shows while the model loads and
+wherever 3D cannot draw (no WebGL, a load error, a lost GPU context). After
+changing the model, re-capture it so the fallback matches. With `npm run dev`
+running, open `http://localhost:3000/dev/recruiter/still` (480x400, the
+recruiter alone in the room) and screenshot it at 2x. For example, with
+headless Edge on Windows:
+
+```powershell
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new `
+  --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars `
+  --force-device-scale-factor=2 --window-size=480,400 --virtual-time-budget=45000 `
+  --screenshot="$PWD\public\models\recruiter-still.png" http://localhost:3000/dev/recruiter/still
+```
+
+Load the page once in a normal browser first, so the dev server has compiled
+it before the screenshot is taken.
+
 ## What each step does
 
 - **`dress_recruiter.py`** poses the donor's skeleton onto the recruiter's

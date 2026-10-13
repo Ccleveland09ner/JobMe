@@ -2,11 +2,10 @@
  * The line-art interview room, as SVG fragments in a shared 240x200
  * coordinate space (design/mock Inteview session.png).
  *
- * Shared by the SVG recruiter (Avatar.tsx) and the 3D recruiter stage
- * (RecruiterStage.tsx), so both versions sit in the same room: the
- * whiteboard behind the recruiter, the desk and mic in front. In the 3D
- * stage the desk also hides the lap and hands, so only the bust is ever
- * on screen.
+ * Drawn around the 3D recruiter by RecruiterStage.tsx: the whiteboard behind
+ * her, the desk, mic and thought dots in front. The desk also hides her lap
+ * and hands, so only the bust is ever on screen. The fallback still
+ * (public/models/recruiter-still.png) is captured inside this same scene.
  */
 
 export const SCENE_VIEWBOX = "0 0 240 200";

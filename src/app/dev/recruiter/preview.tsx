@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 
-import { Avatar, type AvatarProps } from "@/components/room/Avatar";
-import { RecruiterStage } from "@/components/room/RecruiterStage";
+import { RecruiterStage, type RecruiterState } from "@/components/room/RecruiterStage";
 import { Button } from "@/components/ui/Button";
 
-const STATES: AvatarProps["state"][] = ["speaking", "idle", "listening", "thinking"];
+const STATES: RecruiterState[] = ["speaking", "idle", "listening", "thinking"];
 
-export function RecruiterPreview({ initial }: { initial: AvatarProps["state"] }) {
-  const [state, setState] = useState<AvatarProps["state"]>(initial);
+export function RecruiterPreview({ initial }: { initial: RecruiterState }) {
+  const [state, setState] = useState<RecruiterState>(initial);
 
   return (
     <div className="flex flex-col gap-6">
@@ -30,12 +29,12 @@ export function RecruiterPreview({ initial }: { initial: AvatarProps["state"] })
 
       <div className="grid gap-6 sm:grid-cols-2">
         <section className="flex flex-col items-center gap-2 rounded-xl border border-line bg-surface p-6">
-          <h2 className="self-start text-sm font-semibold text-muted">3D recruiter (in the room)</h2>
+          <h2 className="self-start text-sm font-semibold text-muted">3D recruiter</h2>
           <RecruiterStage state={state} />
         </section>
         <section className="flex flex-col items-center gap-2 rounded-xl border border-line bg-surface p-6">
-          <h2 className="self-start text-sm font-semibold text-muted">SVG recruiter (fallback)</h2>
-          <Avatar state={state} />
+          <h2 className="self-start text-sm font-semibold text-muted">Fallback still (no WebGL, loading, errors)</h2>
+          <RecruiterStage state={state} forceStill />
         </section>
       </div>
     </div>

@@ -12,7 +12,7 @@
  * the full skeleton and the ARKit / viseme face shapes, which is what makes
  * it animatable:
  *   - speaking   jawOpen / mouthOpen / viseme_aa follow the voice level
- *                (the same readMouth() signal the SVG avatar uses)
+ *                (readMouth(), from the audio graph in lib/frontend/voiceSession)
  *   - listening  a nod as it starts
  *   - thinking   a glance up and to the side, brows lifted
  *   - always     a blink every 3–6s; the idle clip (Mixamo) when the model
@@ -27,8 +27,9 @@
  * immutability rules ask for.
  *
  * Loaded only in the browser (RecruiterStage imports this with
- * `ssr: false`), and only when WebGL is available; the SVG recruiter covers
- * every other case.
+ * `ssr: false`), and only when WebGL is available; a still image of her
+ * covers every other case, including a GPU context lost mid-interview
+ * (reported through `onLost`).
  */
 
 import { useGLTF } from "@react-three/drei";
@@ -39,9 +40,9 @@ import { OutlineEffect } from "three/examples/jsm/effects/OutlineEffect.js";
 
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
 
-export const RECRUITER_MODEL = "/models/recruiter.glb";
+import type { RecruiterState } from "./RecruiterStage";
 
-export type RecruiterState = "idle" | "listening" | "thinking" | "speaking";
+export const RECRUITER_MODEL = "/models/recruiter.glb";
 
 export interface Recruiter3DProps {
   state: RecruiterState;
@@ -49,6 +50,8 @@ export interface Recruiter3DProps {
   readMouth?: () => number | null;
   /** Called once the model is loaded and has drawn its first frame. */
   onReady?: () => void;
+  /** Called if the GPU drops the WebGL context; the stage shows the still. */
+  onLost?: () => void;
 }
 
 /** Theme tokens (globals.css) — WebGL cannot read CSS variables. */
@@ -180,7 +183,7 @@ class RecruiterRig {
     });
   }
 
-  /** Frame the bust as the SVG room does: head above centre, desk across the chest. */
+  /** Frame the bust in the room: head above centre, desk across the chest. */
   private frame(camera: THREE.PerspectiveCamera, width: number, height: number) {
     const key = `${width}x${height}`;
     if (this.framedFor === key || !this.head) return;
@@ -337,6 +340,11 @@ export default function Recruiter3D(props: Recruiter3DProps) {
       gl={{ alpha: true, antialias: true }}
       camera={{ fov: 22, near: 0.1, far: 20 }}
       aria-hidden="true"
+      onCreated={({ gl }) => {
+        // A lost context does not throw; it just stops drawing. Report it so
+        // the stage can put the still back instead of an empty box.
+        gl.domElement.addEventListener("webglcontextlost", () => props.onLost?.(), { once: true });
+      }}
     >
       <hemisphereLight args={[0xffffff, 0xd8d2c8, 1.2]} />
       <directionalLight position={[1.5, 2.5, 2.5]} intensity={1.6} color={0xfff4e6} />
