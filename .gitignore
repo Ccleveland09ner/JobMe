@@ -44,3 +44,6 @@ next-env.d.ts
 
 # supabase local cache
 supabase/.temp
+
+# recruiter model sources and build output (large; see design/tools/README.md)
+/design/avatar-src/

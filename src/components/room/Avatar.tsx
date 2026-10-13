@@ -29,6 +29,8 @@ import { useEffect, useRef } from "react";
 
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
 
+import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
+
 export interface AvatarProps {
   state: "idle" | "listening" | "thinking" | "speaking";
   /** Live mouth openness 0..1, or null when no audio signal is available. */
@@ -126,23 +128,13 @@ export function Avatar({ state, readMouth }: AvatarProps) {
   return (
     <figure className="flex flex-col items-center gap-2">
       <svg
-        viewBox="0 0 240 200"
+        viewBox={SCENE_VIEWBOX}
         aria-hidden="true"
         className="h-auto w-56 sm:w-72"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {/* Whiteboard behind the recruiter, as in the reference room. */}
-        <g className="stroke-ink" strokeWidth={2}>
-          <rect x={40} y={14} width={160} height={78} rx={4} className="fill-surface" />
-          <g className="fill-none">
-            <circle cx={47} cy={21} r={2.4} />
-            <circle cx={193} cy={21} r={2.4} />
-            <circle cx={47} cy={85} r={2.4} />
-            <circle cx={193} cy={85} r={2.4} />
-            <path d="M54 34h34M54 42h30M54 50h26" />
-          </g>
-        </g>
+        <Whiteboard />
 
         {/* Chair back */}
         <path
@@ -219,16 +211,10 @@ export function Avatar({ state, readMouth }: AvatarProps) {
           strokeWidth={2}
         />
 
-        {/* Thought dots while scoring the answer. */}
-        <g className={`fill-muted transition-opacity ${state === "thinking" ? "opacity-100 motion-safe:animate-pulse" : "opacity-0"}`}>
-          <circle cx={160} cy={58} r={3} />
-          <circle cx={168} cy={48} r={2.3} />
-          <circle cx={174} cy={40} r={1.7} />
-        </g>
+        <ThoughtDots visible={state === "thinking"} />
 
         {/* Desk, then the clasped hands resting on it. */}
-        <rect x={6} y={176} width={228} height={24} className="fill-surface" />
-        <path d="M10 176h220" className="stroke-ink" strokeWidth={2.5} />
+        <Desk />
         <g className="fill-surface stroke-ink" strokeWidth={2}>
           <rect x={92} y={163} width={10} height={11} rx={2} />
           <rect x={138} y={163} width={10} height={11} rx={2} />
@@ -237,17 +223,7 @@ export function Avatar({ state, readMouth }: AvatarProps) {
           <path d="M117 165q4 5 0 10M123 165q-4 5 0 10" className="fill-none" />
         </g>
 
-        {/* Desk mic: muted ink normally, teal with rays while listening. */}
-        <g className={listening ? "stroke-accent" : "stroke-ink"} strokeWidth={2}>
-          <ellipse cx={120} cy={196} rx={14} ry={3.5} className={listening ? "fill-accent" : "fill-ink"} />
-          <circle cx={120} cy={185} r={9} className="fill-surface" />
-          <rect x={117.5} y={179} width={5} height={8} rx={2.5} className={listening ? "fill-accent" : "fill-ink"} strokeWidth={0} />
-          <path d="M115 185q0 5 5 5t5-5M120 190v3" className="fill-none" strokeWidth={1.5} />
-          <path
-            d="M104 180l-5-3M136 180l5-3M103 188h-6M137 188h6"
-            className={`fill-none transition-opacity ${listening ? "opacity-100" : "opacity-0"}`}
-          />
-        </g>
+        <DeskMic listening={listening} />
       </svg>
       {/* Not a live region: phase changes are already announced through the
           captions and the answer controls, and repeating them here is noise. */}
