@@ -47,13 +47,26 @@ const STATE_TEXT: Record<RecruiterState, string> = {
 
 const noSubscribe = () => () => {};
 
+let webglSupport: boolean | null = null;
+
+/**
+ * Probed ONCE per page and cached. This runs as a useSyncExternalStore
+ * snapshot, i.e. on every render — and each probe creates a real WebGL
+ * context. Browsers cap live contexts (~16) and kill the oldest when the cap
+ * is hit, which is the recruiter's own: a few state changes would leak
+ * enough probes to blank her. The probe context is also released at once.
+ */
 function webglAvailable(): boolean {
+  if (webglSupport !== null) return webglSupport;
   try {
     const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+    const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+    webglSupport = gl !== null;
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
   } catch {
-    return false;
+    webglSupport = false;
   }
+  return webglSupport;
 }
 
 /** A failed model load (or any render error) drops to the still. */
