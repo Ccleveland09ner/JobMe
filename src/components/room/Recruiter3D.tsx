@@ -14,10 +14,12 @@
  *   - speaking   jawOpen / mouthOpen / viseme_aa follow the voice level
  *                (the same readMouth() signal the SVG avatar uses)
  *   - listening  a nod as it starts
- *   - thinking   eyes up, brows lifted, a slight head tilt
+ *   - thinking   a glance up and to the side, brows lifted
  *   - always     a blink every 3–6s; the idle clip (Mixamo) when the model
  *                carries one
- * Reduced motion: mouth only — no blink, nod, tilt or idle clip.
+ * Eye contact: the head is aimed at the camera (the candidate) every frame;
+ * the clip moves the body, never the gaze. See aimHead().
+ * Reduced motion: mouth only — no blink, nod, glance or idle clip.
  *
  * All the per-frame three.js work lives in RecruiterRig, a plain class held
  * in a ref: three.js is imperative (it mutates its scene graph every frame),
@@ -67,8 +69,28 @@ const MORPHS = [
 type Morph = (typeof MORPHS)[number];
 
 const NOD_SECONDS = 0.5;
-const NOD_RADIANS = 0.12;
+/** How far the gaze dips during the nod, in metres at the camera (~7°). */
+const NOD_DROP = 0.25;
 const BLINK_SECONDS = 0.14;
+
+/** The model faces +Z, toward the camera. */
+const FORWARD = new THREE.Vector3(0, 0, 1);
+const IDENTITY = new THREE.Quaternion();
+/** Thinking: a glance up and to one side, in metres at the camera. */
+const THINKING_GAZE = new THREE.Vector3(0.3, 0.3, 0);
+const NO_OFFSET = new THREE.Vector3();
+/** The furthest the head turns toward a target (~20°). */
+const MAX_HEAD_TURN = 0.35;
+
+/** Reused every frame, so aiming the head allocates nothing. */
+const scratch = {
+  from: new THREE.Vector3(),
+  eye: new THREE.Vector3(),
+  target: new THREE.Vector3(),
+  look: new THREE.Quaternion(),
+  desired: new THREE.Quaternion(),
+  parent: new THREE.Quaternion(),
+};
 
 /** Three flat tones instead of smooth lighting: the "illustrated" look. */
 function toonGradient(): THREE.DataTexture {
@@ -85,14 +107,19 @@ class RecruiterRig {
   private readonly outline: OutlineEffect;
   private readonly morphMeshes: THREE.Mesh[] = [];
   private readonly head: THREE.Object3D | null;
-  private readonly headRest: THREE.Quaternion | null;
+  private readonly neck: THREE.Object3D | null;
+  private readonly eyes: THREE.Object3D[];
+  /** Upright, facing forward: the bind pose, before any clip moves it. */
+  private readonly headRestWorld = new THREE.Quaternion();
+  private readonly neckRestLocal = new THREE.Quaternion();
   private readonly mixer: THREE.AnimationMixer | null = null;
   private readonly values = Object.fromEntries(MORPHS.map((m) => [m, 0])) as Record<Morph, number>;
   private framedFor = "";
   private nextBlink = 0;
   private blinkStart = -1;
   private nodStart = -1;
-  private tilt = 0;
+  /** Where the gaze sits relative to the camera, eased (thinking glance). */
+  private readonly gazeOffset = new THREE.Vector3();
   private lastState: RecruiterState | null = null;
 
   constructor(
@@ -103,6 +130,15 @@ class RecruiterRig {
   ) {
     this.outline = new OutlineEffect(gl, { defaultThickness: 0.004, defaultColor: [INK.r, INK.g, INK.b] });
     this.restyle();
+
+    // Read the bind pose before the clip moves anything: it is the one pose
+    // where the head is known to be upright and facing straight ahead.
+    scene.updateMatrixWorld(true);
+    this.head = scene.getObjectByName("Head") ?? null;
+    this.neck = scene.getObjectByName("Neck") ?? null;
+    this.eyes = ["LeftEye", "RightEye"].flatMap((n) => scene.getObjectByName(n) ?? []);
+    this.head?.getWorldQuaternion(this.headRestWorld);
+    if (this.neck) this.neckRestLocal.copy(this.neck.quaternion);
 
     if (clips.length) {
       // The idle clip (Mixamo, baked in by design/tools). Under reduced
@@ -119,8 +155,6 @@ class RecruiterRig {
     }
     this.mixer?.update(0);
     scene.updateMatrixWorld(true);
-    this.head = scene.getObjectByName("Head") ?? null;
-    this.headRest = this.head ? this.head.quaternion.clone() : null;
   }
 
   private restyle() {
@@ -204,11 +238,11 @@ class RecruiterRig {
     }
     v.eyeBlinkLeft = v.eyeBlinkRight = blink;
 
-    // Thinking: eyes up, brows lifted, a slight tilt.
+    // Thinking: a glance up and to the side, brows lifted.
     const thinking = state === "thinking" && !this.reduced;
-    approach("eyesLookUp", thinking ? 0.35 : 0, 6);
+    approach("eyesLookUp", thinking ? 0.25 : 0, 6);
     approach("browInnerUp", thinking ? 0.3 : 0, 6);
-    this.tilt += ((thinking ? 0.07 : 0) - this.tilt) * (1 - Math.exp(-delta * 4));
+    this.gazeOffset.lerp(thinking ? THINKING_GAZE : NO_OFFSET, 1 - Math.exp(-delta * 3));
 
     for (const mesh of this.morphMeshes) {
       const dict = mesh.morphTargetDictionary!;
@@ -219,14 +253,47 @@ class RecruiterRig {
       }
     }
 
-    // Head: from the clip's pose (or rest), plus the nod and the tilt.
-    if (this.head) {
-      if (!this.mixer && this.headRest) this.head.quaternion.copy(this.headRest);
-      const t = now - this.nodStart;
-      const nod = this.nodStart >= 0 && t < NOD_SECONDS ? Math.sin((Math.PI * t) / NOD_SECONDS) * NOD_RADIANS : 0;
-      if (nod) this.head.rotateX(nod);
-      if (this.tilt) this.head.rotateZ(this.tilt);
+    const t = now - this.nodStart;
+    const nod = this.nodStart >= 0 && t < NOD_SECONDS ? Math.sin((Math.PI * t) / NOD_SECONDS) : 0;
+    this.aimHead(camera, nod);
+  }
+
+  /**
+   * Eye contact. The clip keeps the body breathing and swaying, but its
+   * neck and head angles (a relaxed sitter's, looking slightly up and
+   * tilted) are replaced: the neck is held straight on the spine, and the
+   * head turns from its upright rest pose to face the camera — the
+   * candidate. The nod and the thinking glance move WHERE she looks rather
+   * than adding raw bone rotations, so they cannot fight the clip.
+   */
+  private aimHead(camera: THREE.Camera, nod: number) {
+    const head = this.head;
+    if (!head?.parent) return;
+    if (this.neck) this.neck.quaternion.copy(this.neckRestLocal);
+    head.parent.updateWorldMatrix(true, false);
+    head.updateWorldMatrix(false, true);
+
+    // Aim from between the eyes; the head bone itself sits at the skull base.
+    const from = scratch.from.set(0, 0, 0);
+    if (this.eyes.length) {
+      for (const eye of this.eyes) from.add(eye.getWorldPosition(scratch.eye));
+      from.divideScalar(this.eyes.length);
+    } else {
+      head.getWorldPosition(from);
     }
+    const target = scratch.target.copy(camera.position).add(this.gazeOffset);
+    target.y -= nod * NOD_DROP;
+    const dir = target.sub(from).normalize();
+
+    // Turn from straight ahead toward the camera, but never further than a
+    // person comfortably would without moving their shoulders.
+    const look = scratch.look.setFromUnitVectors(FORWARD, dir);
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(look.w)));
+    if (angle > MAX_HEAD_TURN) look.slerp(IDENTITY, 1 - MAX_HEAD_TURN / angle);
+
+    const desired = scratch.desired.copy(look).multiply(this.headRestWorld);
+    const parentWorld = head.parent.getWorldQuaternion(scratch.parent);
+    head.quaternion.copy(parentWorld.invert().multiply(desired));
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
