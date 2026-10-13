@@ -53,6 +53,21 @@
   /* Geist ships with the starter. Mono is for notepad evidence quotes. */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* The recruiter's nod as listening starts (components/room/Avatar). */
+  --animate-avatar-nod: avatar-nod 520ms ease-in-out;
+  @keyframes avatar-nod {
+    0%,
+    100% {
+      transform: rotate(0deg) translateY(0);
+    }
+    35% {
+      transform: translateY(3.5px) rotate(1deg);
+    }
+    70% {
+      transform: translateY(-0.5px) rotate(0deg);
+    }
+  }
 }
 
 body {
