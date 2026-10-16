@@ -1,17 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
-
 import { Clipboard } from "@/components/ui/Clipboard";
+import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
 
 /**
- * Sign-in, at the front door: the panel beside the door in the building.
- * The OTP flow itself lives in login-form.tsx and is the
- * starter's, logic unchanged; the form's classes were moved to the JobMe
- * tokens because its dark: variants clashed with the light-only palette.
+ * Sign in or create an account, at the front door: the clipboard beside the
+ * door in the building. Email and password; see login-form.tsx.
  */
 export default async function LoginPage() {
   const supabase = await createClient();
@@ -29,8 +26,6 @@ export default async function LoginPage() {
         JobMe
       </Link>
       <Clipboard className="mt-3">
-        <h1 className="mb-1 text-xl font-semibold text-ink">Sign in</h1>
-        <p className="mb-5 text-sm text-muted">We&rsquo;ll email you a 6-digit code. No password needed.</p>
         <LoginForm />
       </Clipboard>
     </div>

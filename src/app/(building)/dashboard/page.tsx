@@ -41,11 +41,11 @@ const SESSION_COLUMNS =
   "id, status, question_count, overall_scores, started_at, ended_at, mode:engine_state->>mode";
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
-  await requireUser();
+  const user = await requireUser();
   const { page: pageParam } = await searchParams;
   const supabase = await createClient();
 
-  const [totalRes, trendRes] = await Promise.all([
+  const [totalRes, trendRes, profileRes] = await Promise.all([
     supabase.from("interview_sessions").select("id", { count: "exact", head: true }),
     supabase
       .from("interview_sessions")
@@ -53,7 +53,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       .eq("status", "completed")
       .order("started_at", { ascending: false })
       .limit(TREND_LIMIT),
+    // Not essential: without it the desk just doesn't show who is signed in.
+    supabase.from("profiles").select("username, member_code").eq("id", user.id).maybeSingle(),
   ]);
+  const profile = profileRes.error ? null : (profileRes.data as { username: string | null; member_code: string } | null);
   if (totalRes.error) throw new Error(`dashboard count: ${totalRes.error.message}`);
   if (trendRes.error) throw new Error(`dashboard trend: ${trendRes.error.message}`);
 
@@ -95,7 +98,22 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     <PageContainer width="wide">
       <PageHeader
         title="Your interviews"
-        description="Practice, see what the recruiter noticed, and track how your answers improve."
+        description={
+          <>
+            Practice, see what the recruiter noticed, and track how your answers improve.
+            {profile && (
+              <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink">
+                {profile.username && <span className="font-semibold">@{profile.username}</span>}
+                <span>
+                  Member code{" "}
+                  <span className="rounded-md border border-ink/40 bg-sunken px-1.5 py-0.5 font-mono text-xs tracking-wider">
+                    {profile.member_code}
+                  </span>
+                </span>
+              </span>
+            )}
+          </>
+        }
         actions={total > 0 ? startCta : undefined}
       />
 
