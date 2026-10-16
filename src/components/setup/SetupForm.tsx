@@ -33,9 +33,14 @@ import { ModeSelector } from "./ModeSelector";
 import { ResumeSelector } from "./ResumeSelector";
 
 export function SetupForm({
+  title,
+  description,
   defaultName,
   latestResume,
 }: {
+  /** The page heading, written at the top of the clipboard. */
+  title: string;
+  description?: string;
   defaultName: string;
   latestResume: ResumeSummary | null;
 }) {
@@ -103,8 +108,13 @@ export function SetupForm({
   }
 
   return (
-    <form onSubmit={begin} className="flex flex-col gap-6" aria-describedby={error ? `${id}-error` : undefined}>
-      <Clipboard className="mt-3" paperClassName="flex flex-col gap-6">
+    <form onSubmit={begin} aria-describedby={error ? `${id}-error` : undefined}>
+      <Clipboard paperClassName="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+          {description && <p className="text-sm text-muted">{description}</p>}
+        </div>
+
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${id}-name`} className="text-sm font-medium text-ink">
             What should the recruiter call you?
@@ -135,22 +145,22 @@ export function SetupForm({
             speech recognition sends audio to Google to transcribe it. Prefer not to? Type your answers instead.
           </p>
         </div>
+
+        {error && (
+          <p id={`${id}-error`} role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+            {error}
+          </p>
+        )}
+
+        <div className="flex flex-col-reverse items-stretch gap-3 border-t-2 border-dashed border-ink/20 pt-6 sm:flex-row sm:items-center sm:justify-end">
+          <p className="text-sm text-muted" aria-live="polite">
+            {submitting ? "Preparing your interview — this can take a few seconds." : null}
+          </p>
+          <Button type="submit" size="lg" disabled={submitting || !displayName.trim()}>
+            {submitting ? "Starting…" : "Begin interview"}
+          </Button>
+        </div>
       </Clipboard>
-
-      {error && (
-        <p id={`${id}-error`} role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
-          {error}
-        </p>
-      )}
-
-      <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <p className="text-sm text-muted" aria-live="polite">
-          {submitting ? "Preparing your interview — this can take a few seconds." : null}
-        </p>
-        <Button type="submit" size="lg" disabled={submitting || !displayName.trim()}>
-          {submitting ? "Starting…" : "Begin interview"}
-        </Button>
-      </div>
     </form>
   );
 }

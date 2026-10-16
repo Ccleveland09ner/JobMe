@@ -21,13 +21,11 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <Link href="/" className="text-lg font-semibold tracking-tight text-ink">
+    <Clipboard>
+      <Link href="/" className="mb-4 inline-block text-sm font-semibold uppercase tracking-widest text-muted hover:text-ink">
         JobMe
       </Link>
-      <Clipboard className="mt-3">
-        <LoginForm />
-      </Clipboard>
-    </div>
+      <LoginForm />
+    </Clipboard>
   );
 }

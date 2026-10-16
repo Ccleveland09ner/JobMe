@@ -1,8 +1,17 @@
 /**
- * Paper on a clipboard: the container for forms the user fills in at the
- * door (sign-in) and at the front desk (interview setup). A hardboard back
- * with an ink edge, a metal clip at the top, and a sheet of paper on it — the
- * same drawn, ink-outlined look as the 3D building behind it.
+ * A clipboard: the object forms are filled in on, at the door (sign-in) and
+ * at the front desk (interview setup). It stands on its own over the 3D
+ * building — no panel behind it — and is drawn the way the building is:
+ * flat toon shading in three tones, ink outlines on every edge, and solid
+ * depth rather than soft blur.
+ *
+ *   - the board: hardboard with a bevelled lit/shaded rim and a thick
+ *     extruded edge below it, sitting on a flat contact shadow;
+ *   - the paper: a sheet with two more peeking out beneath it;
+ *   - the clip: a shaded metal plate with rivets and a lever, casting a flat
+ *     shadow on the paper it grips.
+ * It drops in when it appears (not under reduced motion). The depth is CSS,
+ * not WebGL: the fields stay real, sharp form controls.
  *
  * Fields on the paper are written on the line, not typed into a box: use
  * paperField / paperArea for their classes. Labels and semantics are the
@@ -26,28 +35,52 @@ export const paperArea =
   "transition-colors hover:border-ink/60 focus:border-accent";
 
 export interface ClipboardProps extends HTMLAttributes<HTMLDivElement> {
-  /** Classes for the paper sheet (layout of what is written on it). */
+  /** Classes for the top sheet (layout of what is written on it). */
   paperClassName?: string;
 }
 
+/** Hard-edged toon bevel: a lit rim top-left, a shaded rim bottom-right. */
+const BOARD_BEVEL =
+  "shadow-[inset_5px_5px_0_0_var(--color-board-light),inset_-5px_-5px_0_0_var(--color-board-dark)]";
+
+/** The board's thickness: an extruded edge, ink-outlined, below the face. */
+const BOARD_EDGE = "shadow-[0_9px_0_-2px_var(--color-board-dark),0_9px_0_1px_var(--color-ink)]";
+
 export function Clipboard({ className = "", paperClassName = "", children, ...rest }: ClipboardProps) {
   return (
-    <div
-      className={`relative rounded-2xl border-2 border-ink bg-board px-2.5 pb-3 pt-8 shadow-lg sm:px-3.5 sm:pb-4 ${className}`.trim()}
-      {...rest}
-    >
-      {/* The clip: a metal plate riveted to the board, with the bar that grips the paper. */}
-      <div aria-hidden="true" className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/3">
-        <div className="relative h-10 w-32 rounded-t-xl rounded-b-md border-2 border-ink bg-clipmetal shadow-md">
-          <div className="absolute left-1/2 top-1.5 h-3 w-8 -translate-x-1/2 rounded-full border-2 border-ink bg-board" />
-          <div className="absolute inset-x-2 bottom-1.5 h-2 rounded-full border-2 border-ink bg-clipmetal-shade" />
-        </div>
-      </div>
+    <div className={`clipboard-in relative pb-6 pt-10 ${className}`.trim()} {...rest}>
+      {/* Flat contact shadow on whatever it rests against. */}
+      <div aria-hidden="true" className="absolute inset-x-6 bottom-0 h-7 rounded-[50%] bg-ink/25" />
 
-      <div
-        className={`grain relative rounded-md border-2 border-ink/80 bg-paper px-5 pb-6 pt-8 shadow-sm sm:px-6 ${paperClassName}`.trim()}
-      >
-        {children}
+      {/* The board: extruded edge, then the face with its bevelled rim. */}
+      <div className={`relative rounded-[1.4rem] border-[3px] border-ink bg-board ${BOARD_EDGE}`}>
+        <div className={`rounded-[1.2rem] px-3 pb-4 pt-9 sm:px-4 sm:pb-5 ${BOARD_BEVEL}`}>
+          {/* The clip, gripping the paper's top edge. */}
+          <div aria-hidden="true" className="absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[45%]">
+            <div className="relative h-12 w-36">
+              {/* Lever arm, behind the plate. */}
+              <div className="absolute left-1/2 top-0 h-5 w-20 -translate-x-1/2 rounded-t-full border-[3px] border-b-0 border-ink bg-[linear-gradient(var(--color-clipmetal-light)_0_45%,var(--color-clipmetal)_45%)]" />
+              {/* Plate: three toon tones top to bottom, extruded lower lip. */}
+              <div className="absolute inset-x-0 bottom-0 h-9 rounded-t-lg rounded-b-xl border-[3px] border-ink bg-[linear-gradient(var(--color-clipmetal-light)_0_30%,var(--color-clipmetal)_30%_72%,var(--color-clipmetal-shade)_72%)] shadow-[0_4px_0_-1px_var(--color-clipmetal-shade),0_4px_0_2px_var(--color-ink)]">
+                <span className="absolute left-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 border-ink bg-clipmetal-light" />
+                <span className="absolute right-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 border-ink bg-clipmetal-light" />
+              </div>
+            </div>
+            {/* Its flat shadow on the paper. */}
+            <div className="absolute inset-x-3 -bottom-3 -z-10 h-4 rounded-b-lg bg-ink/20" />
+          </div>
+
+          {/* The paper: two sheets peeking out under the top one. */}
+          <div className="relative">
+            <div aria-hidden="true" className="absolute inset-0 translate-x-1.5 translate-y-2 rotate-[0.8deg] rounded-md border-2 border-ink/70 bg-paper-shade" />
+            <div aria-hidden="true" className="absolute inset-0 -translate-x-1 translate-y-1 -rotate-[0.6deg] rounded-md border-2 border-ink/70 bg-paper" />
+            <div
+              className={`grain relative rounded-md border-2 border-ink bg-paper px-5 pb-6 pt-9 shadow-[inset_-3px_-3px_0_0_var(--color-paper-shade)] sm:px-6 ${paperClassName}`.trim()}
+            >
+              {children}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
