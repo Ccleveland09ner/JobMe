@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useBuilding } from "@/components/building/BuildingProvider";
+import { Button } from "@/components/ui/Button";
+import { paperField } from "@/components/ui/Clipboard";
 import { createClient } from "@/lib/supabase/client";
 
 type Step = "email" | "code";
@@ -57,8 +59,8 @@ export function LoginForm() {
 
   if (step === "email") {
     return (
-      <form onSubmit={sendCode} className="flex flex-col gap-3">
-        <label htmlFor="login-email" className="text-sm text-muted">
+      <form onSubmit={sendCode} className="flex flex-col gap-4">
+        <label htmlFor="login-email" className="text-sm font-medium text-ink">
           Email
         </label>
         <input
@@ -70,22 +72,18 @@ export function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
-          className="rounded-lg border border-line bg-surface px-3 py-2 text-ink"
+          className={paperField}
         />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-strong disabled:opacity-50"
-        >
+        <Button type="submit" disabled={loading} className="mt-2">
           {loading ? "Sending code…" : "Send code"}
-        </button>
+        </Button>
       </form>
     );
   }
 
   return (
-    <form onSubmit={verifyCode} className="flex flex-col gap-3">
+    <form onSubmit={verifyCode} className="flex flex-col gap-4">
       <p className="text-sm text-muted">
         We sent a 6-digit code to <span className="font-medium">{email}</span>
       </p>
@@ -101,27 +99,24 @@ export function LoginForm() {
         value={code}
         onChange={(e) => setCode(e.target.value)}
         placeholder="123456"
-        className="rounded-lg border border-line bg-surface px-3 py-2 text-center text-lg tracking-[0.5em] text-ink"
+        className={`${paperField} text-center text-lg tracking-[0.5em]`}
       />
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-strong disabled:opacity-50"
-      >
+      <Button type="submit" disabled={loading} className="mt-2">
         {loading ? "Verifying…" : "Verify code"}
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => {
           setStep("email");
           setCode("");
           setError(null);
         }}
-        className="text-sm text-muted underline"
+        className="text-muted underline"
       >
         Use a different email
-      </button>
+      </Button>
     </form>
   );
 }

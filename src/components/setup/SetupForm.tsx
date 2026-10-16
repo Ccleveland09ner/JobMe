@@ -19,7 +19,7 @@ import { useCallback, useId, useState } from "react";
 
 import { useBuilding } from "@/components/building/BuildingProvider";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Clipboard, paperField } from "@/components/ui/Clipboard";
 import type { InterviewMode } from "@/lib/engine/types";
 import { friendlyError } from "@/lib/frontend/adapters";
 import { saveIntro } from "@/lib/frontend/handoff";
@@ -104,7 +104,7 @@ export function SetupForm({
 
   return (
     <form onSubmit={begin} className="flex flex-col gap-6" aria-describedby={error ? `${id}-error` : undefined}>
-      <Card className="flex flex-col gap-6">
+      <Clipboard className="mt-3" paperClassName="flex flex-col gap-6">
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${id}-name`} className="text-sm font-medium text-ink">
             What should the recruiter call you?
@@ -117,25 +117,25 @@ export function SetupForm({
             autoComplete="given-name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink"
+            className={paperField}
           />
         </div>
 
         <ModeSelector value={mode} onChange={setMode} hasResume={resumeId !== null} />
-      </Card>
 
-      <Card className="flex flex-col gap-6">
-        <ResumeSelector latest={latestResume} roleText={job.source === "paste" ? job.roleText : ""} onChange={setResumeId} />
-        <JobDescriptionField value={job} onChange={setJob} />
-      </Card>
+        <div className="flex flex-col gap-6 border-t-2 border-dashed border-ink/20 pt-6">
+          <ResumeSelector latest={latestResume} roleText={job.source === "paste" ? job.roleText : ""} onChange={setResumeId} />
+          <JobDescriptionField value={job} onChange={setJob} />
+        </div>
 
-      <Card className="flex flex-col gap-4">
-        <MicCheck onInputModeChange={onInputModeChange} />
-        <p className="border-t border-line pt-4 text-xs text-muted">
-          Your voice is transcribed by your browser; we store text, never audio. Note that Chrome&rsquo;s
-          speech recognition sends audio to Google to transcribe it. Prefer not to? Type your answers instead.
-        </p>
-      </Card>
+        <div className="flex flex-col gap-4 border-t-2 border-dashed border-ink/20 pt-6">
+          <MicCheck onInputModeChange={onInputModeChange} />
+          <p className="text-xs text-muted">
+            Your voice is transcribed by your browser; we store text, never audio. Note that Chrome&rsquo;s
+            speech recognition sends audio to Google to transcribe it. Prefer not to? Type your answers instead.
+          </p>
+        </div>
+      </Clipboard>
 
       {error && (
         <p id={`${id}-error`} role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">

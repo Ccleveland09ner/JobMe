@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
+import { Clipboard } from "@/components/ui/Clipboard";
+
 import { LoginForm } from "./login-form";
 
 /**
@@ -26,11 +28,11 @@ export default async function LoginPage() {
       <Link href="/" className="text-lg font-semibold tracking-tight text-ink">
         JobMe
       </Link>
-      <div>
+      <Clipboard className="mt-3">
         <h1 className="mb-1 text-xl font-semibold text-ink">Sign in</h1>
-        <p className="mb-4 text-sm text-muted">We&rsquo;ll email you a 6-digit code. No password needed.</p>
+        <p className="mb-5 text-sm text-muted">We&rsquo;ll email you a 6-digit code. No password needed.</p>
         <LoginForm />
-      </div>
+      </Clipboard>
     </div>
   );
 }

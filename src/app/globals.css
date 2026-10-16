@@ -68,6 +68,13 @@
   --color-path: #d3c8b6;
   --color-fabric: #2f3e46;
 
+  /* The clipboard forms are written on (components/ui/Clipboard.tsx). */
+  --color-board: #a9774c; /* hardboard back */
+  --color-clipmetal: #c5ccd0; /* metal clip */
+  --color-clipmetal-shade: #9aa4aa;
+  --color-paper: #fffdf7;
+  --color-rule: #c8d5e2; /* ruled lines on the paper */
+
   /*
    * Comic Sans where it is installed, Comic Neue (loaded in layout.tsx) where
    * it is not — neither ships on Linux or Android, and falling straight
@@ -113,6 +120,27 @@ body {
 /* Native <dialog> backdrop, used by components/ui/Dialog. */
 dialog::backdrop {
   background: rgb(28 27 26 / 0.4);
+}
+
+/*
+ * A faint paper grain over a surface: buttons and the clipboard's paper.
+ * Fractal noise, multiplied in, so it darkens a touch and never lightens.
+ * The overlay ignores the pointer and follows the element's corners.
+ */
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.09;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
 /*
