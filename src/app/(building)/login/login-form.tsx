@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useBuilding } from "@/components/building/BuildingProvider";
 import { createClient } from "@/lib/supabase/client";
 
 type Step = "email" | "code";
 
 export function LoginForm() {
   const router = useRouter();
+  const building = useBuilding();
   const supabase = createClient();
 
   const [step, setStep] = useState<Step>("email");
@@ -47,7 +49,9 @@ export function LoginForm() {
       setError(error.message);
       return;
     }
-    router.push("/");
+    // Through the door to the front desk; the desk's page arrives with the walk.
+    building?.walkTo("desk");
+    router.push("/dashboard");
     router.refresh();
   }
 

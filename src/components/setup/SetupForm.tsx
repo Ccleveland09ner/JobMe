@@ -17,6 +17,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useId, useState } from "react";
 
+import { useBuilding } from "@/components/building/BuildingProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { InterviewMode } from "@/lib/engine/types";
@@ -39,6 +40,7 @@ export function SetupForm({
   latestResume: ResumeSummary | null;
 }) {
   const router = useRouter();
+  const building = useBuilding();
   const id = useId();
 
   const [displayName, setDisplayName] = useState(defaultName);
@@ -58,6 +60,9 @@ export function SetupForm({
     unlockAudio();
     setSubmitting(true);
     setError(null);
+    // Down the corridor to the interview room while the session is created:
+    // the walk holds at the room door until the request is done.
+    building?.walkTo("room", { hold: true });
 
     const roleText = job.source === "paste" ? job.roleText.trim() : "";
     const jobUrl = job.source === "link" ? job.jobUrl.trim() : "";
@@ -78,16 +83,21 @@ export function SetupForm({
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(friendlyError(res.status, data));
+        const message = friendlyError(res.status, data);
+        building?.fail(message);
+        setError(message);
         setSubmitting(false);
         return;
       }
       const created = data as CreateSessionResponse;
       saveIntro(created.sessionId, created.introLine);
+      building?.release();
       // Stay "submitting" through navigation so Begin cannot double-fire.
       router.push(`/interview/${created.sessionId}?input=${inputMode}`);
     } catch {
-      setError("We couldn't reach the server. Check your connection and try again.");
+      const message = "We couldn't reach the server. Check your connection and try again.";
+      building?.fail(message);
+      setError(message);
       setSubmitting(false);
     }
   }

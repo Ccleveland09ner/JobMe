@@ -51,6 +51,24 @@
   --color-highlight: #fdf2c4;
 
   /*
+   * The building (components/building): scenery colours for the toon-shaded
+   * 3D scene. WebGL cannot read these, so components/three/toon.ts mirrors
+   * them in PALETTE — change both or neither. Ink stays the outline colour,
+   * so the scene is coloured but still drawn.
+   */
+  --color-sky: #f3ece0;
+  --color-wall: #efe6d8;
+  --color-trim: #d8c9b2;
+  --color-stone: #e2d6c3;
+  --color-floor: #c49a6c;
+  --color-wood: #8a5a3b;
+  --color-glass: #bcd9d5;
+  --color-plant: #5b8a52;
+  --color-grass: #9cbc72;
+  --color-path: #d3c8b6;
+  --color-fabric: #2f3e46;
+
+  /*
    * Comic Sans where it is installed, Comic Neue (loaded in layout.tsx) where
    * it is not — neither ships on Linux or Android, and falling straight
    * through to a generic sans would lose the look entirely.
