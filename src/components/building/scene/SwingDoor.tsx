@@ -16,7 +16,7 @@ import * as THREE from "three";
 import { glassMaterial } from "@/components/three/toon";
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
 
-import { Box, unitBox } from "./parts";
+import { Box, InkEdges, unitBox } from "./parts";
 
 const OPEN_ANGLE = 1.45;
 
@@ -62,7 +62,9 @@ export function SwingDoor({
             material={glassMaterial}
             position={[cx, height / 2, 0]}
             scale={[width - frame * 2, height - frame * 2, 0.03]}
-          />
+          >
+            <InkEdges />
+          </mesh>
           <Box size={[width, frame, 0.07]} at={[cx, height - frame / 2, 0]} color="ink" />
           <Box size={[width, frame, 0.07]} at={[cx, frame / 2, 0]} color="ink" />
           <Box size={[frame, height, 0.07]} at={[cx - (sign * (width - frame)) / 2, height / 2, 0]} color="ink" />
@@ -77,7 +79,9 @@ export function SwingDoor({
             material={glassMaterial}
             position={[cx, height * 0.68, 0]}
             scale={[0.16, 0.55, 0.08]}
-          />
+          >
+            <InkEdges />
+          </mesh>
           <Box size={[0.12, 0.04, 0.08]} at={[cx + sign * (width / 2 - 0.14), 1.0, 0.05]} color="trim" />
         </>
       )}

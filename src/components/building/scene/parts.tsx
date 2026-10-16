@@ -8,12 +8,21 @@
  * Positions are box CENTRES, sizes are full extents, in metres.
  */
 
+import { Edges } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
 
-import { glassMaterial, toonMaterial, type PaletteColor } from "@/components/three/toon";
+import { EDGE_THRESHOLD, EDGE_WIDTH, glassMaterial, PALETTE, toonMaterial, type PaletteColor } from "@/components/three/toon";
 
 type Vec3 = [number, number, number];
+
+/**
+ * Ink along every hard corner of the mesh it sits in — the crease lines the
+ * silhouette outline cannot draw. Put it inside any scenery <mesh>.
+ */
+export function InkEdges() {
+  return <Edges lineWidth={EDGE_WIDTH} threshold={EDGE_THRESHOLD} color={PALETTE.ink} />;
+}
 
 export const unitBox = new THREE.BoxGeometry(1, 1, 1);
 
@@ -28,7 +37,11 @@ export function Box({
   color?: PaletteColor | string;
   rotation?: Vec3;
 }) {
-  return <mesh geometry={unitBox} material={toonMaterial(color)} position={at} scale={size} rotation={rotation} />;
+  return (
+    <mesh geometry={unitBox} material={toonMaterial(color)} position={at} scale={size} rotation={rotation}>
+      <InkEdges />
+    </mesh>
+  );
 }
 
 /** A box spanning [x0,x1] × [y0,y1] × [z0,z1] — easier to read for walls. */
@@ -72,7 +85,9 @@ export function Pane({
   const o = (dx: number, dy: number): Vec3 => (sideways ? [at[0], at[1] + dy, at[2] + dx] : [at[0] + dx, at[1] + dy, at[2]]);
   return (
     <group>
-      <mesh geometry={unitBox} material={glassMaterial} position={at} scale={s(width, height, depth * 0.5)} />
+      <mesh geometry={unitBox} material={glassMaterial} position={at} scale={s(width, height, depth * 0.5)}>
+        <InkEdges />
+      </mesh>
       <Box size={s(width + f * 2, f, depth)} at={o(0, height / 2)} color={frame} />
       <Box size={s(width + f * 2, f, depth)} at={o(0, -height / 2)} color={frame} />
       <Box size={s(f, height, depth)} at={o(-width / 2, 0)} color={frame} />
@@ -89,7 +104,9 @@ export function Tree({ at, scale = 1 }: { at: Vec3; scale?: number }) {
   return (
     <group position={at} scale={scale}>
       <Box size={[0.22, 1.4, 0.22]} at={[0, 0.7, 0]} color="wood" />
-      <mesh geometry={leafGeometry} material={toonMaterial("plant")} position={[0, 2.1, 0]} scale={[1.1, 1.3, 1.1]} />
+      <mesh geometry={leafGeometry} material={toonMaterial("plant")} position={[0, 2.1, 0]} scale={[1.1, 1.3, 1.1]}>
+        <InkEdges />
+      </mesh>
     </group>
   );
 }
@@ -101,7 +118,9 @@ export function Bush({ at, scale = 1 }: { at: Vec3; scale?: number }) {
       material={toonMaterial("plant")}
       position={[at[0], at[1] + 0.35 * scale, at[2]]}
       scale={[0.8 * scale, 0.5 * scale, 0.6 * scale]}
-    />
+    >
+      <InkEdges />
+    </mesh>
   );
 }
 
@@ -110,8 +129,12 @@ export function PottedPlant({ at }: { at: Vec3 }) {
   return (
     <group position={at}>
       <Box size={[0.42, 0.45, 0.42]} at={[0, 0.225, 0]} color="surface" />
-      <mesh geometry={leafGeometry} material={toonMaterial("plant")} position={[0, 0.85, 0]} scale={[0.45, 0.55, 0.45]} />
-      <mesh geometry={leafGeometry} material={toonMaterial("plant")} position={[0.18, 1.2, 0.05]} scale={[0.28, 0.4, 0.28]} />
+      <mesh geometry={leafGeometry} material={toonMaterial("plant")} position={[0, 0.85, 0]} scale={[0.45, 0.55, 0.45]}>
+        <InkEdges />
+      </mesh>
+      <mesh geometry={leafGeometry} material={toonMaterial("plant")} position={[0.18, 1.2, 0.05]} scale={[0.28, 0.4, 0.28]}>
+        <InkEdges />
+      </mesh>
     </group>
   );
 }

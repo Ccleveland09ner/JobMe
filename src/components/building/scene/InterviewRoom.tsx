@@ -18,7 +18,7 @@ import type { Speaker } from "@/components/room/Recruiter3D";
 import { toonMaterial } from "@/components/three/toon";
 
 import { TABLE, RECRUITER, ROOM } from "../world";
-import { Box, CeilingLight, Chair, Pane, PottedPlant, Scribbles, Slab, unitBox } from "./parts";
+import { Box, CeilingLight, Chair, InkEdges, Pane, PottedPlant, Scribbles, Slab, unitBox } from "./parts";
 
 /** The desk mic. Reads the speaker every frame, so the room never re-renders for it. */
 function DeskMic({ speaker, at }: { speaker: RefObject<Speaker>; at: [number, number, number] }) {
@@ -36,7 +36,9 @@ function DeskMic({ speaker, at }: { speaker: RefObject<Speaker>; at: [number, nu
     <group position={at}>
       <Box size={[0.14, 0.02, 0.14]} at={[0, 0.01, 0]} color="ink" />
       <Box size={[0.02, 0.08, 0.02]} at={[0, 0.06, 0]} color="ink" />
-      <mesh ref={head} geometry={unitBox} material={toonMaterial("surface")} position={[0, 0.14, 0]} scale={[0.06, 0.1, 0.06]} />
+      <mesh ref={head} geometry={unitBox} material={toonMaterial("surface")} position={[0, 0.14, 0]} scale={[0.06, 0.1, 0.06]}>
+        <InkEdges />
+      </mesh>
     </group>
   );
 }

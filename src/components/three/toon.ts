@@ -1,7 +1,14 @@
 /**
  * The illustrated look, shared by everything drawn in WebGL: flat toon
- * shading in three tones, ink outlines (OutlineRenderer.tsx), and the app's
- * palette.
+ * shading in three tones, ink lines, and the app's palette.
+ *
+ * Two kinds of ink line, together giving every form a drawn edge:
+ *   - the silhouette, around each object's outline (OutlineRenderer.tsx);
+ *   - creases, along every hard corner of the scenery, including the ones
+ *     inside a silhouette — where a wall meets the floor, the front edge of a
+ *     desk (InkEdges in building/scene/parts.tsx).
+ * Scenery surfaces are drawn pushed back a hair (polygonOffset) so the crease
+ * lines sit cleanly on top of the faces they border instead of flickering.
  * Ref: docs/PRD-JobMe-MVP.md > Look and Feel ("friendly and intentional, not
  *      photoreal"; one confident accent)
  *
@@ -35,8 +42,16 @@ export type PaletteColor = keyof typeof PALETTE;
 export const INK = new THREE.Color(PALETTE.ink);
 export const TEAL = new THREE.Color(PALETTE.accent);
 
-/** Outline thickness for the OutlineEffect — the recruiter's original value. */
-export const OUTLINE_THICKNESS = 0.004;
+/** Silhouette thickness for the OutlineEffect. */
+export const OUTLINE_THICKNESS = 0.005;
+
+/** Crease lines along hard corners, in CSS pixels. */
+export const EDGE_WIDTH = 1.6;
+/** Faces meeting at more than this angle, in degrees, get a crease line. */
+export const EDGE_THRESHOLD = 15;
+
+/** Push faces back a hair so crease lines win the depth test at shared edges. */
+const BEHIND_LINES = { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 } as const;
 
 let gradient: THREE.DataTexture | null = null;
 
@@ -61,7 +76,7 @@ export function toonMaterial(color: PaletteColor | string): THREE.MeshToonMateri
   const hex = color in PALETTE ? PALETTE[color as PaletteColor] : color;
   let material = materials.get(hex);
   if (!material) {
-    material = new THREE.MeshToonMaterial({ color: hex, gradientMap: toonGradient() });
+    material = new THREE.MeshToonMaterial({ color: hex, gradientMap: toonGradient(), ...BEHIND_LINES });
     materials.set(hex, material);
   }
   return material;
@@ -73,4 +88,5 @@ export const glassMaterial = new THREE.MeshToonMaterial({
   gradientMap: toonGradient(),
   transparent: true,
   opacity: 0.55,
+  ...BEHIND_LINES,
 });

@@ -12,7 +12,7 @@ import * as THREE from "three";
 import { glassMaterial, toonMaterial } from "@/components/three/toon";
 
 import { DOOR, FACADE_Z } from "../world";
-import { Box, Bush, Pane, Slab, Tree, unitBox } from "./parts";
+import { Box, Bush, InkEdges, Pane, Slab, Tree, unitBox } from "./parts";
 import { SwingDoor } from "./SwingDoor";
 
 const WING_HEIGHT = 7;
@@ -57,8 +57,12 @@ export function Street({ doorsOpen }: { doorsOpen: boolean }) {
       <Slab x={[-PAVILION.half - 0.2, PAVILION.half + 0.2]} y={[PAVILION.height, PAVILION.height + 0.4]} z={[FACADE_Z - 0.3, FACE + 0.25]} color="trim" />
       {/* The arched window on the pavilion face: a pane, its round top, and glazing bars. */}
       <Slab x={[-1.5, 1.5]} y={[3.85, 5.45]} z={[FACE, FACE + 0.04]} color="trim" />
-      <mesh geometry={unitBox} material={glassMaterial} position={[0, 4.65, FACE + 0.06]} scale={[2.7, 1.5, 0.04]} />
-      <mesh geometry={archGeometry} material={glassMaterial} position={[0, 5.4, FACE + 0.06]} />
+      <mesh geometry={unitBox} material={glassMaterial} position={[0, 4.65, FACE + 0.06]} scale={[2.7, 1.5, 0.04]}>
+        <InkEdges />
+      </mesh>
+      <mesh geometry={archGeometry} material={glassMaterial} position={[0, 5.4, FACE + 0.06]}>
+        <InkEdges />
+      </mesh>
       <Box size={[0.08, 2.9, 0.06]} at={[0, 5.2, FACE + 0.1]} color="trim" />
       <Box size={[2.7, 0.08, 0.06]} at={[0, 4.65, FACE + 0.1]} color="trim" />
       <Box size={[2.7, 0.08, 0.06]} at={[0, 5.4, FACE + 0.1]} color="trim" />
@@ -78,7 +82,9 @@ export function Street({ doorsOpen }: { doorsOpen: boolean }) {
         <group key={x} position={[x, 0, FACADE_Z + 2.9]}>
           <Box size={[0.12, 3.1, 0.12]} at={[0, 1.55, 0]} color="ink" />
           <Box size={[0.36, 0.5, 0.36]} at={[0, 3.3, 0]} color="ink" />
-          <mesh geometry={unitBox} material={toonMaterial("surface")} position={[0, 3.3, 0]} scale={[0.26, 0.36, 0.38]} />
+          <mesh geometry={unitBox} material={toonMaterial("surface")} position={[0, 3.3, 0]} scale={[0.26, 0.36, 0.38]}>
+            <InkEdges />
+          </mesh>
         </group>
       ))}
 
