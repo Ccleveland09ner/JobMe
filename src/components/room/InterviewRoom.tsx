@@ -273,7 +273,9 @@ export function InterviewRoom(props: InterviewRoomProps) {
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-6">
+    // A container: in the building the room is a side panel, so the
+    // two-column layout follows the panel's width, not the window's.
+    <div className="@container flex flex-1 flex-col gap-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="sr-only">Interview in progress</h1>
         <ProgressPill progress={state.progress} />
@@ -296,7 +298,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
         </div>
       </div>
 
-      <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <div className="grid flex-1 gap-6 @4xl:grid-cols-[minmax(0,1fr)_360px] @4xl:items-start">
         <section aria-label="Interview" className="flex min-w-0 flex-col gap-6 rounded-xl border border-line bg-surface p-5 sm:p-8">
           <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
             <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} />

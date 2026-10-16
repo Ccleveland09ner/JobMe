@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * The recruiter, wherever the room shows one: the 3D recruiter inside the
- * line-art room when the browser can draw it, and the SVG recruiter
- * otherwise.
+ * The recruiter, wherever the room shows one: in the 3D building, the
+ * recruiter seated in the building's interview room (this component only
+ * drives it); elsewhere, the 3D recruiter inside the line-art room when the
+ * browser can draw it, and the SVG recruiter otherwise.
  *
  * The SVG recruiter (Avatar.tsx) is never just a fallback for errors — it is
  * also what the server renders, what shows while the 1MB model downloads,
@@ -13,7 +14,10 @@
  */
 
 import dynamic from "next/dynamic";
-import { Component, useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+
+import { useBuilding } from "@/components/building/BuildingProvider";
+import { webglAvailable } from "@/lib/frontend/webgl";
 
 import { Avatar, type AvatarProps } from "./Avatar";
 import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
@@ -30,14 +34,6 @@ const STATE_TEXT: Record<AvatarProps["state"], string> = {
 
 const noSubscribe = () => () => {};
 
-function webglAvailable(): boolean {
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
 
 /** A failed model load or WebGL context falls back to the SVG recruiter. */
 class FallbackOnError extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
@@ -58,6 +54,17 @@ export function RecruiterStage({ state, readMouth }: AvatarProps) {
   const canUse3D = useSyncExternalStore(noSubscribe, webglAvailable, () => false);
   const [ready, setReady] = useState(false);
   const onReady = useCallback(() => setReady(true), []);
+
+  // Inside the 3D building the recruiter is already in the room, in the
+  // shared scene: hand it this state every render and show only the status.
+  const building = useBuilding();
+  const inBuilding = building?.show3D ?? false;
+  const setSpeaker = building?.setSpeaker;
+  useEffect(() => {
+    if (inBuilding) setSpeaker?.({ state, readMouth });
+  });
+  useEffect(() => () => setSpeaker?.({ state: "idle" }), [setSpeaker]);
+  if (inBuilding) return <p className="text-xs text-muted">Interviewer · {STATE_TEXT[state]}</p>;
 
   const svg = <Avatar state={state} readMouth={readMouth} />;
   if (!canUse3D) return svg;

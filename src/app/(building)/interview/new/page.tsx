@@ -11,7 +11,6 @@
  * a one-option dropdown - the PRD is explicit about no dead controls.
  */
 
-import { PageContainer, PageHeader } from "@/components/layout/PageContainer";
 import { SetupForm } from "@/components/setup/SetupForm";
 import { requireUser } from "@/lib/auth";
 import type { ResumeSummary } from "@/lib/frontend/types";
@@ -54,12 +53,11 @@ export default async function NewInterviewPage() {
     : null;
 
   return (
-    <PageContainer width="narrow">
-      <PageHeader
-        title="Before we start"
-        description="Behavioral interview · SWE internship. Setup takes under a minute."
-      />
-      <SetupForm defaultName={defaultName} latestResume={latestResume} />
-    </PageContainer>
+    <SetupForm
+      title="Before we start"
+      description="Behavioral interview · SWE internship. Setup takes under a minute."
+      defaultName={defaultName}
+      latestResume={latestResume}
+    />
   );
 }

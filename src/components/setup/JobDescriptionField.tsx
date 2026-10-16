@@ -10,6 +10,7 @@
 
 import { useId } from "react";
 
+import { paperArea, paperField } from "@/components/ui/Clipboard";
 import { LIMITS } from "@/lib/schemas";
 
 export type JobSource = "paste" | "link";
@@ -21,8 +22,8 @@ export interface JobValue {
   jobUrl: string;
 }
 
-const INPUT =
-  "w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink placeholder:text-muted/70";
+// Written on the desk clipboard: a ruled line per field, ruled paper for the posting.
+const INPUT = paperField;
 
 export function JobDescriptionField({
   value,
@@ -85,7 +86,7 @@ export function JobDescriptionField({
             value={value.roleText}
             onChange={(e) => set({ roleText: e.target.value })}
             aria-describedby={`${id}-count`}
-            className={`${INPUT} resize-y`}
+            className={`${paperArea} resize-y`}
           />
           <p id={`${id}-count`} className="text-right text-xs text-muted tabular-nums">
             {value.roleText.length} / {LIMITS.roleText}

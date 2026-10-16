@@ -50,8 +50,50 @@
   /* Evidence highlight in the transcript. */
   --color-highlight: #fdf2c4;
 
-  /* Geist ships with the starter. Mono is for notepad evidence quotes. */
-  --font-sans: var(--font-geist-sans);
+  /*
+   * The building (components/building): scenery colours for the toon-shaded
+   * 3D scene. WebGL cannot read these, so components/three/toon.ts mirrors
+   * them in PALETTE — change both or neither. Ink stays the outline colour,
+   * so the scene is coloured but still drawn.
+   */
+  --color-sky: #f3ece0;
+  --color-wall: #efe6d8;
+  --color-trim: #d8c9b2;
+  --color-stone: #e2d6c3;
+  --color-floor: #c49a6c;
+  --color-wood: #8a5a3b;
+  --color-glass: #bcd9d5;
+  --color-plant: #5b8a52;
+  --color-grass: #9cbc72;
+  --color-path: #d3c8b6;
+  --color-fabric: #2f3e46;
+
+  /*
+   * The clipboard forms are written on (components/ui/Clipboard.tsx). Each
+   * material has three toon tones, lit / base / shaded, like the scene.
+   */
+  --color-board-light: #c9966a;
+  --color-board: #a9774c; /* hardboard */
+  --color-board-dark: #7d5332;
+  --color-clipmetal-light: #e6eaec;
+  --color-clipmetal: #c5ccd0; /* metal clip */
+  --color-clipmetal-shade: #9aa4aa;
+  --color-paper: #fffdf7;
+  --color-paper-shade: #ece4d4;
+  --color-rule: #c8d5e2; /* ruled lines on the paper */
+
+  /*
+   * Comic Sans where it is installed, Comic Neue (loaded in layout.tsx) where
+   * it is not — neither ships on Linux or Android, and falling straight
+   * through to a generic sans would lose the look entirely.
+   *
+   * Both have only a regular and a bold, so `font-medium` resolves to 400 and
+   * `font-semibold` to 700. That is the same behaviour real Comic Sans has.
+   *
+   * Mono stays a true monospace: it sets notepad evidence quotes, where
+   * character alignment is the point.
+   */
+  --font-sans: "Comic Sans MS", "Comic Sans", var(--font-comic-neue), cursive;
   --font-mono: var(--font-geist-mono);
 
   /* The recruiter's nod as listening starts (components/room/Avatar). */
@@ -85,6 +127,47 @@ body {
 /* Native <dialog> backdrop, used by components/ui/Dialog. */
 dialog::backdrop {
   background: rgb(28 27 26 / 0.4);
+}
+
+/*
+ * The clipboard drops onto the scene when it appears: down, and tipping from
+ * a slight lean to flat. It ends untransformed, so text stays crisp.
+ */
+@keyframes clipboard-in {
+  from {
+    opacity: 0;
+    transform: perspective(1400px) translateY(-24px) rotateX(10deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .clipboard-in {
+    animation: clipboard-in 450ms cubic-bezier(0.2, 0.8, 0.3, 1.15) both;
+  }
+}
+
+/*
+ * A faint paper grain over a surface: buttons and the clipboard's paper.
+ * Fractal noise, multiplied in, so it darkens a touch and never lightens.
+ * The overlay ignores the pointer and follows the element's corners.
+ */
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.09;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
 /*

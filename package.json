@@ -18,7 +18,8 @@
     "rehearse": "tsx scripts/rehearse.ts",
     "cleanup:test": "tsx scripts/cleanup-test-data.ts",
     "measure": "tsx scripts/measure-pacing.ts",
-    "verify:live": "tsx scripts/verify-live.ts"
+    "verify:live": "tsx scripts/verify-live.ts",
+    "prep:art": "tsx scripts/prep-art.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
@@ -26,6 +27,7 @@
     "@react-three/fiber": "^9.8.1",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
+    "gsap": "^3.15.0",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",

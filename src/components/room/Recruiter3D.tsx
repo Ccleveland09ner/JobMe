@@ -26,17 +26,28 @@
  * and keeping that out of React's render data is what the React Compiler's
  * immutability rules ask for.
  *
- * Loaded only in the browser (RecruiterStage imports this with
- * `ssr: false`), and only when WebGL is available; the SVG recruiter covers
- * every other case.
+ * Two ways in:
+ *   - <RecruiterModel> is the character alone, a node in someone else's
+ *     scene: the building (components/building) seats it in the interview
+ *     room and the secretary behind the front desk. The scene owns the
+ *     camera and the one ink-outline pass (three/OutlineRenderer.tsx).
+ *   - The default export is a self-contained <Canvas> that frames the bust,
+ *     for RecruiterStage outside the building and /dev/recruiter.
+ *
+ * The model must stay unrotated: eye contact assumes it faces world +Z.
+ *
+ * Loaded only in the browser (imported with `ssr: false`), and only when
+ * WebGL is available; the SVG recruiter covers every other case.
  */
 
 import { useGLTF } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
+import { Canvas, useFrame, type ThreeElements } from "@react-three/fiber";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { OutlineEffect } from "three/examples/jsm/effects/OutlineEffect.js";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 
+import { OutlineRenderer } from "@/components/three/OutlineRenderer";
+import { TEAL, toonGradient } from "@/components/three/toon";
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
 
 export const RECRUITER_MODEL = "/models/recruiter.glb";
@@ -51,9 +62,20 @@ export interface Recruiter3DProps {
   onReady?: () => void;
 }
 
-/** Theme tokens (globals.css) — WebGL cannot read CSS variables. */
-const INK = new THREE.Color("#1c1b1a");
-const TEAL = new THREE.Color("#0f766e");
+/** What drives the face, read every frame without re-rendering React. */
+export interface Speaker {
+  state: RecruiterState;
+  readMouth?: () => number | null;
+}
+
+/**
+ * Recolouring, so one model can play more than one person. Colours replace
+ * a material's base colour by material name; the textures stay.
+ */
+export interface Look {
+  colors?: Record<string, string>;
+  glasses?: boolean;
+}
 
 /** Morph targets driven every frame, on every mesh that has them. */
 const MORPHS = [
@@ -92,19 +114,8 @@ const scratch = {
   parent: new THREE.Quaternion(),
 };
 
-/** Three flat tones instead of smooth lighting: the "illustrated" look. */
-function toonGradient(): THREE.DataTexture {
-  const steps = [150, 210, 255];
-  const data = new Uint8Array(steps.flatMap((v) => [v, v, v, 255]));
-  const tex = new THREE.DataTexture(data, steps.length, 1, THREE.RGBAFormat);
-  tex.minFilter = tex.magFilter = THREE.NearestFilter;
-  tex.needsUpdate = true;
-  return tex;
-}
-
 /** Everything imperative about the recruiter, outside React. */
 class RecruiterRig {
-  private readonly outline: OutlineEffect;
   private readonly morphMeshes: THREE.Mesh[] = [];
   private readonly head: THREE.Object3D | null;
   private readonly neck: THREE.Object3D | null;
@@ -123,13 +134,12 @@ class RecruiterRig {
   private lastState: RecruiterState | null = null;
 
   constructor(
-    gl: THREE.WebGLRenderer,
     private readonly scene: THREE.Object3D,
     clips: THREE.AnimationClip[],
     private readonly reduced: boolean,
+    look: Look = {},
   ) {
-    this.outline = new OutlineEffect(gl, { defaultThickness: 0.004, defaultColor: [INK.r, INK.g, INK.b] });
-    this.restyle();
+    this.restyle(look);
 
     // Read the bind pose before the clip moves anything: it is the one pose
     // where the head is known to be upright and facing straight ahead.
@@ -157,7 +167,7 @@ class RecruiterRig {
     scene.updateMatrixWorld(true);
   }
 
-  private restyle() {
+  private restyle({ colors = {}, glasses = true }: Look) {
     const gradientMap = toonGradient();
     this.scene.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
@@ -166,12 +176,14 @@ class RecruiterRig {
       if (mesh.morphTargetDictionary) this.morphMeshes.push(mesh);
       const old = mesh.material as THREE.MeshStandardMaterial;
       const isGlasses = old.name === "Wolf3D_Glasses";
+      if (isGlasses && !glasses) mesh.visible = false;
+      const recolor = colors[old.name];
       mesh.material = new THREE.MeshToonMaterial({
         name: old.name,
         map: isGlasses ? null : old.map,
         // Keep the material colour: the compressor folds 1px colour textures
         // (hair, skin) into it, so a plain white would bleach them.
-        color: isGlasses ? TEAL : old.color.clone(),
+        color: recolor ? new THREE.Color(recolor) : isGlasses ? TEAL : old.color.clone(),
         gradientMap,
         transparent: old.transparent,
         alphaTest: old.alphaTest,
@@ -196,11 +208,10 @@ class RecruiterRig {
 
   update(
     camera: THREE.PerspectiveCamera,
-    width: number,
-    height: number,
+    /** Viewport size when this rig frames the camera itself; null when the scene owns it. */
+    framing: { width: number; height: number } | null,
     delta: number,
-    state: RecruiterState,
-    readMouth: (() => number | null) | undefined,
+    { state, readMouth }: Speaker,
   ) {
     const now = performance.now() / 1000;
     const v = this.values;
@@ -211,7 +222,7 @@ class RecruiterRig {
     this.lastState = state;
 
     this.mixer?.update(delta);
-    this.frame(camera, width, height);
+    if (framing) this.frame(camera, framing.width, framing.height);
 
     // Mouth: the live voice level, or a gentle rhythm when there is none.
     let mouth = 0;
@@ -296,39 +307,59 @@ class RecruiterRig {
     head.quaternion.copy(parentWorld.invert().multiply(desired));
   }
 
-  render(scene: THREE.Scene, camera: THREE.Camera) {
-    this.outline.render(scene, camera);
-  }
 }
 
-function Recruiter({ state, readMouth, onReady }: Recruiter3DProps) {
-  const { scene, animations } = useGLTF(RECRUITER_MODEL);
+export type RecruiterModelProps = Omit<ThreeElements["group"], "ref"> & {
+  /** Read every frame; mutate `.current` to change state without re-rendering. */
+  speaker: { current: Speaker };
+  /** Frame the bust in the camera, as the standalone canvas does. */
+  framesCamera?: boolean;
+  /** Draw a frame every frame (for frameloop="demand" canvases). */
+  animate?: boolean;
+  look?: Look;
+  /** Called once the model is loaded and has drawn its first frame. */
+  onReady?: () => void;
+};
+
+/** The character alone, as a node in a scene that owns camera and outline. */
+export function RecruiterModel({ speaker, framesCamera = false, animate = true, look, onReady, ...group }: RecruiterModelProps) {
+  const { scene: source, animations } = useGLTF(RECRUITER_MODEL);
+  // useGLTF hands every caller the same cached scene; two people in one
+  // building need their own skeletons.
+  const scene = useMemo(() => cloneSkinned(source), [source]);
   const rig = useRef<RecruiterRig | null>(null);
   const reported = useRef(false);
-
-  // The frame loop reads the latest props through refs, so a state change
-  // never re-creates the rig or restarts the idle clip.
-  const latest = useRef({ state, readMouth, onReady });
+  const latest = useRef({ look, onReady });
   useEffect(() => {
-    latest.current = { state, readMouth, onReady };
+    latest.current = { look, onReady };
   });
 
-  // Priority 1 takes over rendering: the outline effect draws the scene.
-  useFrame(({ gl, scene: root, camera, size }, delta) => {
-    rig.current ??= new RecruiterRig(gl, scene, animations, prefersReducedMotion());
-    const p = latest.current;
-    rig.current.update(camera as THREE.PerspectiveCamera, size.width, size.height, delta, p.state, p.readMouth);
-    rig.current.render(root, camera);
+  useFrame(({ camera, size, invalidate }, delta) => {
+    rig.current ??= new RecruiterRig(scene, animations, prefersReducedMotion(), latest.current.look);
+    rig.current.update(camera as THREE.PerspectiveCamera, framesCamera ? size : null, delta, speaker.current);
+    if (animate) invalidate();
     if (!reported.current) {
       reported.current = true;
-      p.onReady?.();
+      latest.current.onReady?.();
     }
-  }, 1);
+  });
 
-  return <primitive object={scene} />;
+  return (
+    <group {...group}>
+      <primitive object={scene} />
+    </group>
+  );
 }
 
-export default function Recruiter3D(props: Recruiter3DProps) {
+/** The bust in its own canvas: RecruiterStage outside the building. */
+export default function Recruiter3D({ state, readMouth, onReady }: Recruiter3DProps) {
+  // The frame loop reads the latest props through this ref, so a state
+  // change never re-creates the rig or restarts the idle clip.
+  const speaker = useRef<Speaker>({ state, readMouth });
+  useEffect(() => {
+    speaker.current = { state, readMouth };
+  });
+
   return (
     <Canvas
       // `flat`: no tone mapping, so the toon tones keep the palette's values.
@@ -340,7 +371,8 @@ export default function Recruiter3D(props: Recruiter3DProps) {
     >
       <hemisphereLight args={[0xffffff, 0xd8d2c8, 1.2]} />
       <directionalLight position={[1.5, 2.5, 2.5]} intensity={1.6} color={0xfff4e6} />
-      <Recruiter {...props} />
+      <RecruiterModel speaker={speaker} framesCamera onReady={onReady} />
+      <OutlineRenderer />
     </Canvas>
   );
 }

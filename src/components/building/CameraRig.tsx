@@ -1,0 +1,232 @@
+"use client";
+
+/**
+ * The camera: the user's eyes. It travels between station poses on fixed
+ * paths (stations.ts) — the user is led, never steered.
+ *
+ *   - A walk (state.target) plays every leg of its path, then reports ARRIVE.
+ *     A held walk stops before its last leg until the page releases it; a
+ *     failed walk retraces the poses it reached, back to where it began.
+ *   - A plain route change (a link, the back button) glides there too, but
+ *     reports nothing: there is no caller waiting on it.
+ *   - At the street and the desk the user can drag to look around a little;
+ *     the view eases back to the pose on release. Purely decorative —
+ *     nothing is reachable only by looking.
+ *   - The page panel covers part of the screen; the projection is shifted
+ *     (setViewOffset) so the subject sits in the middle of what is left.
+ * Reduced motion: every move is a cut.
+ *
+ * The canvas renders on demand, so every change here calls invalidate().
+ */
+
+import { useFrame, useThree } from "@react-three/fiber";
+import gsap from "gsap";
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
+
+import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+
+import { useBuilding } from "./BuildingProvider";
+import { fovFor, pathBetween, POSES, type Pose, type Station } from "./stations";
+
+/** Walking pace, metres per second, and the bounds on one leg's duration. */
+const PACE = 2.6;
+const MIN_LEG = 0.6;
+const MAX_LEG = 2.2;
+
+/** How far the user can look around, radians: ±35° yaw, ±12° pitch. */
+const MAX_YAW = 0.61;
+const MAX_PITCH = 0.21;
+const LOOKABLE: ReadonlySet<Station> = new Set(["street", "desk"]);
+
+interface CameraValues {
+  px: number;
+  py: number;
+  pz: number;
+  tx: number;
+  ty: number;
+  tz: number;
+  fov: number;
+}
+
+const valuesOf = (pose: Pose): CameraValues => ({
+  px: pose.position[0],
+  py: pose.position[1],
+  pz: pose.position[2],
+  tx: pose.target[0],
+  ty: pose.target[1],
+  tz: pose.target[2],
+  fov: pose.fov,
+});
+
+const scratch = new THREE.Vector3();
+
+export function CameraRig() {
+  const building = useBuilding();
+  if (!building) throw new Error("CameraRig must be inside <BuildingProvider>");
+  const { state, dispatch, inset, setRedraw } = building;
+  const invalidate = useThree((s) => s.invalidate);
+  const gl = useThree((s) => s.gl);
+
+  // gsap tweens these numbers; the frame loop copies them onto the camera.
+  const cam = useRef<CameraValues>(valuesOf(POSES[state.target ?? state.station]));
+  const timeline = useRef<gsap.core.Timeline | null>(null);
+  /** Poses reached on the current walk, starting with where it began. */
+  const trail = useRef<Pose[]>([]);
+  /** The held walk's last leg, played on release. */
+  const pending = useRef<Pose | null>(null);
+  /** Where the camera last came to rest. */
+  const settled = useRef<Station>(state.target ?? state.station);
+  const look = useRef({ yaw: 0, pitch: 0, dragging: false, x: 0, y: 0 });
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  });
+
+  /** Tween through `poses` in order; `done` runs after the last. */
+  const travel = (poses: Pose[], done: () => void) => {
+    timeline.current?.kill();
+    const reduced = prefersReducedMotion();
+    const tl = gsap.timeline({ onComplete: done, onUpdate: invalidate });
+    let from = cam.current;
+    for (const pose of poses) {
+      const to = valuesOf(pose);
+      const distance = Math.hypot(to.px - from.px, to.py - from.py, to.pz - from.pz);
+      const duration = reduced ? 0 : Math.min(MAX_LEG, Math.max(MIN_LEG, distance / PACE));
+      tl.to(cam.current, { ...to, duration, ease: "power1.inOut", onComplete: () => void trail.current.push(pose) });
+      from = to;
+    }
+    timeline.current = tl;
+  };
+
+  // A walk: a new walkId means a new path (including a failed walk's return).
+  useEffect(() => {
+    const s = latest.current;
+    if (s.target === null) return;
+    const destination = s.target;
+
+    if (s.returning) {
+      pending.current = null;
+      const back = [...trail.current].reverse();
+      trail.current = [];
+      travel(back.length ? back : [POSES[destination]], () => {
+        settled.current = destination;
+        dispatch({ type: "ARRIVE" });
+      });
+      return;
+    }
+
+    const path = pathBetween(s.station, destination);
+    trail.current = [POSES[s.station]];
+    const last = path[path.length - 1];
+    const finish = () => {
+      settled.current = destination;
+      dispatch({ type: "ARRIVE" });
+    };
+    pending.current = null;
+    if (!s.holding || path.length < 2) {
+      travel(path, finish);
+      return;
+    }
+    travel(path.slice(0, -1), () => {
+      // Released while still walking: carry straight on.
+      if (!latest.current.holding) travel([last], finish);
+      else pending.current = last;
+    });
+    // walkId is the trigger; everything else is read from `latest`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.walkId]);
+
+  // The page released a held walk that is waiting at its waypoint.
+  useEffect(() => {
+    if (state.holding || !pending.current || state.target === null) return;
+    const last = pending.current;
+    const destination = state.target;
+    pending.current = null;
+    travel([last], () => {
+      settled.current = destination;
+      dispatch({ type: "ARRIVE" });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.holding]);
+
+  // A route change with no walk: glide there, report nothing.
+  useEffect(() => {
+    if (state.target !== null || state.station === settled.current) return;
+    const from = settled.current;
+    settled.current = state.station;
+    travel(pathBetween(from, state.station), () => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.station, state.target]);
+
+  useEffect(() => () => void timeline.current?.kill(), []);
+
+  useEffect(() => {
+    setRedraw(invalidate);
+    return () => setRedraw(() => {});
+  }, [setRedraw, invalidate]);
+
+  // Drag to look around.
+  useEffect(() => {
+    const el = gl.domElement;
+    const canLook = () => latest.current.target === null && LOOKABLE.has(latest.current.station) && !prefersReducedMotion();
+    const down = (e: PointerEvent) => {
+      if (!canLook()) return;
+      look.current.dragging = true;
+      look.current.x = e.clientX;
+      look.current.y = e.clientY;
+      el.setPointerCapture(e.pointerId);
+    };
+    const move = (e: PointerEvent) => {
+      const l = look.current;
+      if (!l.dragging) return;
+      l.yaw = THREE.MathUtils.clamp(l.yaw + (e.clientX - l.x) * 0.003, -MAX_YAW, MAX_YAW);
+      l.pitch = THREE.MathUtils.clamp(l.pitch + (e.clientY - l.y) * 0.003, -MAX_PITCH, MAX_PITCH);
+      l.x = e.clientX;
+      l.y = e.clientY;
+      invalidate();
+    };
+    const up = () => {
+      look.current.dragging = false;
+      invalidate();
+    };
+    el.addEventListener("pointerdown", down);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    return () => {
+      el.removeEventListener("pointerdown", down);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+    };
+  }, [gl, invalidate]);
+
+  useFrame(({ camera, size }, delta) => {
+    const c = cam.current;
+    const l = look.current;
+    const persp = camera as THREE.PerspectiveCamera;
+
+    if (!l.dragging && (Math.abs(l.yaw) > 1e-4 || Math.abs(l.pitch) > 1e-4)) {
+      const k = Math.exp(-delta * 4);
+      l.yaw *= k;
+      l.pitch *= k;
+      invalidate();
+    }
+
+    persp.position.set(c.px, c.py, c.pz);
+    persp.lookAt(scratch.set(c.tx, c.ty, c.tz));
+    if (l.yaw || l.pitch) {
+      persp.rotateY(-l.yaw);
+      persp.rotateX(-l.pitch);
+    }
+
+    persp.fov = fovFor({ position: [0, 0, 0], target: [0, 0, 0], fov: c.fov }, size.width / size.height);
+    const { right, bottom } = inset.current;
+    if (right || bottom) persp.setViewOffset(size.width, size.height, right / 2, bottom / 2, size.width, size.height);
+    else persp.clearViewOffset();
+    persp.updateProjectionMatrix();
+  });
+
+  return null;
+}
