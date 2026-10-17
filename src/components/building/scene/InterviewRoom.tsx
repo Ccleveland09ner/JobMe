@@ -18,7 +18,8 @@ import type { Speaker } from "@/components/room/Recruiter3D";
 import { toonMaterial } from "@/components/three/toon";
 
 import { TABLE, RECRUITER, ROOM } from "../world";
-import { Box, CeilingLight, Chair, InkEdges, Pane, PottedPlant, Scribbles, Slab, unitBox } from "./parts";
+import { OfficeChair } from "./OfficeChair";
+import { Box, CeilingLight, InkEdges, Pane, PottedPlant, Scribbles, Slab, unitBox } from "./parts";
 
 /** The desk mic. Reads the speaker every frame, so the room never re-renders for it. */
 function DeskMic({ speaker, at }: { speaker: RefObject<Speaker>; at: [number, number, number] }) {
@@ -78,8 +79,8 @@ export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> })
         z={[TABLE.z + TABLE.depth / 2 - 0.08, TABLE.z + TABLE.depth / 2 - 0.04]}
         color="trim"
       />
-      <Chair at={[RECRUITER.x, 0, RECRUITER.z - 0.05]} />
-      <Chair at={[right - 0.7, 0, front - 1.2]} rotationY={-2.4} />
+      <OfficeChair at={[RECRUITER.x, 0, RECRUITER.z - 0.05]} />
+      <OfficeChair at={[right - 0.7, 0, front - 1.2]} rotationY={-2.4} />
 
       {/* Desk mic, facing the candidate: lit while listening. */}
       <DeskMic speaker={speaker} at={[TABLE.x - 0.35, tableTop, TABLE.z - 0.1]} />

@@ -139,18 +139,6 @@ export function PottedPlant({ at }: { at: Vec3 }) {
   );
 }
 
-/** A simple office chair facing +Z (rotate the group to turn it). */
-export function Chair({ at, rotationY = 0, color = "fabric" }: { at: Vec3; rotationY?: number; color?: PaletteColor }) {
-  return (
-    <group position={at} rotation={[0, rotationY, 0]}>
-      <Box size={[0.55, 0.1, 0.52]} at={[0, 0.47, 0]} color={color} />
-      <Box size={[0.55, 0.62, 0.09]} at={[0, 0.82, -0.25]} color={color} />
-      <Box size={[0.07, 0.42, 0.07]} at={[0, 0.21, 0]} color="ink" />
-      <Box size={[0.5, 0.05, 0.08]} at={[0, 0.03, 0]} color="ink" />
-      <Box size={[0.08, 0.05, 0.5]} at={[0, 0.03, 0]} color="ink" />
-    </group>
-  );
-}
 
 /** A flat ceiling light panel, centred at `at`. */
 export function CeilingLight({ at, size = [1.4, 0.5] }: { at: Vec3; size?: [number, number] }) {
