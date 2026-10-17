@@ -32,7 +32,7 @@ import { buttonClasses } from "@/components/ui/Button";
 import { friendlyError, noteFromResponse } from "@/lib/frontend/adapters";
 import { takeIntro } from "@/lib/frontend/handoff";
 import type { InputMode, NoteView, ProgressView, QuestionView, TurnResponse } from "@/lib/frontend/types";
-import { readMouth, setSyntheticSpeaking, unlockAudio } from "@/lib/frontend/voiceSession";
+import { readMouth, readSpokenWord, readVisemes, unlockAudio } from "@/lib/frontend/voiceSession";
 import { isSttSupported } from "@/lib/voice/stt";
 import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 
@@ -64,16 +64,9 @@ const noSubscribe = () => () => {};
 async function sayLines(lines: string[]): Promise<void> {
   const text = lines.join(" ").trim();
   if (!text) return;
-  let synthetic = false;
-  const spoken = speak(text, {
-    onFallback: () => {
-      // The browser voice exposes no audio stream to read the mouth from.
-      synthetic = true;
-      setSyntheticSpeaking(true);
-    },
-  });
-  await Promise.race([spoken, new Promise((r) => setTimeout(r, SPEECH_TIMEOUT_MS))]);
-  if (synthetic) setSyntheticSpeaking(false);
+  // Both voices publish a lip-sync timeline (lib/voice/tts.ts), which the
+  // recruiter's mouth and the captions read directly; nothing to set up here.
+  await Promise.race([speak(text), new Promise((r) => setTimeout(r, SPEECH_TIMEOUT_MS))]);
 }
 
 export function InterviewRoom(props: InterviewRoomProps) {
@@ -301,8 +294,14 @@ export function InterviewRoom(props: InterviewRoomProps) {
       <div className="grid flex-1 gap-6 @4xl:grid-cols-[minmax(0,1fr)_360px] @4xl:items-start">
         <section aria-label="Interview" className="flex min-w-0 flex-col gap-6 rounded-xl border border-line bg-surface p-5 sm:p-8">
           <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} />
-            <Captions text={state.question.text} lead={state.question.lead} intro={state.intro} />
+            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} readVisemes={readVisemes} />
+            <Captions
+              text={state.question.text}
+              lead={state.question.lead}
+              intro={state.intro}
+              spoken={state.phase === "speaking" ? state.speech.join(" ").trim() : null}
+              readSpokenWord={readSpokenWord}
+            />
           </div>
 
           {state.notice && (

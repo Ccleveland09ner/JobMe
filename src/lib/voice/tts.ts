@@ -6,6 +6,14 @@
  * quality, so every path degrades rather than throws.
  *
  * Ref: TechDesign > Voice Output
+ *
+ * Lip-sync: whichever path speaks also publishes a live timeline of mouth
+ * shapes (lib/voice/lipsync.ts), read every frame through speechFrame():
+ *   - neural: ElevenLabs reports every character's time with the audio, so
+ *     the timeline runs on the audio element's own clock — exact.
+ *   - browser: synthesis reports only when each word starts. The timeline is
+ *     estimated from the text, re-anchored at every word event, and the
+ *     voice's speaking rate is re-learned after every line.
  */
 
 import {
@@ -13,9 +21,63 @@ import {
   ACK_CLIP_PATH,
   FILLER_CLIP_COUNT,
   FILLER_CLIP_PATH,
-  TTS_FIRST_BYTE_TIMEOUT_MS,
+  TTS_ALIGNED_TIMEOUT_MS,
   TTS_FIRST_SOUND_TIMEOUT_MS,
 } from "./config";
+import {
+  alignedTimeline,
+  estimatedTimeline,
+  sampleVisemes,
+  wordAt,
+  wordAtChar,
+  type SpeechTimeline,
+  type VisemeWeights,
+} from "./lipsync";
+
+// ---------------------------------------------------------------------------
+// The live speech timeline
+// ---------------------------------------------------------------------------
+
+interface LiveSpeech {
+  timeline: SpeechTimeline;
+  /** Seconds into the timeline right now; negative before sound starts. */
+  now: () => number;
+}
+
+let live: LiveSpeech | null = null;
+
+/** What the speaker's mouth and the captions should show this frame. */
+export interface SpeechFrame {
+  /** The exact text being spoken, so captions can tell it is their line. */
+  text: string;
+  weights: VisemeWeights;
+  /** The word being spoken, as [start, end) offsets into `text`; null between words. */
+  word: { charStart: number; charEnd: number } | null;
+}
+
+/** Null when nothing is being spoken. Cheap enough to call every frame. */
+export function speechFrame(): SpeechFrame | null {
+  if (!live) return null;
+  const t = live.now();
+  const { timeline } = live;
+  const i = t < 0 ? null : wordAt(timeline, t);
+  const w = i === null ? null : timeline.words[i];
+  return {
+    text: timeline.text,
+    weights: t < 0 ? {} : sampleVisemes(timeline, t),
+    word: w ? { charStart: w.charStart, charEnd: w.charEnd } : null,
+  };
+}
+
+/**
+ * The browser voice's speaking rate in letters per second, learned from each
+ * line it finishes. Starts at a typical English rate.
+ */
+let browserCharsPerSecond = 14;
+
+function letters(text: string): number {
+  return (text.match(/[A-Za-z0-9]/g) ?? []).length;
+}
 
 /**
  * Bumped whenever playback is superseded. Without it a slow neural response
@@ -104,12 +166,13 @@ async function playNeural(
   // Probe first: a 503 or a stall then costs the first-byte timeout rather
   // than the whole audio budget.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TTS_FIRST_BYTE_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), TTS_ALIGNED_TIMEOUT_MS);
   options.signal?.addEventListener("abort", () => controller.abort());
 
   let response: Response;
   try {
-    response = await fetch(`/api/tts?text=${encodeURIComponent(text)}`, {
+    // `align=1`: the audio comes with every character's time, for lip-sync.
+    response = await fetch(`/api/tts?align=1&text=${encodeURIComponent(text)}`, {
       signal: controller.signal,
     });
   } finally {
@@ -121,17 +184,42 @@ async function playNeural(
     return false;
   }
 
-  const blob = await response.blob();
+  // JSON when aligned ({ audio: base64 mp3, alignment }), plain audio otherwise.
+  let blob: Blob;
+  let timeline: SpeechTimeline | null = null;
+  if ((response.headers.get("content-type") ?? "").includes("application/json")) {
+    const body = (await response.json()) as {
+      audio: string;
+      alignment?: {
+        characters: string[];
+        character_start_times_seconds: number[];
+        character_end_times_seconds: number[];
+      } | null;
+    };
+    const bytes = Uint8Array.from(atob(body.audio), (c) => c.charCodeAt(0));
+    blob = new Blob([bytes], { type: "audio/mpeg" });
+    const a = body.alignment;
+    if (a) timeline = alignedTimeline(text, a.characters, a.character_start_times_seconds, a.character_end_times_seconds);
+  } else {
+    blob = await response.blob();
+  }
   if (epoch !== playbackEpoch) return true; // superseded; stay silent
 
   const url = URL.createObjectURL(blob);
   audio.src = url;
+  // The mouth runs on the audio's own clock: exact, whatever the buffering.
+  const entry: LiveSpeech | null = timeline ? { timeline, now: () => audio.currentTime } : null;
 
   return new Promise<boolean>((resolve) => {
     const cleanup = () => {
       URL.revokeObjectURL(url);
       audio.onended = null;
       audio.onerror = null;
+      audio.onplaying = null;
+      if (live === entry) live = null;
+    };
+    audio.onplaying = () => {
+      if (entry && epoch === playbackEpoch) live = entry;
     };
 
     const soundTimer = setTimeout(() => {
@@ -185,10 +273,63 @@ async function playBrowser(
     );
     utterance.voice = preferred ?? voices.find((v) => v.lang.startsWith("en")) ?? voices[0];
     utterance.rate = 1.0;
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
+
+    // Lip-sync. The timeline is estimated from the text at the learned rate,
+    // then pinned to the real speech at every word the browser announces.
+    const timeline = estimatedTimeline(text, browserCharsPerSecond);
+    let startedAt = -1;
+    let anchorReal = -1; // performance.now() at the last anchor
+    let anchorAt = 0; // timeline seconds at the last anchor
+    let wordEnd = Infinity; // where the anchored word ends on the timeline
+    let wordEvents = false;
+    const entry: LiveSpeech = {
+      timeline,
+      now: () => {
+        if (anchorReal < 0) return -1;
+        const t = anchorAt + (performance.now() - anchorReal) / 1000;
+        // With word events, never run past the current word: if the next one
+        // is late, the mouth settles instead of mouthing words not yet said.
+        return wordEvents ? Math.min(t, wordEnd + 0.12) : t;
+      },
+    };
+
+    const finish = () => {
+      if (live === entry) live = null;
+      if (startedAt >= 0) {
+        // Learn this voice's rate: scale by how long the line really took
+        // against how long the estimate thought it would.
+        const actual = (performance.now() - startedAt) / 1000;
+        if (actual > 0.5 && letters(text) >= 8) {
+          const learned = browserCharsPerSecond * (timeline.duration / actual);
+          browserCharsPerSecond = Math.min(24, Math.max(8, browserCharsPerSecond * 0.5 + learned * 0.5));
+        }
+      }
+      resolve();
+    };
+
+    utterance.onstart = () => {
+      if (epoch !== playbackEpoch) return;
+      startedAt = anchorReal = performance.now();
+      anchorAt = 0;
+      live = entry;
+    };
+    utterance.onboundary = (event) => {
+      if (event.name && event.name !== "word") return;
+      const i = wordAtChar(timeline, event.charIndex);
+      if (i === null) return;
+      wordEvents = true;
+      anchorReal = performance.now();
+      anchorAt = timeline.words[i].start;
+      wordEnd = timeline.words[i].end;
+    };
+    utterance.onend = finish;
+    utterance.onerror = () => {
+      if (live === entry) live = null;
+      resolve();
+    };
     options.signal?.addEventListener("abort", () => {
       window.speechSynthesis.cancel();
+      if (live === entry) live = null;
       resolve();
     });
     window.speechSynthesis.speak(utterance);
@@ -198,6 +339,7 @@ async function playBrowser(
 /** Cancels anything currently speaking and invalidates in-flight requests. */
 export function stopSpeaking(): void {
   playbackEpoch++;
+  live = null;
   if (sharedAudio) {
     sharedAudio.pause();
     sharedAudio.currentTime = 0;
