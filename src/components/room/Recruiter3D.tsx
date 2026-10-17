@@ -3,7 +3,7 @@
 /**
  * The 3D recruiter: public/models/recruiter.glb, rendered to read as an
  * illustration rather than a game character — flat toon shading, an ink
- * outline, the app's palette, and one teal accent (the glasses).
+ * outline, the app's palette, and black (ink) glasses.
  * Ref: docs/PRD-JobMe-MVP.md > Look and Feel ("friendly and intentional, not
  *      photoreal"; one confident accent)
  *
@@ -47,7 +47,7 @@ import * as THREE from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 import { OutlineRenderer } from "@/components/three/OutlineRenderer";
-import { TEAL, toonGradient } from "@/components/three/toon";
+import { INK, toonGradient } from "@/components/three/toon";
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
 
 export const RECRUITER_MODEL = "/models/recruiter.glb";
@@ -183,7 +183,8 @@ class RecruiterRig {
         map: isGlasses ? null : old.map,
         // Keep the material colour: the compressor folds 1px colour textures
         // (hair, skin) into it, so a plain white would bleach them.
-        color: recolor ? new THREE.Color(recolor) : isGlasses ? TEAL : old.color.clone(),
+        // Glasses are ink, like the line work around them.
+        color: recolor ? new THREE.Color(recolor) : isGlasses ? INK.clone() : old.color.clone(),
         gradientMap,
         transparent: old.transparent,
         alphaTest: old.alphaTest,

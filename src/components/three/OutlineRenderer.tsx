@@ -10,7 +10,8 @@
 
 import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo } from "react";
-import { OutlineEffect } from "three/examples/jsm/effects/OutlineEffect.js";
+// Patched copy: outlines offset on screen only, never in depth (see its header).
+import { OutlineEffect } from "./OutlineEffect.js";
 
 import { INK, OUTLINE_THICKNESS } from "./toon";
 
