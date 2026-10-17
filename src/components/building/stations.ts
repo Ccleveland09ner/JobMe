@@ -60,8 +60,14 @@ export function pathBetween(from: Station, to: Station): Pose[] {
   return [POSES[to]];
 }
 
+const STATIONS: readonly Station[] = ["street", "entrance", "desk", "corridor", "room"];
+
 /** Which station a route belongs to. Unknown routes stand at the desk. */
 export function stationForPath(pathname: string): Station {
+  // Development only: /dev/building/<station> stands at any station without
+  // signing in (app/(building)/dev/building, a 404 in production).
+  const dev = /^\/dev\/building\/([a-z]+)$/.exec(pathname)?.[1];
+  if (dev && (STATIONS as readonly string[]).includes(dev)) return dev as Station;
   if (pathname === "/") return "street";
   if (pathname.startsWith("/login")) return "entrance";
   if (/^\/interview\/[^/]+$/.test(pathname) && pathname !== "/interview/new") return "room";

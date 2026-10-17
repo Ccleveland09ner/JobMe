@@ -3,7 +3,7 @@
 /**
  * The 3D recruiter: public/models/recruiter.glb, rendered to read as an
  * illustration rather than a game character — flat toon shading, an ink
- * outline, the app's palette, and one teal accent (the glasses).
+ * outline, the app's palette, and black (ink) glasses.
  * Ref: docs/PRD-JobMe-MVP.md > Look and Feel ("friendly and intentional, not
  *      photoreal"; one confident accent)
  *
@@ -47,7 +47,8 @@ import * as THREE from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 import { OutlineRenderer } from "@/components/three/OutlineRenderer";
-import { TEAL, toonGradient } from "@/components/three/toon";
+import { studioEnvironment } from "@/components/three/environment";
+import { INK, toonGradient } from "@/components/three/toon";
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
 
 export const RECRUITER_MODEL = "/models/recruiter.glb";
@@ -75,7 +76,17 @@ export interface Speaker {
 export interface Look {
   colors?: Record<string, string>;
   glasses?: boolean;
+  /**
+   * "rendered" (default): the model's own physically based materials, with
+   * every texture map (normal, roughness, occlusion), soft studio lighting
+   * and no ink outline — a properly 3D character.
+   * "toon": three flat tones and an ink outline, like the scenery.
+   */
+  style?: "rendered" | "toon";
 }
+
+/** How strongly the studio lighting (environment) lights a rendered character. */
+const ENV_INTENSITY = 0.45;
 
 /** Morph targets driven every frame, on every mesh that has them. */
 const MORPHS = [
@@ -138,8 +149,9 @@ class RecruiterRig {
     clips: THREE.AnimationClip[],
     private readonly reduced: boolean,
     look: Look = {},
+    environment: THREE.Texture | null = null,
   ) {
-    this.restyle(look);
+    this.restyle(look, environment);
 
     // Read the bind pose before the clip moves anything: it is the one pose
     // where the head is known to be upright and facing straight ahead.
@@ -167,7 +179,7 @@ class RecruiterRig {
     scene.updateMatrixWorld(true);
   }
 
-  private restyle({ colors = {}, glasses = true }: Look) {
+  private restyle({ colors = {}, glasses = true, style = "rendered" }: Look, environment: THREE.Texture | null) {
     const gradientMap = toonGradient();
     this.scene.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
@@ -178,12 +190,33 @@ class RecruiterRig {
       const isGlasses = old.name === "Wolf3D_Glasses";
       if (isGlasses && !glasses) mesh.visible = false;
       const recolor = colors[old.name];
+
+      if (style === "rendered") {
+        // Our own copy: useGLTF shares the source materials between clones.
+        const material = old.clone();
+        if (recolor) material.color.set(recolor);
+        if (isGlasses) {
+          // Black frames with a little sheen.
+          material.map = null;
+          material.color.copy(INK);
+          material.metalness = 0;
+          material.roughness = 0.5;
+        }
+        material.envMap = environment;
+        material.envMapIntensity = ENV_INTENSITY;
+        // No ink line: a rendered character's shading already gives its form.
+        material.userData.outlineParameters = { visible: false };
+        mesh.material = material;
+        return;
+      }
+
       mesh.material = new THREE.MeshToonMaterial({
         name: old.name,
         map: isGlasses ? null : old.map,
         // Keep the material colour: the compressor folds 1px colour textures
         // (hair, skin) into it, so a plain white would bleach them.
-        color: recolor ? new THREE.Color(recolor) : isGlasses ? TEAL : old.color.clone(),
+        // Glasses are ink, like the line work around them.
+        color: recolor ? new THREE.Color(recolor) : isGlasses ? INK.clone() : old.color.clone(),
         gradientMap,
         transparent: old.transparent,
         alphaTest: old.alphaTest,
@@ -334,8 +367,8 @@ export function RecruiterModel({ speaker, framesCamera = false, animate = true, 
     latest.current = { look, onReady };
   });
 
-  useFrame(({ camera, size, invalidate }, delta) => {
-    rig.current ??= new RecruiterRig(scene, animations, prefersReducedMotion(), latest.current.look);
+  useFrame(({ gl, camera, size, invalidate }, delta) => {
+    rig.current ??= new RecruiterRig(scene, animations, prefersReducedMotion(), latest.current.look, studioEnvironment(gl));
     rig.current.update(camera as THREE.PerspectiveCamera, framesCamera ? size : null, delta, speaker.current);
     if (animate) invalidate();
     if (!reported.current) {

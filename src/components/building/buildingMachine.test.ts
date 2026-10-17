@@ -71,6 +71,10 @@ describe("stations", () => {
     expect(stationForPath("/interview/new")).toBe("desk");
     expect(stationForPath("/interview/abc-123")).toBe("room");
     expect(stationForPath("/interview/abc-123/report")).toBe("desk");
+    // The development viewer stands anywhere; unknown names fall back to the desk.
+    expect(stationForPath("/dev/building/room")).toBe("room");
+    expect(stationForPath("/dev/building/street")).toBe("street");
+    expect(stationForPath("/dev/building/attic")).toBe("desk");
   });
 
   it("goes through the corridor between the desk and the room, both ways", () => {

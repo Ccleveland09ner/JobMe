@@ -59,7 +59,8 @@ export default function BuildingCanvas() {
       // `flat`: no tone mapping, so the toon tones keep the palette's values.
       flat
       frameloop="demand"
-      dpr={[1, 1.5]}
+      // Up to 2x: the characters are rendered in full 3D and soften below it.
+      dpr={[1, 2]}
       gl={{ antialias: true }}
       camera={{ near: 0.05, far: 120 }}
       onCreated={({ gl }) => {
