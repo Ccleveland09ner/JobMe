@@ -34,7 +34,12 @@ export interface RecognizerCallbacks {
   onState?: (state: MachineState) => void;
 }
 
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+type Availability = "available" | "downloadable" | "downloading" | "unavailable";
+
+type SpeechRecognitionCtor = (new () => SpeechRecognitionLike) & {
+  /** Chrome 139+: whether a language can be recognised, on-device or remote. */
+  available?: (options: { langs: string[]; processLocally?: boolean }) => Promise<Availability>;
+};
 
 interface SpeechRecognitionLike {
   continuous: boolean;
@@ -72,7 +77,35 @@ export function isSttSupported(): boolean {
   return ctor() !== null;
 }
 
+const LANG = "en-US";
+
+/**
+ * Recognise on-device only once Chrome says the language pack is INSTALLED.
+ *
+ * `processLocally = true` with the pack merely "downloadable" makes every
+ * start() fail with `language-not-supported` — which is fatal, so voice
+ * answers never record. Until the probe below says "available" (or where it
+ * cannot ask), the remote recogniser is used, as before Chrome 139.
+ */
+let recogniseLocally = false;
+let localProbe: Promise<void> | null = null;
+
+function probeLocalRecognition(): Promise<void> {
+  localProbe ??= (async () => {
+    const available = ctor()?.available;
+    if (!available) return;
+    try {
+      recogniseLocally = (await available({ langs: [LANG], processLocally: true })) === "available";
+    } catch {
+      recogniseLocally = false;
+    }
+  })();
+  return localProbe;
+}
+
 export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
+  // Usually settled long before the first press; until then, remote.
+  void probeLocalRecognition();
   let state = initialState();
   let current: SpeechRecognitionLike | null = null;
   let resolve: ((r: SttResult) => void) | null = null;
@@ -118,14 +151,18 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
 
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = "en-US";
+        recognition.lang = LANG;
         recognition.maxAlternatives = 1;
-        // Chrome 139+ desktop only. On-device: removes the `network` error
-        // class entirely, and is a real privacy answer.
-        try {
-          recognition.processLocally = true;
-        } catch {
-          /* not supported; the remote service is used instead */
+        // Chrome 139+ desktop only, and only with the language pack
+        // installed (probeLocalRecognition). On-device removes the `network`
+        // error class entirely, and is a real privacy answer.
+        const local = recogniseLocally;
+        if (local) {
+          try {
+            recognition.processLocally = true;
+          } catch {
+            /* not supported; the remote service is used instead */
+          }
         }
 
         const guard =
@@ -138,9 +175,27 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
 
         recognition.onstart = guard(() => send({ t: "STARTED", now: now() }));
         recognition.onend = guard(() => send({ t: "ENDED", now: now() }));
-        recognition.onerror = guard((e: { error?: string }) =>
-          send({ t: "ERROR", code: (e?.error as SttErrorCode) ?? "unknown" }),
-        );
+        recognition.onerror = guard((e: { error?: string }) => {
+          const code = (e?.error as SttErrorCode) ?? "unknown";
+          // On-device refused after all (pack removed, or the probe was
+          // wrong): not fatal — fall back to remote for this and every later
+          // session, and let the machine restart as after any end.
+          if (local && (code === "language-not-supported" || code === "service-not-allowed")) {
+            recogniseLocally = false;
+            // Silence the refused instance first, so its own onend cannot
+            // end the session a second time.
+            detach(recognition);
+            try {
+              recognition.abort();
+            } catch {
+              /* already dead */
+            }
+            current = null;
+            send({ t: "ENDED", now: now() });
+            return;
+          }
+          send({ t: "ERROR", code });
+        });
         recognition.onresult = guard((e: SpeechResultEventLike) => {
           const results: { isFinal: boolean; text: string }[] = [];
           for (let i = 0; i < e.results.length; i++) {
