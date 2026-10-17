@@ -6,42 +6,18 @@
  * on the left, a plant in the corner, the table between interviewer and
  * candidate with the desk mic and a folder on it.
  *
- * The mic lights teal while the candidate is being listened to, the same cue
- * as the SVG room's DeskMic.
+ * The desk mic is the candidate's microphone (DeskMic.tsx): pressable, and
+ * lit green while recording, the same control as the panel's mic button.
  */
 
-import { useFrame } from "@react-three/fiber";
-import { useRef, type RefObject } from "react";
-import * as THREE from "three";
+import type { RefObject } from "react";
 
 import type { Speaker } from "@/components/room/Recruiter3D";
-import { toonMaterial } from "@/components/three/toon";
 
 import { TABLE, RECRUITER, ROOM } from "../world";
-import { Box, CeilingLight, Chair, InkEdges, Pane, PottedPlant, Scribbles, Slab, unitBox } from "./parts";
-
-/** The desk mic. Reads the speaker every frame, so the room never re-renders for it. */
-function DeskMic({ speaker, at }: { speaker: RefObject<Speaker>; at: [number, number, number] }) {
-  const head = useRef<THREE.Mesh>(null);
-  useFrame(({ invalidate }) => {
-    const mesh = head.current;
-    if (!mesh) return;
-    const material = toonMaterial(speaker.current.state === "listening" ? "accent" : "surface");
-    if (mesh.material !== material) {
-      mesh.material = material;
-      invalidate();
-    }
-  });
-  return (
-    <group position={at}>
-      <Box size={[0.14, 0.02, 0.14]} at={[0, 0.01, 0]} color="ink" />
-      <Box size={[0.02, 0.08, 0.02]} at={[0, 0.06, 0]} color="ink" />
-      <mesh ref={head} geometry={unitBox} material={toonMaterial("surface")} position={[0, 0.14, 0]} scale={[0.06, 0.1, 0.06]}>
-        <InkEdges />
-      </mesh>
-    </group>
-  );
-}
+import { DeskMic } from "./DeskMic";
+import { OfficeChair } from "./OfficeChair";
+import { Box, CeilingLight, Pane, PottedPlant, Scribbles, Slab } from "./parts";
 
 export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> }) {
   const { left, right, front, back, height } = ROOM;
@@ -78,8 +54,8 @@ export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> })
         z={[TABLE.z + TABLE.depth / 2 - 0.08, TABLE.z + TABLE.depth / 2 - 0.04]}
         color="trim"
       />
-      <Chair at={[RECRUITER.x, 0, RECRUITER.z - 0.05]} />
-      <Chair at={[right - 0.7, 0, front - 1.2]} rotationY={-2.4} />
+      <OfficeChair at={[RECRUITER.x, 0, RECRUITER.z - 0.05]} />
+      <OfficeChair at={[right - 0.7, 0, front - 1.2]} rotationY={-2.4} />
 
       {/* Desk mic, facing the candidate: lit while listening. */}
       <DeskMic speaker={speaker} at={[TABLE.x - 0.35, tableTop, TABLE.z - 0.1]} />

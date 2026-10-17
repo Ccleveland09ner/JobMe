@@ -8,7 +8,8 @@
  */
 
 import { CORRIDOR, DESK, FACADE_Z, LOBBY, SECRETARY } from "../world";
-import { Box, CeilingLight, Chair, Pane, PottedPlant, Scribbles, Slab } from "./parts";
+import { OfficeChair } from "./OfficeChair";
+import { Box, CeilingLight, Pane, PottedPlant, Scribbles, Slab } from "./parts";
 
 export function Lobby() {
   const { left, right, back, height } = LOBBY;
@@ -40,7 +41,7 @@ export function Lobby() {
       <Slab x={[-DESK.width / 2, DESK.width / 2]} y={[0, DESK.height]} z={[deskBack, DESK.z]} color="surface" />
       <Slab x={[-DESK.width / 2 - 0.05, DESK.width / 2 + 0.05]} y={[DESK.height, DESK.height + 0.06]} z={[deskBack - 0.05, DESK.z + 0.08]} color="wood" />
       <Slab x={[-DESK.width / 2, DESK.width / 2]} y={[0.48, 0.55]} z={[DESK.z, DESK.z + 0.01]} color="accent" />
-      <Chair at={[SECRETARY.x, 0, SECRETARY.z - 0.05]} />
+      <OfficeChair at={[SECRETARY.x, 0, SECRETARY.z - 0.05]} />
       {/* On the counter: a tray of papers and a pen pot. */}
       <Box size={[0.42, 0.04, 0.3]} at={[0.9, DESK.height + 0.08, DESK.z - 0.35]} color="surface" />
       <Box size={[0.1, 0.16, 0.1]} at={[-1.1, DESK.height + 0.14, DESK.z - 0.4]} color="ink" />

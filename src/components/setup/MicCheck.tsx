@@ -41,7 +41,12 @@ export function MicCheck({ onInputModeChange }: { onInputModeChange: (mode: Inpu
 
   useEffect(() => () => cleanup.current?.(), []);
 
-  const voiceReady = speechSupported === true && status === "allowed" && !preferTyped;
+  // Voice unless there is a reason not to: the browser cannot recognise
+  // speech, the test found a problem, or the candidate chose to type. Not
+  // running the test is NOT a reason — it used to be, and skipping the test
+  // silently started every interview in typed mode.
+  const micProblem = status === "denied" || status === "no-device" || status === "error";
+  const voiceReady = speechSupported === true && !micProblem && !preferTyped;
   useEffect(() => {
     onInputModeChange(voiceReady ? "voice" : "typed");
   }, [voiceReady, onInputModeChange]);
@@ -156,7 +161,11 @@ export function MicCheck({ onInputModeChange }: { onInputModeChange: (mode: Inpu
       )}
 
       <p className="text-sm text-muted">
-        {voiceReady ? "You'll answer out loud." : "You'll type your answers."}
+        {voiceReady
+          ? status === "allowed"
+            ? "You'll answer out loud."
+            : "You'll answer out loud. Testing the mic first is optional, but worth it."
+          : "You'll type your answers."}
       </p>
     </fieldset>
   );

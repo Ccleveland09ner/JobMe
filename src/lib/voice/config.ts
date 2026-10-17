@@ -28,3 +28,10 @@ export const ACK_CLIP_COUNT = 10;
  */
 export const FILLER_CLIP_PATH = "/audio/filler";
 export const FILLER_CLIP_COUNT = 4;
+
+/**
+ * The aligned voice (audio + character timings for lip-sync) arrives in one
+ * piece once the line is generated, not as a stream, so it gets the same
+ * budget as first sound rather than first byte.
+ */
+export const TTS_ALIGNED_TIMEOUT_MS = 2500;

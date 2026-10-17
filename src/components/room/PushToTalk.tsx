@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/Button";
 import type { InputMode } from "@/lib/frontend/types";
 
 import { LiveTranscript } from "./LiveTranscript";
+import { TableMic } from "./TableMic";
 import type { Phase } from "./roomMachine";
 
 /** True when a key event belongs to something the user is typing into or operating. */
@@ -127,50 +128,33 @@ export function PushToTalk({
       {(recording || submitting || retry) && <LiveTranscript final={draft} interim="" />}
 
       <div className="flex flex-col items-center gap-2">
-        {recording ? (
-          <>
-            <p className="flex items-center gap-2 text-sm font-medium text-accent-strong">
-              <span aria-hidden="true" className="size-2.5 animate-pulse rounded-full bg-danger" />
-              Listening…
-            </p>
-            <Button size="lg" onClick={onSubmit} className="min-w-56">
-              Send answer
-            </Button>
-            <p aria-live="polite" className="min-h-5 text-xs text-muted">
-              {secondsLeft !== null
-                ? draft.trim()
-                  ? `No new words — sending in ${secondsLeft}…`
-                  : `Didn't catch anything — stopping in ${secondsLeft}…`
-                : "Press Space or Send when you're done. Pausing for 10 seconds also sends."}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="flex flex-wrap justify-center gap-2">
-              {retry && (
-                <Button size="lg" onClick={onSubmit}>
-                  Send again
-                </Button>
-              )}
-              <Button
-                size="lg"
-                variant={retry ? "secondary" : "primary"}
-                onClick={onRecordStart}
-                disabled={!yourTurn}
-                className="min-w-56"
-              >
-                {submitting ? "Sending…" : retry ? "Record a new answer" : "Start answering"}
-              </Button>
-            </div>
-            <p className="min-h-5 text-xs text-muted">
-              {phase === "speaking"
-                ? "The mic turns on when the interviewer finishes."
-                : yourTurn
-                  ? "Press Start answering or Space, then speak."
-                  : null}
-            </p>
-          </>
+        {/* The mic itself is the control: press to start, press again to send. */}
+        <TableMic
+          state={recording ? "recording" : yourTurn ? "ready" : "disabled"}
+          onToggle={recording ? onSubmit : onRecordStart}
+        />
+        {retry && (
+          <Button size="sm" onClick={onSubmit}>
+            Send again
+          </Button>
         )}
+        <p aria-live="polite" className="min-h-5 text-center text-xs text-muted">
+          {recording
+            ? secondsLeft !== null
+              ? draft.trim()
+                ? `No new words — sending in ${secondsLeft}…`
+                : `Didn't catch anything — stopping in ${secondsLeft}…`
+              : "Listening… Press the mic or Space to send. Pausing for 10 seconds also sends."
+            : submitting
+              ? "Sending your answer…"
+              : phase === "speaking"
+                ? "The interviewer is speaking. The mic turns on when they finish."
+                : yourTurn
+                  ? retry
+                    ? "Press the mic to record a new answer, or send this one again."
+                    : "Press the mic or Space, then speak."
+                  : null}
+        </p>
       </div>
     </div>
   );
