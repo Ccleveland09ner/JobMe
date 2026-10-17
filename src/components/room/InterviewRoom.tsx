@@ -25,7 +25,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useReducer, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useSyncExternalStore } from "react";
 
 import { LoadingState } from "@/components/common/LoadingState";
 import { buttonClasses } from "@/components/ui/Button";
@@ -36,6 +36,7 @@ import { readMouth, readSpokenWord, readVisemes, unlockAudio } from "@/lib/front
 import { isSttSupported } from "@/lib/voice/stt";
 import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 
+import type { MicControl, MicState } from "./Recruiter3D";
 import { RecruiterStage } from "./RecruiterStage";
 import { Captions } from "./Captions";
 import { EndInterviewDialog } from "./EndInterviewDialog";
@@ -258,6 +259,23 @@ export function InterviewRoom(props: InterviewRoomProps) {
     startVoice();
   }, [state.phase, state.inputMode, startVoice]);
 
+  // The candidate's mic, as both the panel button and the 3D desk mic show it.
+  const micState: MicState =
+    state.inputMode !== "voice"
+      ? "off"
+      : state.phase === "recording"
+        ? "recording"
+        : state.phase === "awaitingAnswer"
+          ? "ready"
+          : "disabled";
+  const mic = useMemo<MicControl>(
+    () => ({
+      state: micState,
+      toggle: micState === "recording" ? onSubmit : micState === "ready" ? onRecordStart : () => {},
+    }),
+    [micState, onSubmit, onRecordStart],
+  );
+
   const endInterview = () => {
     voice.abort();
     stopSpeaking();
@@ -294,7 +312,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
       <div className="grid flex-1 gap-6 @4xl:grid-cols-[minmax(0,1fr)_360px] @4xl:items-start">
         <section aria-label="Interview" className="flex min-w-0 flex-col gap-6 rounded-xl border border-line bg-surface p-5 sm:p-8">
           <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} readVisemes={readVisemes} />
+            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} readVisemes={readVisemes} mic={mic} />
             <Captions
               text={state.question.text}
               lead={state.question.lead}

@@ -68,11 +68,30 @@ export interface Recruiter3DProps {
   onReady?: () => void;
 }
 
+/**
+ * The candidate's microphone, which the room shows twice — the mic button in
+ * the panel (room/TableMic.tsx) and the mic on the 3D desk — so both always
+ * agree:
+ *   disabled   the interviewer is speaking (or an answer is being sent)
+ *   ready      the candidate's turn: press to start answering
+ *   recording  listening (lit green): press to send
+ *   off        typed answers; the mic is not used
+ */
+export type MicState = "off" | "disabled" | "ready" | "recording";
+
+export interface MicControl {
+  state: MicState;
+  /** Start recording when ready, send when recording; nothing otherwise. */
+  toggle: () => void;
+}
+
 /** What drives the face, read every frame without re-rendering React. */
 export interface Speaker {
   state: RecruiterState;
   readMouth?: () => number | null;
   readVisemes?: () => VisemeWeights | null;
+  /** The candidate's mic, for the desk mic in the building's interview room. */
+  mic?: MicControl;
 }
 
 /**
