@@ -72,7 +72,45 @@ export function isSttSupported(): boolean {
   return ctor() !== null;
 }
 
+type OnDevice = "unknown" | "available" | "unavailable";
+
+/**
+ * Whether the browser has an installed on-device English model (Chrome
+ * 139+: SpeechRecognition.available). Asked once, in the background; until
+ * the answer arrives, and wherever the API does not exist, the browser's
+ * normal (online) recognition is used.
+ */
+let onDevice: OnDevice = "unknown";
+let onDeviceAsked = false;
+/** Set if an on-device start failed anyway: online for the rest of the page. */
+let localFailed = false;
+
+function askOnDevice(): void {
+  if (onDeviceAsked) return;
+  onDeviceAsked = true;
+  const available = (ctor() as unknown as {
+    available?: (opts: { langs: string[]; processLocally: boolean }) => Promise<string>;
+  } | null)?.available;
+  if (typeof available !== "function") {
+    onDevice = "unavailable";
+    return;
+  }
+  available
+    .call(ctor(), { langs: ["en-US"], processLocally: true })
+    .then((answer) => {
+      onDevice = answer === "available" ? "available" : "unavailable";
+    })
+    .catch(() => {
+      onDevice = "unavailable";
+    });
+}
+
+/** Errors that mean "this way of recognising does not work here", not "no mic". */
+const LOCAL_ONLY_FAILURES: readonly string[] = ["language-not-supported", "service-not-allowed"];
+
 export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
+  askOnDevice();
+  let usingLocal = false;
   let state = initialState();
   let current: SpeechRecognitionLike | null = null;
   let resolve: ((r: SttResult) => void) | null = null;
@@ -120,12 +158,18 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         recognition.interimResults = true;
         recognition.lang = "en-US";
         recognition.maxAlternatives = 1;
-        // Chrome 139+ desktop only. On-device: removes the `network` error
-        // class entirely, and is a real privacy answer.
-        try {
-          recognition.processLocally = true;
-        } catch {
-          /* not supported; the remote service is used instead */
+        // On-device recognition (Chrome 139+) only when the browser says the
+        // English model is installed. Forcing it otherwise makes start() fail
+        // with `language-not-supported` — a fatal error — on every machine
+        // that has not downloaded the pack, which dropped every voice
+        // interview straight to typed answers.
+        usingLocal = onDevice === "available" && !localFailed;
+        if (usingLocal) {
+          try {
+            recognition.processLocally = true;
+          } catch {
+            usingLocal = false; // not supported; the remote service is used
+          }
         }
 
         const guard =
@@ -138,9 +182,18 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
 
         recognition.onstart = guard(() => send({ t: "STARTED", now: now() }));
         recognition.onend = guard(() => send({ t: "ENDED", now: now() }));
-        recognition.onerror = guard((e: { error?: string }) =>
-          send({ t: "ERROR", code: (e?.error as SttErrorCode) ?? "unknown" }),
-        );
+        recognition.onerror = guard((e: { error?: string }) => {
+          const code = (e?.error as SttErrorCode) ?? "unknown";
+          if (usingLocal && LOCAL_ONLY_FAILURES.includes(code)) {
+            // The on-device model said yes but would not run: fall back to
+            // online recognition and let the machine restart, rather than
+            // ending the answer on a fatal error.
+            localFailed = true;
+            send({ t: "ERROR", code: "network" });
+            return;
+          }
+          send({ t: "ERROR", code });
+        });
         recognition.onresult = guard((e: SpeechResultEventLike) => {
           const results: { isFinal: boolean; text: string }[] = [];
           for (let i = 0; i < e.results.length; i++) {

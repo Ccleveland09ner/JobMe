@@ -34,6 +34,7 @@ import { takeIntro } from "@/lib/frontend/handoff";
 import type { InputMode, NoteView, ProgressView, QuestionView, TurnResponse } from "@/lib/frontend/types";
 import { readMouth, readSpokenWord, readVisemes, unlockAudio } from "@/lib/frontend/voiceSession";
 import { isSttSupported } from "@/lib/voice/stt";
+import type { SttErrorCode } from "@/lib/voice/sttMachine";
 import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 
 import type { MicControl, MicState } from "./Recruiter3D";
@@ -45,6 +46,19 @@ import { ProgressPill } from "./ProgressPill";
 import { PushToTalk } from "./PushToTalk";
 import { avatarState, initRoom, roomReducer } from "./roomMachine";
 import { useVoiceAnswer } from "./useVoiceAnswer";
+
+/**
+ * Why voice answers stopped, in plain words, by the recognizer's error.
+ * Only fatal errors reach here (the rest restart quietly).
+ */
+const FALLBACK_REASON: Partial<Record<SttErrorCode, string>> = {
+  "not-allowed":
+    "Microphone access is blocked for this site. To use your voice, allow the microphone in the address bar's site settings and reload.",
+  "service-not-allowed": "This browser's speech recognition is turned off or unavailable.",
+  "audio-capture": "No working microphone was found.",
+  "language-not-supported": "This browser can't recognise English speech right now.",
+  unknown: "Voice answers stopped working.",
+};
 
 /** Upper bound on any one spoken line, so a stuck audio path can never stall the room. */
 const SPEECH_TIMEOUT_MS = 30_000;
@@ -96,13 +110,13 @@ export function InterviewRoom(props: InterviewRoomProps) {
           ? { type: "SUBMIT" }
           : {
               type: "RECORD_CANCEL",
-              notice: "We didn't hear anything. Press Start answering when you're ready.",
+              notice: "We didn't hear anything. Press the mic when you're ready.",
             },
       ),
-    onFatal: (heard) =>
+    onFatal: (heard, reason) =>
       dispatch({
         type: "FALLBACK_TO_TYPED",
-        notice: "We lost access to your microphone, so you can type the rest of your answers.",
+        notice: `${FALLBACK_REASON[reason ?? "unknown"] ?? FALLBACK_REASON.unknown} You can type the rest of your answers.`,
         draft: heard,
       }),
   });
