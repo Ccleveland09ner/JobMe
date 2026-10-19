@@ -42,6 +42,7 @@ export const PALETTE = {
   brass: "#c9a24a",
   pin: "#d64b3c",
   paper: "#fffdf7",
+  noteYellow: "#fff4c2",
 } as const;
 
 export type PaletteColor = keyof typeof PALETTE;

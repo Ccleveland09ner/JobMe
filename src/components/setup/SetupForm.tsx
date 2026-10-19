@@ -23,6 +23,7 @@ import { Clipboard, paperField } from "@/components/ui/Clipboard";
 import type { InterviewMode } from "@/lib/engine/types";
 import { friendlyError } from "@/lib/frontend/adapters";
 import { saveIntro } from "@/lib/frontend/handoff";
+import { useDefaults } from "@/lib/frontend/preferences";
 import { unlockAudio } from "@/lib/frontend/voiceSession";
 import type { CreateSessionResponse, InputMode, ResumeSummary } from "@/lib/frontend/types";
 import { LIMITS } from "@/lib/schemas";
@@ -49,10 +50,16 @@ export function SetupForm({
   const id = useId();
 
   const [displayName, setDisplayName] = useState(defaultName);
-  const [mode, setMode] = useState<InterviewMode>("quick");
+  // Defaults pinned on the settings board (preferences.ts) start the form;
+  // a choice made here wins. A preference for typing wins over a working
+  // microphone (MicCheck only ever reports what the mic can do).
+  const defaults = useDefaults();
+  const [chosenMode, setMode] = useState<InterviewMode | null>(null);
+  const mode = chosenMode ?? defaults?.mode ?? "quick";
   const [resumeId, setResumeId] = useState<string | null>(latestResume?.id ?? null);
   const [job, setJob] = useState<JobValue>({ targetRole: "", source: "paste", roleText: "", jobUrl: "" });
-  const [inputMode, setInputMode] = useState<InputMode>("typed");
+  const [micMode, setInputMode] = useState<InputMode>("typed");
+  const inputMode: InputMode = defaults?.inputMode === "typed" ? "typed" : micMode;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

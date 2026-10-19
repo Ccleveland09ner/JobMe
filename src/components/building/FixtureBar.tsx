@@ -17,7 +17,17 @@ import { buttonClasses } from "@/components/ui/Button";
 
 import { useBuilding } from "./BuildingProvider";
 
-export function FixtureBar() {
+/**
+ * Sign out by walking out: back to the front door first, then the POST to
+ * /logout. Without JavaScript or the 3D building, the form simply submits.
+ */
+export function SignOutButton({
+  label = "Leave (sign out)",
+  variant = "ghost",
+}: {
+  label?: string;
+  variant?: "ghost" | "secondary";
+}) {
   const building = useBuilding();
   const form = useRef<HTMLFormElement>(null);
   const [leaving, setLeaving] = useState(false);
@@ -30,6 +40,26 @@ export function FixtureBar() {
   }, [leaving, building?.state.station, building?.state.target]);
 
   return (
+    <form
+      ref={form}
+      method="post"
+      action="/logout"
+      onSubmit={(e) => {
+        if (!building?.show3D || leaving) return;
+        e.preventDefault();
+        setLeaving(true);
+        building.walkTo("entrance");
+      }}
+    >
+      <button type="submit" disabled={leaving} className={buttonClasses({ variant, size: "sm" })}>
+        {leaving ? "Leaving…" : label}
+      </button>
+    </form>
+  );
+}
+
+export function FixtureBar() {
+  return (
     <nav
       aria-label="Building"
       className="fixed left-4 top-4 z-10 flex items-center gap-1 rounded-xl border border-line bg-surface/90 p-1 shadow-sm backdrop-blur-sm"
@@ -37,21 +67,7 @@ export function FixtureBar() {
       <Link href="/dashboard" className={buttonClasses({ variant: "ghost", size: "sm" })}>
         Front desk
       </Link>
-      <form
-        ref={form}
-        method="post"
-        action="/logout"
-        onSubmit={(e) => {
-          if (!building?.show3D || leaving) return;
-          e.preventDefault();
-          setLeaving(true);
-          building.walkTo("entrance");
-        }}
-      >
-        <button type="submit" disabled={leaving} className={buttonClasses({ variant: "ghost", size: "sm" })}>
-          {leaving ? "Leaving…" : "Leave (sign out)"}
-        </button>
-      </form>
+      <SignOutButton />
     </nav>
   );
 }

@@ -54,6 +54,10 @@ const WAYPOINTS: Partial<Record<`${Station}>${Station}`, Pose[]>> = {
   "street>room": [POSES.entrance, POSES.desk, CORRIDOR_MOUTH, POSES.corridor],
   "desk>room": [CORRIDOR_MOUTH, POSES.corridor],
   "desk>corridor": [CORRIDOR_MOUTH],
+  // The board is beside the desk: anywhere further goes past the desk first.
+  "noteboard>entrance": [POSES.desk],
+  "noteboard>street": [POSES.desk, POSES.entrance],
+  "noteboard>room": [POSES.desk, CORRIDOR_MOUTH, POSES.corridor],
 };
 
 /** The poses visited going from `from` to `to`, ending at `to`. */

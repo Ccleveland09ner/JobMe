@@ -92,7 +92,7 @@ export function TableNotepad() {
 /** Pinned notes on the board: paper, a coloured pin, a few written lines. */
 const NOTES: { x: number; y: number; w: number; h: number; tilt: number; color: string }[] = [
   { x: 2.45, y: 1.55, w: 0.95, h: 0.75, tilt: 0.04, color: "paper" },
-  { x: 3.85, y: 1.5, w: 1.0, h: 0.8, tilt: -0.05, color: "#fff4c2" },
+  { x: 3.85, y: 1.5, w: 1.0, h: 0.8, tilt: -0.05, color: "noteYellow" },
 ];
 
 export function NoticeBoard() {
