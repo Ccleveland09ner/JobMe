@@ -18,7 +18,6 @@
 
 import { notFound, redirect } from "next/navigation";
 
-import { PageContainer } from "@/components/layout/PageContainer";
 import { InterviewRoom } from "@/components/room/InterviewRoom";
 import { requireUser } from "@/lib/auth";
 import type { EngineState } from "@/lib/engine/types";
@@ -67,16 +66,14 @@ export default async function InterviewRoomPage({
   const notes = ((turnsRes.data ?? []) as unknown as TurnRow[]).map(noteFromTurnRow);
 
   return (
-    <PageContainer width="wide" className="flex flex-1 flex-col">
-      <InterviewRoom
-        key={state.turnSeq}
-        sessionId={id}
-        question={questionFromState(state)}
-        turnSeq={state.turnSeq}
-        progress={progressFromState(state)}
-        notes={notes}
-        requestedInput={requestedInput}
-      />
-    </PageContainer>
+    <InterviewRoom
+      key={state.turnSeq}
+      sessionId={id}
+      question={questionFromState(state)}
+      turnSeq={state.turnSeq}
+      progress={progressFromState(state)}
+      notes={notes}
+      requestedInput={requestedInput}
+    />
   );
 }

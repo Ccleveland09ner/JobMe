@@ -21,14 +21,26 @@
  * the server's turnSeq, so it remounts from the authoritative history.
  *
  * Never render raw JSON, model names or stack traces. Ref: PRD > Notepad.
+ *
+ * Layout (user decision, 2026-10-18): the room is a conversation, not a
+ * dashboard. Laid over the 3D room, full screen:
+ *   - the interviewer's question in a speech bubble by her head;
+ *   - the candidate's words in their own bubble, over the microphone at the
+ *     centre bottom of the frame (PushToTalk);
+ *   - the notepad lies on the table: picked up (the 3D notepad, or its
+ *     "Notes" button) it opens as a notepad to flip through (HeldNotepad).
+ *     It shows the same entries the always-on notepad did, no more.
+ * Every effect, request and phase above is unchanged.
  */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useReducer, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 
+import { useBuilding } from "@/components/building/BuildingProvider";
+import { domVisible } from "@/components/building/heldMachine";
 import { LoadingState } from "@/components/common/LoadingState";
-import { buttonClasses } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { friendlyError, noteFromResponse } from "@/lib/frontend/adapters";
 import { takeIntro } from "@/lib/frontend/handoff";
 import type { InputMode, NoteView, ProgressView, QuestionView, TurnResponse } from "@/lib/frontend/types";
@@ -39,10 +51,11 @@ import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 import { RecruiterStage } from "./RecruiterStage";
 import { Captions } from "./Captions";
 import { EndInterviewDialog } from "./EndInterviewDialog";
-import { Notepad } from "./Notepad";
+import { HeldNotepad } from "./HeldNotepad";
 import { ProgressPill } from "./ProgressPill";
 import { PushToTalk } from "./PushToTalk";
 import { avatarState, initRoom, roomReducer } from "./roomMachine";
+import { SpeechBubble } from "./SpeechBubble";
 import { useVoiceAnswer } from "./useVoiceAnswer";
 
 /** Upper bound on any one spoken line, so a stuck audio path can never stall the room. */
@@ -265,6 +278,29 @@ export function InterviewRoom(props: InterviewRoomProps) {
     startVoice();
   }, [state.phase, state.inputMode, startVoice]);
 
+  // ---- The notepad on the table -----------------------------------------
+  // In the building it is a held object (heldMachine.ts): picked up off the
+  // table, then opened. Without the building, it just opens.
+  const building = useBuilding();
+  const dispatchHeld = building?.dispatchHeld;
+  const setAction = building?.setAction;
+  const [notesOpenLocally, setNotesOpenLocally] = useState(false);
+  const notesOpen = building ? building.held.held === "notepad" && domVisible(building.held) : notesOpenLocally;
+  const openNotes = useCallback(() => {
+    if (dispatchHeld) dispatchHeld({ type: "REQUEST", want: "notepad" });
+    else setNotesOpenLocally(true);
+  }, [dispatchHeld]);
+  const closeNotes = useCallback(() => {
+    if (dispatchHeld) dispatchHeld({ type: "REQUEST", want: null });
+    else setNotesOpenLocally(false);
+  }, [dispatchHeld]);
+  // Clicking the 3D notepad does the same as the Notes button.
+  useEffect(() => {
+    if (!setAction) return;
+    setAction("notepad", openNotes);
+    return () => setAction("notepad", null);
+  }, [setAction, openNotes]);
+
   const endInterview = () => {
     voice.abort();
     stopSpeaking();
@@ -272,77 +308,116 @@ export function InterviewRoom(props: InterviewRoomProps) {
     router.push(reportHref);
   };
 
+  const latest = state.notes.at(-1);
+  const slip =
+    "rounded-lg border-2 border-ink/70 px-3 py-2 text-sm shadow-[3px_4px_0_0_rgb(28_27_26/0.18)]";
+
   return (
-    // A container: in the building the room is a side panel, so the
-    // two-column layout follows the panel's width, not the window's.
-    <div className="@container flex flex-1 flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="sr-only">Interview in progress</h1>
+    <div className="absolute inset-0">
+      <h1 className="sr-only">Interview in progress</h1>
+
+      {/* Corners: where you are, and the ways out. */}
+      <div className="pointer-events-auto absolute left-3 top-3 max-w-[60vw] rounded-lg border-2 border-ink/70 bg-paper px-3 py-1.5 shadow-[3px_4px_0_0_rgb(28_27_26/0.18)]">
         <ProgressPill progress={state.progress} />
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/dashboard"
-            onClick={() => {
-              voice.abort();
-              stopSpeaking();
-            }}
-            className={buttonClasses({ variant: "ghost", size: "sm" })}
-          >
-            Continue later
-          </Link>
-          <EndInterviewDialog
-            answered={state.turnSeq}
-            disabled={state.phase === "submitting" || state.phase === "done"}
-            onConfirm={endInterview}
-          />
-        </div>
+      </div>
+      <div className="pointer-events-auto absolute right-3 top-3 flex flex-wrap justify-end gap-2">
+        <Link
+          href="/dashboard"
+          onClick={() => {
+            voice.abort();
+            stopSpeaking();
+          }}
+          className={buttonClasses({ variant: "secondary", size: "sm" })}
+        >
+          Continue later
+        </Link>
+        <EndInterviewDialog
+          answered={state.turnSeq}
+          disabled={state.phase === "submitting" || state.phase === "done"}
+          onConfirm={endInterview}
+        />
       </div>
 
-      <div className="grid flex-1 gap-6 @4xl:grid-cols-[minmax(0,1fr)_360px] @4xl:items-start">
-        <section aria-label="Interview" className="flex min-w-0 flex-col gap-6 rounded-xl border border-line bg-surface p-5 sm:p-8">
-          <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} />
-            <Captions text={state.question.text} lead={state.question.lead} intro={state.intro} />
-          </div>
-
-          {state.notice && (
-            <p role="status" className="rounded-lg bg-sunken px-3 py-2 text-sm text-ink">
-              {state.notice}
+      {/* The interviewer's bubble, by her head; a new line pops in afresh. */}
+      <section
+        aria-label="Interviewer"
+        className="pointer-events-auto absolute inset-x-3 top-16 mx-auto max-w-md md:left-1/2 md:right-auto md:top-[8vh] md:mx-0 md:ml-[4vw] md:w-[min(28rem,38vw)]"
+      >
+        <SpeechBubble key={`${state.question.text}|${state.wrapLine ?? ""}`} tail="down-left" label="Interviewer">
+          {state.phase === "done" && state.wrapLine ? (
+            <p aria-live="polite" className="text-xl leading-relaxed text-ink">
+              {state.wrapLine}
             </p>
-          )}
-          {state.nudge && (
-            <p role="status" className="rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent-strong">
-              {state.nudge}
-            </p>
-          )}
-          {state.error && (
-            <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-              {state.error}
-            </p>
-          )}
-
-          {state.phase === "resyncing" ? (
-            <LoadingState label="Catching up with your interview…" className="py-8" />
-          ) : state.phase === "done" ? (
-            <div role="status" className="flex flex-col items-center gap-3 py-6 text-center">
-              {state.wrapLine && <p className="text-base text-ink">{state.wrapLine}</p>}
-              <LoadingState label="Preparing your scorecard…" className="py-2" />
-            </div>
           ) : (
-            <PushToTalk
-              inputMode={state.inputMode}
-              phase={state.phase}
-              draft={state.draft}
-              secondsLeft={voice.secondsLeft}
-              onDraftChange={onDraftChange}
-              onSubmit={onSubmit}
-              onRecordStart={onRecordStart}
-            />
+            <div className="max-h-[34vh] overflow-y-auto">
+              <Captions text={state.question.text} lead={state.question.lead} intro={state.intro} />
+            </div>
           )}
-        </section>
+          <div className="mt-2">
+            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} />
+          </div>
+        </SpeechBubble>
+      </section>
 
-        <Notepad notes={state.notes} />
+      {/* Passing remarks: what the room needs the candidate to know. */}
+      <div className="pointer-events-auto absolute left-3 top-1/2 flex max-w-xs -translate-y-1/2 flex-col gap-2">
+        {state.notice && (
+          <p role="status" className={`${slip} bg-paper text-ink`}>
+            {state.notice}
+          </p>
+        )}
+        {state.nudge && (
+          <p role="status" className={`${slip} bg-accent-soft text-accent-strong`}>
+            {state.nudge}
+          </p>
+        )}
+        {state.error && (
+          <p role="alert" className={`${slip} bg-danger-soft text-danger`}>
+            {state.error}
+          </p>
+        )}
       </div>
+
+      {state.phase === "resyncing" ? (
+        <div className={`pointer-events-auto absolute inset-x-0 bottom-8 mx-auto w-fit bg-paper ${slip}`}>
+          <LoadingState label="Catching up with your interview…" className="py-1" />
+        </div>
+      ) : state.phase === "done" ? (
+        <div role="status" className={`pointer-events-auto absolute inset-x-0 bottom-8 mx-auto w-fit bg-paper ${slip}`}>
+          <LoadingState label="Preparing your scorecard…" className="py-1" />
+        </div>
+      ) : (
+        <PushToTalk
+          inputMode={state.inputMode}
+          phase={state.phase}
+          draft={state.draft}
+          secondsLeft={voice.secondsLeft}
+          onDraftChange={onDraftChange}
+          onSubmit={onSubmit}
+          onRecordStart={onRecordStart}
+        />
+      )}
+
+      {/* The notepad on the table, and the button that picks it up. */}
+      {state.notes.length > 0 && (
+        <div className="pointer-events-auto absolute bottom-5 right-3">
+          <Button variant="secondary" onClick={openNotes} disabled={notesOpen}>
+            Notes ({state.notes.length})
+          </Button>
+        </div>
+      )}
+      {notesOpen && (
+        <div className="pointer-events-auto fixed inset-0 z-20 flex items-center justify-center overflow-y-auto bg-ink/10 p-3">
+          <HeldNotepad notes={state.notes} onClose={closeNotes} />
+        </div>
+      )}
+
+      {/* Announce the gist of each new note, not eight score bars. */}
+      <p aria-live="polite" className="sr-only">
+        {latest
+          ? `Notepad updated. ${latest.degraded ? "Scoring unavailable for this answer." : latest.observation} ${latest.reason}`
+          : ""}
+      </p>
     </div>
   );
 }

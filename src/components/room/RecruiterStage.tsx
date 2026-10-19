@@ -58,7 +58,10 @@ export function RecruiterStage({ state, readMouth }: AvatarProps) {
   // Inside the 3D building the recruiter is already in the room, in the
   // shared scene: hand it this state every render and show only the status.
   const building = useBuilding();
-  const inBuilding = building?.show3D ?? false;
+  // Pages hydrate inside a Suspense boundary, after the building already
+  // knows WebGL works; hydrate as the server rendered (the SVG), then switch.
+  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const inBuilding = hydrated && (building?.show3D ?? false);
   const setSpeaker = building?.setSpeaker;
   useEffect(() => {
     if (inBuilding) setSpeaker?.({ state, readMouth });

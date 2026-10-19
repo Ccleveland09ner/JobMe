@@ -82,8 +82,9 @@ export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> })
       <Chair at={[RECRUITER.x, 0, RECRUITER.z - 0.05]} />
       <Chair at={[right - 0.7, 0, front - 1.2]} rotationY={-2.4} />
 
-      {/* Desk mic, facing the candidate: lit while listening. */}
-      <DeskMic speaker={speaker} at={[TABLE.x - 0.35, tableTop, TABLE.z - 0.1]} />
+      {/* Desk mic, centred in front of the candidate as if they speak into
+          it (the room's mic button sits over it): lit while listening. */}
+      <DeskMic speaker={speaker} at={[TABLE.x, tableTop, TABLE.z + TABLE.depth / 2 - 0.12]} />
       {/* The interviewer's notepad: picked up to review the notes so far. */}
       <TableNotepad />
     </group>
