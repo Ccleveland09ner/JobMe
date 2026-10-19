@@ -13,20 +13,22 @@
  *
  * Scores are practice feedback, never framed as a prediction of a hiring
  * outcome. Ref: docs/PRD-JobMe-MVP.md > Non-Goals
+ *
+ * In the building this page is the top sheet in the reports folder
+ * (components/desk/ReportsFolder.tsx); it also reads the ids of every
+ * completed interview, newest first, to know which sheets lie either side.
  */
 
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { LocalDate } from "@/components/common/LocalDate";
-import { PageContainer, PageHeader } from "@/components/layout/PageContainer";
+import { ReportsFolder } from "@/components/desk/ReportsFolder";
 import { HighlightedTranscript } from "@/components/report/HighlightedTranscript";
 import { ReportGenerator } from "@/components/report/ReportGenerator";
 import { RewriteCard } from "@/components/report/RewriteCard";
 import { ScoreSummary } from "@/components/report/ScoreSummary";
 import { ScoreTable } from "@/components/report/ScoreTable";
 import { SpeakingStats } from "@/components/report/SpeakingStats";
-import { buttonClasses } from "@/components/ui/Button";
 import type { ReportStats } from "@/lib/ai/report";
 import { requireUser } from "@/lib/auth";
 import { pickScores, reportTurnFromRow, type TurnRow } from "@/lib/frontend/adapters";
@@ -43,7 +45,7 @@ export default async function ReportPage({ params }: PageProps<"/interview/[id]/
   if (!SessionId.safeParse(id).success) notFound();
 
   const supabase = await createClient();
-  const [sessionRes, turnsRes, reportRes] = await Promise.all([
+  const [sessionRes, turnsRes, reportRes, stackRes] = await Promise.all([
     supabase
       .from("interview_sessions")
       .select("id, status, overall_scores, started_at, mode:engine_state->>mode")
@@ -55,6 +57,8 @@ export default async function ReportPage({ params }: PageProps<"/interview/[id]/
       .select("summary, weakest_turn_id, rewrite_text, stats")
       .eq("session_id", id)
       .maybeSingle(),
+    // The folder's stack, newest on top. Ids only; not essential.
+    supabase.from("interview_sessions").select("id").eq("status", "completed").order("started_at", { ascending: false }),
   ]);
 
   if (sessionRes.error) throw new Error(`report session: ${sessionRes.error.message}`);
@@ -72,24 +76,26 @@ export default async function ReportPage({ params }: PageProps<"/interview/[id]/
     | null;
 
   const mode = session.mode === "quick" || session.mode === "full" ? MODE_LABELS[session.mode] : null;
-  const backLink = (
-    <Link href="/dashboard" className={buttonClasses({ variant: "secondary" })}>
-      Back to dashboard
-    </Link>
-  );
+
+  const stack = stackRes.error ? [] : ((stackRes.data ?? []) as { id: string }[]).map((r) => r.id);
+  const at = stack.indexOf(id);
+  const neighbours =
+    at === -1
+      ? undefined
+      : { newer: stack[at - 1] ?? null, older: stack[at + 1] ?? null, position: at + 1, total: stack.length };
 
   return (
-    <PageContainer width="base">
-      <PageHeader
-        title="Your scorecard"
-        description={
-          <>
-            {mode && `${mode} · `}
-            <LocalDate iso={session.started_at} format="dateTime" />
-          </>
-        }
-        actions={backLink}
-      />
+    <ReportsFolder
+      sessionId={id}
+      title="Interview report"
+      kicker={
+        <>
+          {mode && `${mode} · `}
+          <LocalDate iso={session.started_at} format="dateTime" />
+        </>
+      }
+      neighbours={neighbours}
+    >
 
       {/* A report on a session still marked in progress means a crash
           between insert and completion; the POST heals it without a model call. */}
@@ -110,13 +116,8 @@ export default async function ReportPage({ params }: PageProps<"/interview/[id]/
           <ScoreTable turns={turns} />
           <SpeakingStats wpm={report.stats?.wpm ?? null} fillers={report.stats?.fillers ?? null} turns={turns} />
           <HighlightedTranscript turns={turns} />
-          <div className="flex justify-center border-t border-line pt-8">
-            <Link href="/dashboard" className={buttonClasses({ size: "lg" })}>
-              Back to dashboard
-            </Link>
-          </div>
         </div>
       )}
-    </PageContainer>
+    </ReportsFolder>
   );
 }

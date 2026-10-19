@@ -35,6 +35,13 @@ export const PALETTE = {
   grass: "#9cbc72",
   path: "#d3c8b6",
   fabric: "#2f3e46",
+  // Things on the desk and the wall: --color-leather … --color-pin in globals.css.
+  leather: "#6b2f2a",
+  manila: "#e3c27e",
+  cork: "#c79a62",
+  brass: "#c9a24a",
+  pin: "#d64b3c",
+  paper: "#fffdf7",
 } as const;
 
 export type PaletteColor = keyof typeof PALETTE;

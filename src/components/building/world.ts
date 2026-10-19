@@ -27,6 +27,9 @@ export const LOBBY = {
   height: 3.6,
 } as const;
 
+/** The settings notice board on the lobby's back wall, right of the desk. */
+export const NOTEBOARD = { left: 1.7, right: 4.9, bottom: 0.85, top: 2.55, z: LOBBY.back } as const;
+
 /** The front desk's front edge, and where the secretary sits behind it. */
 export const DESK = { z: -6, width: 3.4, depth: 0.7, height: 0.78 } as const;
 export const SECRETARY = { x: 0, z: -7.05 } as const;

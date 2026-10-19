@@ -83,6 +83,21 @@
   --color-rule: #c8d5e2; /* ruled lines on the paper */
 
   /*
+   * Things the user picks up (components/held): the ledger's leather, the
+   * reports folder's manila, the notice board's cork. Mirrored in
+   * components/three/toon.ts PALETTE for their 3D selves.
+   */
+  --color-leather-light: #8a3f37;
+  --color-leather: #6b2f2a;
+  --color-leather-dark: #4a1f1b;
+  --color-manila-light: #f0d79e;
+  --color-manila: #e3c27e;
+  --color-manila-dark: #c39d55;
+  --color-cork: #c79a62;
+  --color-brass: #c9a24a;
+  --color-pin: #d64b3c;
+
+  /*
    * Comic Sans where it is installed, Comic Neue (loaded in layout.tsx) where
    * it is not — neither ships on Linux or Android, and falling straight
    * through to a generic sans would lose the look entirely.
@@ -146,6 +161,148 @@ dialog::backdrop {
 @media (prefers-reduced-motion: no-preference) {
   .clipboard-in {
     animation: clipboard-in 450ms cubic-bezier(0.2, 0.8, 0.3, 1.15) both;
+  }
+}
+
+/*
+ * Held objects (components/held). The 3D object has just travelled to the
+ * camera; its DOM self takes over by settling into the hands (held-in) and
+ * opening — a book's cover swings left on its spine, a folder's flap and
+ * a notepad's page flip up on their top edge. Closing plays the same in
+ * reverse (held-out, *-shut), then the 3D object travels back.
+ *
+ * Page turns (page-next / page-prev) swing the new page in from its binding
+ * edge. Every animation ends untransformed, so text is crisp when still.
+ * Durations are mirrored in components/held/useHeld.ts.
+ */
+@keyframes held-in {
+  from {
+    opacity: 0;
+    transform: perspective(1800px) translateY(28px) scale(0.86) rotateX(14deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes held-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: perspective(1800px) translateY(36px) scale(0.86) rotateX(14deg);
+  }
+}
+@keyframes cover-open {
+  from {
+    transform: perspective(2200px) rotateY(0deg);
+  }
+  to {
+    transform: perspective(2200px) rotateY(-172deg);
+  }
+}
+@keyframes cover-shut {
+  from {
+    transform: perspective(2200px) rotateY(-172deg);
+  }
+  to {
+    transform: perspective(2200px) rotateY(0deg);
+  }
+}
+@keyframes flap-open {
+  from {
+    transform: perspective(2200px) rotateX(0deg);
+  }
+  to {
+    transform: perspective(2200px) rotateX(172deg);
+  }
+}
+@keyframes flap-shut {
+  from {
+    transform: perspective(2200px) rotateX(172deg);
+  }
+  to {
+    transform: perspective(2200px) rotateX(0deg);
+  }
+}
+@keyframes page-next {
+  from {
+    opacity: 0.2;
+    transform: perspective(2200px) rotateY(-80deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes page-prev {
+  from {
+    opacity: 0.2;
+    transform: perspective(2200px) rotateY(80deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes page-up {
+  from {
+    opacity: 0.2;
+    transform: perspective(2200px) rotateX(-75deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Covers and flaps are only ever seen moving; at rest they are out of the way. */
+.held-cover {
+  backface-visibility: hidden;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .held-in {
+    animation: held-in 420ms cubic-bezier(0.2, 0.8, 0.3, 1.1) both;
+  }
+  .held-out {
+    animation: held-out 420ms ease-in both;
+  }
+  .cover-open {
+    transform-origin: left center;
+    animation: cover-open 650ms cubic-bezier(0.45, 0, 0.2, 1) 120ms both;
+  }
+  .cover-shut {
+    transform-origin: left center;
+    animation: cover-shut 300ms ease-in both;
+  }
+  .flap-open {
+    transform-origin: center top;
+    animation: flap-open 600ms cubic-bezier(0.45, 0, 0.2, 1) 120ms both;
+  }
+  .flap-shut {
+    transform-origin: center top;
+    animation: flap-shut 300ms ease-in both;
+  }
+  .page-next {
+    transform-origin: left center;
+    animation: page-next 420ms cubic-bezier(0.3, 0.7, 0.3, 1) both;
+  }
+  .page-prev {
+    transform-origin: right center;
+    animation: page-prev 420ms cubic-bezier(0.3, 0.7, 0.3, 1) both;
+  }
+  .page-up {
+    transform-origin: center top;
+    animation: page-up 420ms cubic-bezier(0.3, 0.7, 0.3, 1) both;
+  }
+}
+/* Reduced motion: covers and flaps are simply open or shut. */
+@media (prefers-reduced-motion: reduce) {
+  .cover-open,
+  .flap-open {
+    display: none;
   }
 }
 

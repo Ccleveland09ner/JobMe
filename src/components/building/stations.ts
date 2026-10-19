@@ -6,9 +6,9 @@
  * is led, never steered. See docs/reverse-engineering/implementation-plan.md.
  */
 
-import { CANDIDATE, CORRIDOR, DESK, FACADE_Z, LOBBY, RECRUITER, ROOM, SECRETARY } from "./world";
+import { CANDIDATE, CORRIDOR, DESK, FACADE_Z, LOBBY, NOTEBOARD, RECRUITER, ROOM, SECRETARY } from "./world";
 
-export type Station = "street" | "entrance" | "desk" | "corridor" | "room";
+export type Station = "street" | "entrance" | "desk" | "noteboard" | "corridor" | "room";
 
 export interface Pose {
   position: [number, number, number];
@@ -21,6 +21,11 @@ export const POSES: Record<Station, Pose> = {
   street: { position: [0, 1.7, FACADE_Z + 21], target: [0, 5.4, FACADE_Z], fov: 46 },
   entrance: { position: [1.4, 1.65, FACADE_Z + 6.2], target: [-0.4, 1.6, FACADE_Z], fov: 46 },
   desk: { position: [0.3, 1.8, DESK.z + 3.5], target: [SECRETARY.x, 0.95, SECRETARY.z], fov: 36 },
+  noteboard: {
+    position: [(NOTEBOARD.left + NOTEBOARD.right) / 2, 1.7, NOTEBOARD.z + 3.1],
+    target: [(NOTEBOARD.left + NOTEBOARD.right) / 2, (NOTEBOARD.bottom + NOTEBOARD.top) / 2, NOTEBOARD.z],
+    fov: 40,
+  },
   corridor: { position: [CORRIDOR.x, 1.6, ROOM.front + 2.6], target: [CORRIDOR.x, 1.35, ROOM.front], fov: 48 },
   room: { position: [CANDIDATE.x, 1.36, CANDIDATE.z], target: [RECRUITER.x, 1.3, RECRUITER.z], fov: 36 },
 };
@@ -30,6 +35,7 @@ export const STATION_LABEL: Record<Station, string> = {
   street: "Outside the building",
   entrance: "At the front door",
   desk: "At the front desk",
+  noteboard: "At the settings board",
   corridor: "In the corridor",
   room: "In the interview room",
 };
@@ -60,7 +66,7 @@ export function pathBetween(from: Station, to: Station): Pose[] {
   return [POSES[to]];
 }
 
-const STATIONS: readonly Station[] = ["street", "entrance", "desk", "corridor", "room"];
+const STATIONS: readonly Station[] = ["street", "entrance", "desk", "noteboard", "corridor", "room"];
 
 /** Which station a route belongs to. Unknown routes stand at the desk. */
 export function stationForPath(pathname: string): Station {
@@ -70,6 +76,7 @@ export function stationForPath(pathname: string): Station {
   if (dev && (STATIONS as readonly string[]).includes(dev)) return dev as Station;
   if (pathname === "/") return "street";
   if (pathname.startsWith("/login")) return "entrance";
+  if (pathname.startsWith("/settings")) return "noteboard";
   if (/^\/interview\/[^/]+$/.test(pathname) && pathname !== "/interview/new") return "room";
   return "desk";
 }

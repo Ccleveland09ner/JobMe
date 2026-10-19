@@ -1,5 +1,6 @@
 /**
- * Dashboard - home and history. Server Component.
+ * Dashboard - home and history, as the performance ledger on the front desk.
+ * Server Component.
  * Ref: docs/PRD-JobMe-MVP.md > Dashboard and Progress
  *      docs/TechDesign-JobMe-MVP.md > Components > Dashboard
  *
@@ -10,6 +11,11 @@
  * History is paged on the server by `?page=` with a Supabase range, so the
  * page never loads every session at once. The trend chart has its own
  * lightweight query over completed sessions only.
+ *
+ * In the building this page IS the ledger (components/desk/Ledger.tsx): the
+ * desk shows it closed until the user picks it up (?open=ledger), and its
+ * spreads are the sections below. History page links keep the book open on
+ * the History spread.
  */
 
 import Link from "next/link";
@@ -20,7 +26,7 @@ import { DashboardSummary } from "@/components/dashboard/DashboardSummary";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { SessionList } from "@/components/dashboard/SessionList";
 import { TrendChart, type TrendPoint } from "@/components/dashboard/TrendChart";
-import { PageContainer, PageHeader } from "@/components/layout/PageContainer";
+import { Ledger, type LedgerSection } from "@/components/desk/Ledger";
 import { buttonClasses } from "@/components/ui/Button";
 import { requireUser } from "@/lib/auth";
 import {
@@ -30,6 +36,11 @@ import {
 } from "@/lib/frontend/adapters";
 import { clampPage, pageCount, rowRange } from "@/lib/frontend/pagination";
 import { createClient } from "@/lib/supabase/server";
+
+/** A history page, with the ledger open on its History spread. */
+function historyHref(page: number): string {
+  return `/dashboard?open=ledger&section=history${page === 1 ? "" : `&page=${page}`}`;
+}
 
 /** Sessions per history page. */
 const PAGE_SIZE = 8;
@@ -42,7 +53,7 @@ const SESSION_COLUMNS =
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const user = await requireUser();
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, section } = await searchParams;
   const supabase = await createClient();
 
   const [totalRes, trendRes, profileRes] = await Promise.all([
@@ -68,7 +79,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   // Normalise the URL when it named a page that no longer exists, e.g. after
   // deleting the only row on the last page.
   if (pageParam !== undefined && String(page) !== String(pageParam)) {
-    redirect(page === 1 ? "/dashboard" : `/dashboard?page=${page}`);
+    redirect(historyHref(page));
   }
 
   const [from, to] = rowRange(page, PAGE_SIZE);
@@ -90,61 +101,69 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 
   const startCta = (
     <Link href="/interview/new" className={buttonClasses()}>
-      Start interview
+      Start an interview
     </Link>
   );
 
-  return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="Your interviews"
-        description={
-          <>
-            Practice, see what the recruiter noticed, and track how your answers improve.
-            {profile && (
-              <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink">
-                {profile.username && <span className="font-semibold">@{profile.username}</span>}
-                <span>
-                  Member code{" "}
-                  <span className="rounded-md border border-ink/40 bg-sunken px-1.5 py-0.5 font-mono text-xs tracking-wider">
-                    {profile.member_code}
-                  </span>
-                </span>
-              </span>
-            )}
-          </>
-        }
-        actions={total > 0 ? startCta : undefined}
-      />
+  const kicker = profile ? (
+    <>
+      {profile.username && <>@{profile.username} · </>}
+      <span className="font-mono tracking-wider">{profile.member_code}</span>
+    </>
+  ) : undefined;
 
-      {total === 0 ? (
-        <EmptyState />
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <section aria-labelledby="history-title" className="flex min-w-0 flex-col gap-4">
-            <h2 id="history-title" className="text-base font-semibold text-ink">
-              History
-            </h2>
-            <SessionList sessions={sessions} />
-            <Pagination
-              page={page}
-              pageSize={PAGE_SIZE}
-              totalItems={total}
-              label="Interview history pages"
-              hrefForPage={(p) => (p === 1 ? "/dashboard" : `/dashboard?page=${p}`)}
-            />
-          </section>
+  const sections: LedgerSection[] =
+    total === 0
+      ? [{ id: "history", label: "History", content: <EmptyState /> }]
+      : [
+          {
+            id: "trends",
+            label: "Trends",
+            content: (
+              <div className="flex flex-col gap-4">
+                <p className="text-sm text-muted">How your scores have moved, interview by interview.</p>
+                <TrendChart points={trend} />
+              </div>
+            ),
+          },
+          {
+            id: "history",
+            label: "History",
+            content: (
+              <section aria-labelledby="history-title" className="flex min-w-0 flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 id="history-title" className="text-base font-semibold text-ink">
+                    Every interview
+                  </h2>
+                  {startCta}
+                </div>
+                <p className="text-sm text-muted">Open a finished interview to read its report in the reports folder.</p>
+                <SessionList sessions={sessions} />
+                <Pagination
+                  page={page}
+                  pageSize={PAGE_SIZE}
+                  totalItems={total}
+                  label="Interview history pages"
+                  hrefForPage={historyHref}
+                />
+              </section>
+            ),
+          },
+          {
+            id: "summary",
+            label: "Summary",
+            content: (
+              <DashboardSummary
+                completed={completed}
+                inProgress={Math.max(0, total - completed)}
+                latestScores={trend.at(-1)?.scores ?? null}
+              />
+            ),
+          },
+        ];
 
-          <div className="flex min-w-0 flex-col gap-6 lg:row-start-1 lg:col-start-2">
-            <DashboardSummary
-              completed={completed}
-              inProgress={Math.max(0, total - completed)}
-              latestScores={trend.at(-1)?.scores ?? null}
-            />
-            <TrendChart points={trend} />
-          </div>
-        </div>
-      )}
-    </PageContainer>
-  );
+  // A history page link (?page=) lands on the History spread.
+  const initialSection = typeof section === "string" ? section : pageParam !== undefined ? "history" : undefined;
+
+  return <Ledger kicker={kicker} sections={sections} initialSection={initialSection} />;
 }

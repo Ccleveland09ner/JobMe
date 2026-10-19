@@ -1,0 +1,241 @@
+"use client";
+
+/**
+ * The things the user holds, as page objects: drawn like the clipboard and
+ * the building — ink edges, three toon tones per material, solid depth, a
+ * flat shadow — with real, readable, accessible content inside.
+ *
+ *   HeldBook    the ledger: leather boards; the cover swings open on its spine
+ *   HeldFolder  the reports folder: manila; the flap lifts on its top edge
+ *   HeldPad     the interview notepad: card back, spiral, pages that flip up
+ *
+ * Each takes a title (its <h1>/<h2>, focused when it opens), a Close action,
+ * and its pages as children. Escape closes. Opening and closing animate
+ * (globals.css: held-in/out, cover-*, flap-*); the 3D object's travel to and
+ * from the camera is Liftable's (building/scene/Interactive.tsx).
+ */
+
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+
+import { Button } from "@/components/ui/Button";
+import type { Held } from "@/components/building/heldMachine";
+
+import { useHeld } from "./useHeld";
+
+interface ShellProps {
+  title: string;
+  /** Small print above the title: whose it is, what it is. */
+  kicker?: ReactNode;
+  onClose: () => void;
+  closeLabel?: string;
+  children: ReactNode;
+  headingLevel?: "h1" | "h2";
+}
+
+/** Focus the heading on open; Escape closes. */
+function useShell(name: Held, onClose: () => void) {
+  const { closing } = useHeld(name);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus({ preventScroll: true });
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // A dialog open on top (a delete confirmation) owns Escape.
+      if (e.key === "Escape" && !e.defaultPrevented && !document.querySelector("dialog[open]")) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return { closing, heading };
+}
+
+/** The cover or flap that swings open once, then gets out of the way. */
+function Opener({ className, children }: { className: string; children?: ReactNode }) {
+  const [done, setDone] = useState(false);
+  if (done) return null;
+  return (
+    <div aria-hidden="true" className={`held-cover absolute inset-0 z-20 ${className}`} onAnimationEnd={() => setDone(true)}>
+      {children}
+    </div>
+  );
+}
+
+const SHADOW = "absolute -bottom-5 inset-x-10 h-8 rounded-[50%] bg-ink/25";
+
+export function HeldBook({ title, kicker, onClose, closeLabel = "Close the ledger", children, headingLevel = "h1" }: ShellProps) {
+  const { closing, heading } = useShell("ledger", onClose);
+  const id = useId();
+  const H = headingLevel;
+  return (
+    <section aria-labelledby={id} className={`relative w-full max-w-5xl pb-6 ${closing ? "held-out" : "held-in"}`}>
+      <div aria-hidden="true" className={SHADOW} />
+      {/* Leather boards, extruded and bevelled like the clipboard. */}
+      <div className="relative rounded-2xl border-[3px] border-ink bg-leather p-2.5 shadow-[0_9px_0_-2px_var(--color-leather-dark),0_9px_0_1px_var(--color-ink)] sm:p-3.5">
+        <div className="rounded-xl shadow-[inset_4px_4px_0_0_var(--color-leather-light),inset_-4px_-4px_0_0_var(--color-leather-dark)] p-1.5 sm:p-2">
+          {/* The page block: paper, with a spine shadow down the middle on wide screens. */}
+          <div className="grain relative rounded-lg border-2 border-ink bg-paper">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-1/2 hidden w-6 -translate-x-1/2 bg-[linear-gradient(90deg,transparent,rgb(28_27_26/0.08),transparent)] lg:block" />
+            <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-dashed border-ink/20 px-5 pb-4 pt-5 sm:px-8">
+              <div className="flex flex-col gap-0.5">
+                {kicker && <p className="text-xs font-semibold uppercase tracking-widest text-muted">{kicker}</p>}
+                <H id={id} ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink outline-none focus-visible:outline-none">
+                  {title}
+                </H>
+              </div>
+              <Button variant="secondary" size="sm" onClick={onClose}>
+                {closeLabel}
+              </Button>
+            </header>
+            <div className="px-5 pb-6 pt-5 sm:px-8">{children}</div>
+          </div>
+        </div>
+        {/* The front cover, swinging open to the left. */}
+        {!closing && (
+          <Opener className="cover-open rounded-2xl border-[3px] border-ink bg-leather shadow-[inset_4px_4px_0_0_var(--color-leather-light),inset_-4px_-4px_0_0_var(--color-leather-dark)]">
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 rounded-md border-2 border-ink bg-brass px-6 py-3 text-center font-semibold uppercase tracking-widest text-ink">
+              {title}
+            </div>
+          </Opener>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function HeldFolder({ title, kicker, onClose, closeLabel = "Close the folder", children, headingLevel = "h1" }: ShellProps) {
+  const { closing, heading } = useShell("reports", onClose);
+  const id = useId();
+  const H = headingLevel;
+  return (
+    <section aria-labelledby={id} className={`relative w-full max-w-4xl pb-6 pt-7 ${closing ? "held-out" : "held-in"}`}>
+      <div aria-hidden="true" className={SHADOW} />
+      {/* The folder's back and its tab. */}
+      <div aria-hidden="true" className="absolute left-8 top-0 h-9 w-44 rounded-t-xl border-[3px] border-b-0 border-ink bg-manila px-4 pt-1.5 text-sm font-semibold uppercase tracking-widest text-ink">
+        Reports
+      </div>
+      <div className="relative rounded-2xl rounded-tl-md border-[3px] border-ink bg-manila p-2.5 shadow-[inset_4px_4px_0_0_var(--color-manila-light),inset_-4px_-4px_0_0_var(--color-manila-dark),0_9px_0_-2px_var(--color-manila-dark),0_9px_0_1px_var(--color-ink)] sm:p-4">
+        {/* A stack of sheets, the top one readable. */}
+        <div className="relative">
+          <div aria-hidden="true" className="absolute inset-0 translate-x-2 translate-y-2.5 rotate-[0.7deg] rounded-md border-2 border-ink/70 bg-paper-shade" />
+          <div aria-hidden="true" className="absolute inset-0 -translate-x-1 translate-y-1 -rotate-[0.5deg] rounded-md border-2 border-ink/70 bg-paper" />
+          <div className="grain relative rounded-md border-2 border-ink bg-paper">
+            <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-ink/80 px-5 pb-4 pt-5 sm:px-8">
+              <div className="flex flex-col gap-0.5">
+                {kicker && <p className="text-xs font-semibold uppercase tracking-widest text-muted">{kicker}</p>}
+                <H id={id} ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink outline-none focus-visible:outline-none">
+                  {title}
+                </H>
+              </div>
+              <Button variant="secondary" size="sm" onClick={onClose}>
+                {closeLabel}
+              </Button>
+            </header>
+            <div className="px-5 pb-6 pt-5 sm:px-8">{children}</div>
+          </div>
+        </div>
+        {/* The front flap, lifting open on its top edge. */}
+        {!closing && (
+          <Opener className="flap-open rounded-2xl border-[3px] border-ink bg-manila shadow-[inset_4px_4px_0_0_var(--color-manila-light),inset_-4px_-4px_0_0_var(--color-manila-dark)]" />
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function HeldPad({ title, kicker, onClose, closeLabel = "Put the notepad down", children, headingLevel = "h2" }: ShellProps) {
+  const { closing, heading } = useShell("notepad", onClose);
+  const id = useId();
+  const H = headingLevel;
+  return (
+    <section aria-labelledby={id} className={`relative w-full max-w-xl pb-6 pt-4 ${closing ? "held-out" : "held-in"}`}>
+      <div aria-hidden="true" className={SHADOW} />
+      {/* The spiral, along the top. */}
+      <div aria-hidden="true" className="absolute inset-x-10 top-0 z-10 flex justify-between">
+        {Array.from({ length: 9 }, (_, i) => (
+          <span key={i} className="h-8 w-3 rounded-full border-[3px] border-ink bg-clipmetal" />
+        ))}
+      </div>
+      <div className="relative rounded-2xl border-[3px] border-ink bg-fabric p-2 shadow-[0_8px_0_-2px_var(--color-ink),0_8px_0_1px_var(--color-ink)]">
+        <div className="grain relative rounded-lg border-2 border-ink bg-paper">
+          <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-dashed border-ink/20 px-5 pb-3 pt-7">
+            <div className="flex flex-col gap-0.5">
+              {kicker && <p className="text-xs font-semibold uppercase tracking-widest text-muted">{kicker}</p>}
+              <H id={id} ref={heading} tabIndex={-1} className="text-lg font-semibold text-ink outline-none focus-visible:outline-none">
+                {title}
+              </H>
+            </div>
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              {closeLabel}
+            </Button>
+          </header>
+          <div className="px-5 pb-5 pt-4">{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Pages you turn: one at a time, with a page-turn animation in the direction
+ * of travel. `axis` "side" turns like a book; "up" flips like a notepad.
+ * Left/Right arrow keys turn pages when focus is not in a field.
+ */
+export function Pages({
+  page,
+  count,
+  onTurn,
+  label,
+  axis = "side",
+  pageLabel,
+  children,
+}: {
+  page: number;
+  count: number;
+  onTurn: (page: number) => void;
+  /** What the pages are, for the controls: "Ledger section", "Note". */
+  label: string;
+  axis?: "side" | "up";
+  pageLabel: (page: number) => string;
+  children: ReactNode;
+}) {
+  const [direction, setDirection] = useState<"next" | "prev">("next");
+  const turn = (to: number) => {
+    if (to < 0 || to >= count || to === page) return;
+    setDirection(to > page ? "next" : "prev");
+    onTurn(to);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      if (e.key === "ArrowRight") turn(page + 1);
+      else if (e.key === "ArrowLeft") turn(page - 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const animation = axis === "up" ? "page-up" : direction === "next" ? "page-next" : "page-prev";
+  return (
+    <div className="flex flex-col gap-5">
+      <div key={page} className={animation}>
+        {children}
+      </div>
+      {count > 1 && (
+        <nav aria-label={`${label} pages`} className="flex items-center justify-between gap-3 border-t-2 border-dashed border-ink/20 pt-4">
+          <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => turn(page - 1)}>
+            <span aria-hidden="true">←</span> {page > 0 ? pageLabel(page - 1) : "Previous"}
+          </Button>
+          <span className="text-xs text-muted tabular-nums">
+            {page + 1} / {count}
+          </span>
+          <Button variant="ghost" size="sm" disabled={page === count - 1} onClick={() => turn(page + 1)}>
+            {page < count - 1 ? pageLabel(page + 1) : "Next"} <span aria-hidden="true">→</span>
+          </Button>
+        </nav>
+      )}
+    </div>
+  );
+}

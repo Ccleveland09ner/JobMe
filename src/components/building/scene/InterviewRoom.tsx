@@ -18,6 +18,7 @@ import type { Speaker } from "@/components/room/Recruiter3D";
 import { toonMaterial } from "@/components/three/toon";
 
 import { TABLE, RECRUITER, ROOM } from "../world";
+import { TableNotepad } from "./Objects";
 import { Box, CeilingLight, Chair, InkEdges, Pane, PottedPlant, Scribbles, Slab, unitBox } from "./parts";
 
 /** The desk mic. Reads the speaker every frame, so the room never re-renders for it. */
@@ -83,9 +84,8 @@ export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> })
 
       {/* Desk mic, facing the candidate: lit while listening. */}
       <DeskMic speaker={speaker} at={[TABLE.x - 0.35, tableTop, TABLE.z - 0.1]} />
-      {/* A folder: the user's file, as briefed by the secretary. */}
-      <Box size={[0.36, 0.025, 0.46]} at={[TABLE.x + 0.75, tableTop + 0.015, TABLE.z + 0.1]} color="surface" />
-      <Box size={[0.36, 0.01, 0.46]} at={[TABLE.x + 0.75, tableTop + 0.033, TABLE.z + 0.1]} color="trim" />
+      {/* The interviewer's notepad: picked up to review the notes so far. */}
+      <TableNotepad />
     </group>
   );
 }

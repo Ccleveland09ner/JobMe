@@ -37,7 +37,7 @@ const MAX_LEG = 2.2;
 /** How far the user can look around, radians: ±35° yaw, ±12° pitch. */
 const MAX_YAW = 0.61;
 const MAX_PITCH = 0.21;
-const LOOKABLE: ReadonlySet<Station> = new Set(["street", "desk"]);
+const LOOKABLE: ReadonlySet<Station> = new Set(["street", "desk", "noteboard"]);
 
 interface CameraValues {
   px: number;
@@ -64,7 +64,7 @@ const scratch = new THREE.Vector3();
 export function CameraRig() {
   const building = useBuilding();
   if (!building) throw new Error("CameraRig must be inside <BuildingProvider>");
-  const { state, dispatch, inset, setRedraw } = building;
+  const { state, dispatch, inset, setRedraw, setCameraMoving } = building;
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
 
@@ -87,7 +87,14 @@ export function CameraRig() {
   const travel = (poses: Pose[], done: () => void) => {
     timeline.current?.kill();
     const reduced = prefersReducedMotion();
-    const tl = gsap.timeline({ onComplete: done, onUpdate: invalidate });
+    setCameraMoving(true);
+    const tl = gsap.timeline({
+      onComplete: () => {
+        setCameraMoving(false);
+        done();
+      },
+      onUpdate: invalidate,
+    });
     let from = cam.current;
     for (const pose of poses) {
       const to = valuesOf(pose);

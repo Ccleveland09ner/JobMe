@@ -10,7 +10,7 @@
  * The single <main> landmark is StationLayer's; pages render content only.
  */
 
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { Announcer } from "@/components/building/Announcer";
 import { BuildingBackdrop } from "@/components/building/BuildingBackdrop";
@@ -27,7 +27,11 @@ export default function BuildingLayout({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <BuildingBackdrop />
-      <StationLayer>{children}</StationLayer>
+      {/* StationLayer reads the query string (?open=ledger), which Next.js
+          requires to sit under a Suspense boundary. */}
+      <Suspense>
+        <StationLayer>{children}</StationLayer>
+      </Suspense>
       <Announcer />
     </BuildingProvider>
   );
