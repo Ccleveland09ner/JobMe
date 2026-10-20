@@ -62,7 +62,10 @@ export default async function InterviewRoomPage({
     redirect(`/interview/${id}/report`);
   }
 
-  const requestedInput: InputMode = input === "voice" ? "voice" : "typed";
+  // Voice unless setup asked for typed answers. A visit without `?input=`
+  // (Resume on the dashboard, a refresh of an old link) used to start typed;
+  // the room still falls back to typing where the browser cannot listen.
+  const requestedInput: InputMode = input === "typed" ? "typed" : "voice";
   const notes = ((turnsRes.data ?? []) as unknown as TurnRow[]).map(noteFromTurnRow);
 
   return (

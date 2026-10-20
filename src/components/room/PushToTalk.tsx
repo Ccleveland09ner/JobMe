@@ -32,6 +32,7 @@ import type { InputMode } from "@/lib/frontend/types";
 
 import { LiveTranscript } from "./LiveTranscript";
 import { SpeechBubble } from "./SpeechBubble";
+import { TableMic } from "./TableMic";
 import type { Phase } from "./roomMachine";
 
 /** True when a key event belongs to something the user is typing into or operating. */
@@ -136,26 +137,27 @@ export function PushToTalk({
   const retry = yourTurn && draft.trim().length > 0;
   const showWords = recording || submitting || retry;
 
-  const micLabel = recording ? "Send answer" : submitting ? "Sending…" : retry ? "Record a new answer" : "Start answering";
   const status = recording
     ? secondsLeft !== null
       ? draft.trim()
         ? `No new words — sending in ${secondsLeft}…`
         : `Didn't catch anything — stopping in ${secondsLeft}…`
-      : "Listening… Press Space or the mic when you're done. Pausing for 10 seconds also sends."
-    : phase === "speaking"
-      ? "The mic turns on when the interviewer finishes."
-      : yourTurn
-        ? "Press the mic or Space, then speak."
-        : submitting
-          ? "Sending your answer…"
+      : "Listening… Press the mic or Space to send. Pausing for 10 seconds also sends."
+    : submitting
+      ? "Sending your answer…"
+      : phase === "speaking"
+        ? "The interviewer is speaking. The mic turns on when they finish."
+        : yourTurn
+          ? retry
+            ? "Press the mic to record a new answer, or send this one again."
+            : "Press the mic or Space, then speak."
           : "";
 
   return (
     <>
       {/* What the candidate is saying, in their own bubble above the mic. */}
       {showWords && (
-        <div className="pointer-events-auto absolute inset-x-3 bottom-[12.5rem] mx-auto max-w-2xl">
+        <div className="pointer-events-auto absolute inset-x-3 bottom-[15.5rem] mx-auto max-w-2xl">
           <SpeechBubble tail="down" label="You">
             <div className="max-h-[22vh] overflow-y-auto">
               <LiveTranscript final={draft} interim="" bare />
@@ -164,36 +166,21 @@ export function PushToTalk({
         </div>
       )}
 
-      {/* The microphone, centred in front of the candidate. */}
-      <div className="pointer-events-auto absolute inset-x-0 bottom-5 flex flex-col items-center gap-3 px-3">
+      {/* The microphone, centred in front of the candidate. The mic itself is
+          the control: press to start, press again to send. */}
+      <div className="pointer-events-auto absolute inset-x-0 bottom-3 flex flex-col items-center gap-1 px-3">
         <div className="flex items-center gap-3">
-          {retry && (
-            <Button onClick={onSubmit}>Send again</Button>
-          )}
-          <button
-            type="button"
-            onClick={recording ? onSubmit : onRecordStart}
-            disabled={!(recording || yourTurn)}
-            aria-label={micLabel}
-            className={`relative grid size-24 place-items-center rounded-full border-[3px] border-ink shadow-[0_6px_0_-1px_var(--color-ink)] transition-[transform,background-color] duration-150 not-disabled:hover:-translate-y-0.5 not-disabled:active:translate-y-0.5 disabled:cursor-not-allowed motion-reduce:transform-none ${
-              recording ? "bg-danger text-white" : yourTurn ? "bg-accent text-white" : "bg-clipmetal text-ink/50"
-            }`}
-          >
-            {recording && (
-              <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full border-4 border-danger/60 motion-reduce:hidden" />
-            )}
-            {/* A desk microphone, drawn in ink. */}
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="size-10" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="2.5" width="6" height="12" rx="3" fill="currentColor" fillOpacity={recording ? 0.25 : 0} />
-              <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v4M8.5 21.5h7" />
-            </svg>
-          </button>
+          <TableMic
+            state={recording ? "recording" : yourTurn ? "ready" : "disabled"}
+            onToggle={recording ? onSubmit : onRecordStart}
+          />
+          {retry && <Button onClick={onSubmit}>Send again</Button>}
         </div>
         <p
           aria-live="polite"
           className={`min-h-5 rounded-lg border-2 border-ink/70 bg-paper px-3 py-1 text-center text-xs text-ink shadow-[3px_4px_0_0_rgb(28_27_26/0.18)] ${status ? "" : "invisible"}`}
         >
-          <span className="font-semibold">{micLabel}.</span> {status}
+          {status}
         </p>
       </div>
     </>

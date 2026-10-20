@@ -15,7 +15,8 @@
  */
 
 import { createAudioGraph, type AudioGraph } from "../voice/audio-graph";
-import { preloadClips } from "../voice/tts";
+import { openness, type VisemeWeights } from "../voice/lipsync";
+import { preloadClips, speechFrame } from "../voice/tts";
 
 let graph: AudioGraph | null = null;
 
@@ -30,9 +31,28 @@ export function unlockAudio(): void {
   }
 }
 
-/** 0..1 mouth openness from the live voice, or null when there is no graph. */
+/**
+ * 0..1 mouth openness. From the lip-sync timeline when a line is being
+ * spoken (it knows the words), else from the voice's loudness, else null.
+ */
 export function readMouth(): number | null {
+  const frame = speechFrame();
+  if (frame) return openness(frame.weights);
   return graph ? graph.readMouth() : null;
+}
+
+/**
+ * The mouth shapes for this frame, from the lip-sync timeline (see
+ * lib/voice/lipsync.ts); null when nothing is being spoken with one.
+ */
+export function readVisemes(): VisemeWeights | null {
+  return speechFrame()?.weights ?? null;
+}
+
+/** The word being spoken in `text` right now, as [start, end) offsets; null if `text` is not what is being spoken. */
+export function readSpokenWord(text: string): { charStart: number; charEnd: number } | null {
+  const frame = speechFrame();
+  return frame && frame.text === text.trim() ? frame.word : null;
 }
 
 /** Browser speech synthesis exposes no stream; animate the mouth instead. */

@@ -39,6 +39,14 @@ export async function GET(request: Request) {
     );
   }
 
+  // `align=1`: the audio plus every character's start and end time, for
+  // lip-sync (lib/voice/lipsync.ts). JSON rather than a stream, because the
+  // alignment comes with the audio; the client already plays a line only once
+  // it has all of it, so nothing is lost on latency.
+  if (url.searchParams.get("align") === "1") {
+    return alignedSpeech(parsed.data.text, apiKey, voiceId);
+  }
+
   // Validate BEFORE returning the stream: once it begins, the status line and
   // headers are already on the wire.
   let upstream: Response;
@@ -81,4 +89,47 @@ export async function GET(request: Request) {
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+interface Alignment {
+  characters: string[];
+  character_start_times_seconds: number[];
+  character_end_times_seconds: number[];
+}
+
+/** ElevenLabs "with-timestamps": base64 audio plus per-character times. */
+async function alignedSpeech(text: string, apiKey: string, voiceId: string): Promise<Response> {
+  let upstream: Response;
+  try {
+    upstream = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps` +
+        `?output_format=${TTS_OUTPUT_FORMAT}`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": apiKey, "content-type": "application/json" },
+        body: JSON.stringify({ text, model_id: TTS_MODEL_ID }),
+      },
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Voice service unreachable: ${(err as Error).message}` },
+      { status: 502 },
+    );
+  }
+
+  if (!upstream.ok) {
+    return NextResponse.json({ error: `Voice service returned ${upstream.status}` }, { status: 502 });
+  }
+
+  const body = (await upstream.json().catch(() => null)) as
+    | { audio_base64?: string; alignment?: Alignment | null }
+    | null;
+  if (!body?.audio_base64) {
+    return NextResponse.json({ error: "Voice service returned no audio" }, { status: 502 });
+  }
+
+  return NextResponse.json(
+    { audio: body.audio_base64, alignment: body.alignment ?? null },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

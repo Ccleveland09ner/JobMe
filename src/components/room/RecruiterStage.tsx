@@ -18,6 +18,9 @@ import { Component, useCallback, useEffect, useState, useSyncExternalStore, type
 
 import { useBuilding } from "@/components/building/BuildingProvider";
 import { webglAvailable } from "@/lib/frontend/webgl";
+import type { VisemeWeights } from "@/lib/voice/lipsync";
+
+import type { MicControl } from "./Recruiter3D";
 
 import { Avatar, type AvatarProps } from "./Avatar";
 import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
@@ -49,7 +52,12 @@ class FallbackOnError extends Component<{ fallback: ReactNode; children: ReactNo
   }
 }
 
-export function RecruiterStage({ state, readMouth }: AvatarProps) {
+export function RecruiterStage({
+  state,
+  readMouth,
+  readVisemes,
+  mic,
+}: AvatarProps & { readVisemes?: () => VisemeWeights | null; mic?: MicControl }) {
   // false on the server and before hydration: the SVG renders first.
   const canUse3D = useSyncExternalStore(noSubscribe, webglAvailable, () => false);
   const [ready, setReady] = useState(false);
@@ -64,7 +72,7 @@ export function RecruiterStage({ state, readMouth }: AvatarProps) {
   const inBuilding = hydrated && (building?.show3D ?? false);
   const setSpeaker = building?.setSpeaker;
   useEffect(() => {
-    if (inBuilding) setSpeaker?.({ state, readMouth });
+    if (inBuilding) setSpeaker?.({ state, readMouth, readVisemes, mic });
   });
   useEffect(() => () => setSpeaker?.({ state: "idle" }), [setSpeaker]);
   if (inBuilding) return <p className="text-xs text-muted">Interviewer · {STATE_TEXT[state]}</p>;
@@ -85,7 +93,7 @@ export function RecruiterStage({ state, readMouth }: AvatarProps) {
               <Whiteboard />
             </svg>
             <div className="absolute inset-0">
-              <Recruiter3D state={state} readMouth={readMouth} onReady={onReady} />
+              <Recruiter3D state={state} readMouth={readMouth} readVisemes={readVisemes} onReady={onReady} />
             </div>
             <svg viewBox={SCENE_VIEWBOX} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" strokeLinecap="round" strokeLinejoin="round">
               <Desk />

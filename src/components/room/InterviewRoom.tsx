@@ -9,7 +9,7 @@
  *
  * One turn:
  *   1. speaking        the recruiter says the queued lines (speak()); mic disabled
- *   2. awaitingAnswer  mic enabled; the candidate taps Start answering
+ *   2. awaitingAnswer  mic enabled; the candidate presses the mic
  *   3. recording       live transcript; Send, or 10s without a new word
  *   4. submitting      playAck() at once, then POST /api/sessions/[id]/turns
  *   5. the notepad entry renders BEFORE the next question is spoken
@@ -35,7 +35,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 
 import { useBuilding } from "@/components/building/BuildingProvider";
 import { domVisible } from "@/components/building/heldMachine";
@@ -44,10 +44,12 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { friendlyError, noteFromResponse } from "@/lib/frontend/adapters";
 import { takeIntro } from "@/lib/frontend/handoff";
 import type { InputMode, NoteView, ProgressView, QuestionView, TurnResponse } from "@/lib/frontend/types";
-import { readMouth, setSyntheticSpeaking, unlockAudio } from "@/lib/frontend/voiceSession";
+import { readMouth, readSpokenWord, readVisemes, unlockAudio } from "@/lib/frontend/voiceSession";
 import { isSttSupported } from "@/lib/voice/stt";
+import type { SttErrorCode } from "@/lib/voice/sttMachine";
 import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 
+import type { MicControl, MicState } from "./Recruiter3D";
 import { RecruiterStage } from "./RecruiterStage";
 import { Captions } from "./Captions";
 import { EndInterviewDialog } from "./EndInterviewDialog";
@@ -57,6 +59,19 @@ import { PushToTalk } from "./PushToTalk";
 import { avatarState, initRoom, roomReducer } from "./roomMachine";
 import { SpeechBubble } from "./SpeechBubble";
 import { useVoiceAnswer } from "./useVoiceAnswer";
+
+/**
+ * Why voice answers stopped, in plain words, by the recognizer's error.
+ * Only fatal errors reach here (the rest restart quietly).
+ */
+const FALLBACK_REASON: Partial<Record<SttErrorCode, string>> = {
+  "not-allowed":
+    "Microphone access is blocked for this site. To use your voice, allow the microphone in the address bar's site settings and reload.",
+  "service-not-allowed": "This browser's speech recognition is turned off or unavailable.",
+  "audio-capture": "No working microphone was found.",
+  "language-not-supported": "This browser can't recognise English speech right now.",
+  unknown: "Voice answers stopped working.",
+};
 
 /** Upper bound on any one spoken line, so a stuck audio path can never stall the room. */
 const SPEECH_TIMEOUT_MS = 30_000;
@@ -77,16 +92,9 @@ const noSubscribe = () => () => {};
 async function sayLines(lines: string[]): Promise<void> {
   const text = lines.join(" ").trim();
   if (!text) return;
-  let synthetic = false;
-  const spoken = speak(text, {
-    onFallback: () => {
-      // The browser voice exposes no audio stream to read the mouth from.
-      synthetic = true;
-      setSyntheticSpeaking(true);
-    },
-  });
-  await Promise.race([spoken, new Promise((r) => setTimeout(r, SPEECH_TIMEOUT_MS))]);
-  if (synthetic) setSyntheticSpeaking(false);
+  // Both voices publish a lip-sync timeline (lib/voice/tts.ts), which the
+  // recruiter's mouth and the captions read directly; nothing to set up here.
+  await Promise.race([speak(text), new Promise((r) => setTimeout(r, SPEECH_TIMEOUT_MS))]);
 }
 
 export function InterviewRoom(props: InterviewRoomProps) {
@@ -115,13 +123,13 @@ export function InterviewRoom(props: InterviewRoomProps) {
           ? { type: "SUBMIT" }
           : {
               type: "RECORD_CANCEL",
-              notice: "We didn't hear anything. Press Start answering when you're ready.",
+              notice: "We didn't hear anything. Press the mic when you're ready.",
             },
       ),
-    onFatal: (heard) =>
+    onFatal: (heard, reason) =>
       dispatch({
         type: "FALLBACK_TO_TYPED",
-        notice: "We lost access to your microphone, so you can type the rest of your answers.",
+        notice: `${FALLBACK_REASON[reason ?? "unknown"] ?? FALLBACK_REASON.unknown} You can type the rest of your answers.`,
         draft: heard,
       }),
   });
@@ -194,7 +202,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
         submittedSeq.current = null;
         dispatch({
           type: "RECORD_CANCEL",
-          notice: "We didn't catch any words. Press Start answering and try again.",
+          notice: "We didn't catch any words. Press the mic and try again.",
         });
         return;
       }
@@ -278,6 +286,23 @@ export function InterviewRoom(props: InterviewRoomProps) {
     startVoice();
   }, [state.phase, state.inputMode, startVoice]);
 
+  // The candidate's mic, as both the panel button and the 3D desk mic show it.
+  const micState: MicState =
+    state.inputMode !== "voice"
+      ? "off"
+      : state.phase === "recording"
+        ? "recording"
+        : state.phase === "awaitingAnswer"
+          ? "ready"
+          : "disabled";
+  const mic = useMemo<MicControl>(
+    () => ({
+      state: micState,
+      toggle: micState === "recording" ? onSubmit : micState === "ready" ? onRecordStart : () => {},
+    }),
+    [micState, onSubmit, onRecordStart],
+  );
+
   // ---- The notepad on the table -----------------------------------------
   // In the building it is a held object (heldMachine.ts): picked up off the
   // table, then opened. Without the building, it just opens.
@@ -350,11 +375,17 @@ export function InterviewRoom(props: InterviewRoomProps) {
             </p>
           ) : (
             <div className="max-h-[34vh] overflow-y-auto">
-              <Captions text={state.question.text} lead={state.question.lead} intro={state.intro} />
+              <Captions
+                text={state.question.text}
+                lead={state.question.lead}
+                intro={state.intro}
+                spoken={state.phase === "speaking" ? state.speech.join(" ").trim() : null}
+                readSpokenWord={readSpokenWord}
+              />
             </div>
           )}
           <div className="mt-2">
-            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} />
+            <RecruiterStage state={avatarState(state.phase)} readMouth={readMouth} readVisemes={readVisemes} mic={mic} />
           </div>
         </SpeechBubble>
       </section>

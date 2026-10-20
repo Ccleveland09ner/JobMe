@@ -9,7 +9,8 @@
 
 import { CORRIDOR, DESK, FACADE_Z, LOBBY, SECRETARY } from "../world";
 import { DeskObjects, NoticeBoard } from "./Objects";
-import { Box, CeilingLight, Chair, Pane, PottedPlant, Slab } from "./parts";
+import { OfficeChair } from "./OfficeChair";
+import { Box, CeilingLight, Pane, PottedPlant, Slab } from "./parts";
 
 export function Lobby() {
   const { left, right, back, height } = LOBBY;
@@ -41,7 +42,7 @@ export function Lobby() {
       <Slab x={[-DESK.width / 2, DESK.width / 2]} y={[0, DESK.height]} z={[deskBack, DESK.z]} color="surface" />
       <Slab x={[-DESK.width / 2 - 0.05, DESK.width / 2 + 0.05]} y={[DESK.height, DESK.height + 0.06]} z={[deskBack - 0.05, DESK.z + 0.08]} color="wood" />
       <Slab x={[-DESK.width / 2, DESK.width / 2]} y={[0.48, 0.55]} z={[DESK.z, DESK.z + 0.01]} color="accent" />
-      <Chair at={[SECRETARY.x, 0, SECRETARY.z - 0.05]} />
+      <OfficeChair at={[SECRETARY.x, 0, SECRETARY.z - 0.05]} />
       {/* On the counter: a pen pot. The ledger and the reports folder lie
           either side of the secretary (Objects.tsx), ready to be picked up. */}
       <Box size={[0.1, 0.16, 0.1]} at={[-1.45, DESK.height + 0.14, DESK.z - 0.4]} color="ink" />

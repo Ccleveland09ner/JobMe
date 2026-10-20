@@ -11,8 +11,10 @@
  * design/tools/dress_recruiter.py, then compressed (meshopt + WebP). It keeps
  * the full skeleton and the ARKit / viseme face shapes, which is what makes
  * it animatable:
- *   - speaking   jawOpen / mouthOpen / viseme_aa follow the voice level
- *                (the same readMouth() signal the SVG avatar uses)
+ *   - speaking   the 15 viseme shapes follow the words being spoken
+ *                (readVisemes(), lib/voice/lipsync.ts): lips close on P/B/M,
+ *                round on O/U, and so on. Without a lip-sync timeline, the
+ *                jaw follows the voice's loudness (readMouth()) instead.
  *   - listening  a nod as it starts
  *   - thinking   a glance up and to the side, brows lifted
  *   - always     a blink every 3–6s; the idle clip (Mixamo) when the model
@@ -50,6 +52,7 @@ import { OutlineRenderer } from "@/components/three/OutlineRenderer";
 import { studioEnvironment } from "@/components/three/environment";
 import { INK, toonGradient } from "@/components/three/toon";
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { VISEMES, openness, type VisemeWeights } from "@/lib/voice/lipsync";
 
 export const RECRUITER_MODEL = "/models/recruiter.glb";
 
@@ -59,14 +62,36 @@ export interface Recruiter3DProps {
   state: RecruiterState;
   /** Live mouth openness 0..1, or null when no audio signal is available. */
   readMouth?: () => number | null;
+  /** Live mouth shapes from the lip-sync timeline, or null without one. */
+  readVisemes?: () => VisemeWeights | null;
   /** Called once the model is loaded and has drawn its first frame. */
   onReady?: () => void;
+}
+
+/**
+ * The candidate's microphone, which the room shows twice — the mic button in
+ * the panel (room/TableMic.tsx) and the mic on the 3D desk — so both always
+ * agree:
+ *   disabled   the interviewer is speaking (or an answer is being sent)
+ *   ready      the candidate's turn: press to start answering
+ *   recording  listening (lit green): press to send
+ *   off        typed answers; the mic is not used
+ */
+export type MicState = "off" | "disabled" | "ready" | "recording";
+
+export interface MicControl {
+  state: MicState;
+  /** Start recording when ready, send when recording; nothing otherwise. */
+  toggle: () => void;
 }
 
 /** What drives the face, read every frame without re-rendering React. */
 export interface Speaker {
   state: RecruiterState;
   readMouth?: () => number | null;
+  readVisemes?: () => VisemeWeights | null;
+  /** The candidate's mic, for the desk mic in the building's interview room. */
+  mic?: MicControl;
 }
 
 /**
@@ -88,11 +113,14 @@ export interface Look {
 /** How strongly the studio lighting (environment) lights a rendered character. */
 const ENV_INTENSITY = 0.45;
 
+/** The model's speech shapes, by viseme (`viseme_PP`, `viseme_aa`, …). Silence has no shape. */
+const SPEECH_SHAPES = VISEMES.filter((v) => v !== "sil").map((v) => `viseme_${v}` as const);
+
 /** Morph targets driven every frame, on every mesh that has them. */
 const MORPHS = [
   "jawOpen",
   "mouthOpen",
-  "viseme_aa",
+  ...SPEECH_SHAPES,
   "mouthSmile",
   "eyeBlinkLeft",
   "eyeBlinkRight",
@@ -100,6 +128,12 @@ const MORPHS = [
   "browInnerUp",
 ] as const;
 type Morph = (typeof MORPHS)[number];
+
+/**
+ * How fast the mouth follows the lip-sync shapes. High, because the shapes
+ * already ease in and out (lipsync FADE_SECONDS); this only smooths frames.
+ */
+const LIPSYNC_RATE = 40;
 
 const NOD_SECONDS = 0.5;
 /** How far the gaze dips during the nod, in metres at the camera (~7°). */
@@ -244,7 +278,7 @@ class RecruiterRig {
     /** Viewport size when this rig frames the camera itself; null when the scene owns it. */
     framing: { width: number; height: number } | null,
     delta: number,
-    { state, readMouth }: Speaker,
+    { state, readMouth, readVisemes }: Speaker,
   ) {
     const now = performance.now() / 1000;
     const v = this.values;
@@ -257,16 +291,26 @@ class RecruiterRig {
     this.mixer?.update(delta);
     if (framing) this.frame(camera, framing.width, framing.height);
 
-    // Mouth: the live voice level, or a gentle rhythm when there is none.
-    let mouth = 0;
-    if (state === "speaking") {
-      const level = readMouth?.() ?? null;
-      mouth = level !== null && level > 0.02 ? level : 0.3 + 0.35 * Math.abs(Math.sin(now * 8.3));
-      if (this.reduced) mouth = Math.min(mouth, 0.45);
+    // Mouth. Best: the lip-sync shapes for the words being said. Otherwise
+    // the voice's loudness opens the jaw. With neither — before the sound
+    // starts, or between lines — the mouth rests: it never mouths a word
+    // that is not being heard.
+    const visemes = state === "speaking" ? (readVisemes?.() ?? null) : null;
+    const damp = this.reduced ? 0.6 : 1;
+    if (visemes) {
+      for (const shape of SPEECH_SHAPES) {
+        approach(shape, (visemes[shape.slice(7) as keyof VisemeWeights] ?? 0) * damp, LIPSYNC_RATE);
+      }
+      // A little jaw under the open vowels gives the shapes some depth.
+      approach("jawOpen", openness(visemes) * 0.2 * damp, LIPSYNC_RATE);
+      approach("mouthOpen", 0, LIPSYNC_RATE);
+    } else {
+      const level = state === "speaking" ? (readMouth?.() ?? 0) : 0;
+      const mouth = (level > 0.02 ? level : 0) * damp;
+      for (const shape of SPEECH_SHAPES) approach(shape, shape === "viseme_aa" ? mouth * 0.4 : 0, 30);
+      approach("jawOpen", mouth * 0.45, 30);
+      approach("mouthOpen", mouth * 0.5, 30);
     }
-    approach("jawOpen", mouth * 0.45, 30);
-    approach("mouthOpen", mouth * 0.5, 30);
-    approach("viseme_aa", mouth * 0.4, 30);
     approach("mouthSmile", state === "speaking" ? 0.2 : 0.4, 18);
 
     // Blink every 3-6s.
@@ -385,12 +429,12 @@ export function RecruiterModel({ speaker, framesCamera = false, animate = true, 
 }
 
 /** The bust in its own canvas: RecruiterStage outside the building. */
-export default function Recruiter3D({ state, readMouth, onReady }: Recruiter3DProps) {
+export default function Recruiter3D({ state, readMouth, readVisemes, onReady }: Recruiter3DProps) {
   // The frame loop reads the latest props through this ref, so a state
   // change never re-creates the rig or restarts the idle clip.
-  const speaker = useRef<Speaker>({ state, readMouth });
+  const speaker = useRef<Speaker>({ state, readMouth, readVisemes });
   useEffect(() => {
-    speaker.current = { state, readMouth };
+    speaker.current = { state, readMouth, readVisemes };
   });
 
   return (

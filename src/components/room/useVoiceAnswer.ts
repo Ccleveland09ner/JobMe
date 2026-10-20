@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { createRecognizer } from "@/lib/voice/stt";
-import { transcriptOf, type MachineState } from "@/lib/voice/sttMachine";
+import { transcriptOf, type MachineState, type SttErrorCode } from "@/lib/voice/sttMachine";
 
 import { idleStatus } from "./roomMachine";
 
@@ -48,7 +48,7 @@ export function useVoiceAnswer(handlers: {
   /** The idle window ran out. `hasText` false means nothing was heard. */
   onIdle: (hasText: boolean) => void;
   /** The mic became unusable mid-answer; carries whatever was heard. */
-  onFatal: (heard: string) => void;
+  onFatal: (heard: string, reason: SttErrorCode | null) => void;
 }) {
   const latest = useRef(handlers);
   useEffect(() => {
@@ -106,7 +106,7 @@ export function useVoiceAnswer(handlers: {
           const heard = transcriptOf(s) || lastText.current;
           active.current = false;
           stopTicker();
-          if (s.endedBy === "fatal") latest.current.onFatal(heard);
+          if (s.endedBy === "fatal") latest.current.onFatal(heard, s.lastError);
           else latest.current.onIdle(Boolean(heard));
         }
       },
