@@ -3,10 +3,8 @@
  * user's session is the same 404 as a missing one.
  */
 
-import { NextResponse } from "next/server";
-
-import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
-import { SessionId } from "@/lib/schemas";
+import { getUserOrNull } from "@/lib/auth";
+import { isSessionId, notFound, serverError, unauthorized } from "@/lib/http";
 import { createClient } from "@/lib/supabase/server";
 
 export async function DELETE(
@@ -15,12 +13,8 @@ export async function DELETE(
 ) {
   const { id } = await ctx.params;
 
-  const user = await getUserOrNull();
-  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-
-  if (!SessionId.safeParse(id).success) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!(await getUserOrNull())) return unauthorized();
+  if (!isSessionId(id)) return notFound();
 
   const supabase = await createClient();
 
@@ -32,15 +26,9 @@ export async function DELETE(
     .select("id");
 
   if (error) {
-    console.error(`[sessions] delete ${id}: ${error.message}`);
-    return NextResponse.json(
-      { error: "Couldn't delete that interview. Please try again." },
-      { status: 500 },
-    );
+    return serverError(`[sessions] delete ${id}: ${error.message}`, "Couldn't delete that interview. Please try again.");
   }
-  if (!data?.length) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!data?.length) return notFound();
 
   return new Response(null, { status: 204 });
 }

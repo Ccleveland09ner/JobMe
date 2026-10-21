@@ -5,13 +5,13 @@
 
 import { NextResponse } from "next/server";
 
-import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { getUserOrNull } from "@/lib/auth";
+import { unauthorized } from "@/lib/http";
 import { TtsQuery } from "@/lib/schemas";
 import { TTS_MODEL_ID, TTS_OUTPUT_FORMAT } from "@/lib/voice/config";
 
 export async function GET(request: Request) {
-  const user = await getUserOrNull();
-  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+  if (!(await getUserOrNull())) return unauthorized();
 
   const url = new URL(request.url);
   const parsed = TtsQuery.safeParse({ text: url.searchParams.get("text") ?? "" });
@@ -39,39 +39,12 @@ export async function GET(request: Request) {
   }
 
   // Validate before streaming: once it starts, the status is already sent.
-  let upstream: Response;
-  try {
-    upstream = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream` +
-        `?output_format=${TTS_OUTPUT_FORMAT}`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          text: parsed.data.text,
-          model_id: TTS_MODEL_ID,
-        }),
-      },
-    );
-  } catch (err) {
-    return NextResponse.json(
-      { error: `Voice service unreachable: ${(err as Error).message}` },
-      { status: 502 },
-    );
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    return NextResponse.json(
-      { error: `Voice service returned ${upstream.status}` },
-      { status: 502 },
-    );
-  }
+  const upstream = await elevenLabs("stream", parsed.data.text, apiKey, voiceId);
+  if (!upstream.ok) return upstream.error;
+  if (!upstream.response.body) return badGateway(`Voice service returned ${upstream.response.status}`);
 
   // Never buffered: that would forfeit the first-byte target.
-  return new Response(upstream.body, {
+  return new Response(upstream.response.body, {
     headers: {
       "Content-Type": "audio/mpeg",
       "Cache-Control": "no-store",
@@ -89,11 +62,33 @@ interface Alignment {
 
 /** ElevenLabs "with-timestamps": base64 audio plus per-character times. */
 async function alignedSpeech(text: string, apiKey: string, voiceId: string): Promise<Response> {
-  let upstream: Response;
+  const upstream = await elevenLabs("with-timestamps", text, apiKey, voiceId);
+  if (!upstream.ok) return upstream.error;
+
+  const body = (await upstream.response.json().catch(() => null)) as
+    | { audio_base64?: string; alignment?: Alignment | null }
+    | null;
+  if (!body?.audio_base64) return badGateway("Voice service returned no audio");
+
+  return NextResponse.json(
+    { audio: body.audio_base64, alignment: body.alignment ?? null },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+const badGateway = (error: string) => NextResponse.json({ error }, { status: 502 });
+
+/** Asks ElevenLabs to say `text`; the 502 to answer with when it can't. */
+async function elevenLabs(
+  endpoint: "stream" | "with-timestamps",
+  text: string,
+  apiKey: string,
+  voiceId: string,
+): Promise<{ ok: true; response: Response } | { ok: false; error: NextResponse }> {
+  let response: Response;
   try {
-    upstream = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps` +
-        `?output_format=${TTS_OUTPUT_FORMAT}`,
+    response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/${endpoint}?output_format=${TTS_OUTPUT_FORMAT}`,
       {
         method: "POST",
         headers: { "xi-api-key": apiKey, "content-type": "application/json" },
@@ -101,25 +96,8 @@ async function alignedSpeech(text: string, apiKey: string, voiceId: string): Pro
       },
     );
   } catch (err) {
-    return NextResponse.json(
-      { error: `Voice service unreachable: ${(err as Error).message}` },
-      { status: 502 },
-    );
+    return { ok: false, error: badGateway(`Voice service unreachable: ${(err as Error).message}`) };
   }
-
-  if (!upstream.ok) {
-    return NextResponse.json({ error: `Voice service returned ${upstream.status}` }, { status: 502 });
-  }
-
-  const body = (await upstream.json().catch(() => null)) as
-    | { audio_base64?: string; alignment?: Alignment | null }
-    | null;
-  if (!body?.audio_base64) {
-    return NextResponse.json({ error: "Voice service returned no audio" }, { status: 502 });
-  }
-
-  return NextResponse.json(
-    { audio: body.audio_base64, alignment: body.alignment ?? null },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+  if (!response.ok) return { ok: false, error: badGateway(`Voice service returned ${response.status}`) };
+  return { ok: true, response };
 }

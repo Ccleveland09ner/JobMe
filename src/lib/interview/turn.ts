@@ -2,7 +2,6 @@
  * The turn pipeline: one answer in, one next question out, shared by the route
  * and the rehearsal harness. In order: pre-classify, evaluate (with a timeout),
  * band, gap and evidence in code, step() picks the move, then the wording.
- * Imports are relative: vitest has no path alias.
  */
 
 import { classifyBand, computePrimaryGap } from "../engine/classify";
@@ -37,8 +36,10 @@ import {
   fallbackResumeQuestion,
   type generateResumeQuestion,
 } from "../ai/resume-questions";
-import type { RoleProfile } from "../jd/distill";
-import type { QuestionPlan } from "../schemas";
+import { formatRoleForPrompt, type RoleProfile } from "../jd/distill";
+import { formatFactsForPrompt } from "../resume/distill";
+import type { ResumeFacts } from "../resume/store";
+import { QuestionPlan } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
 /**
@@ -331,4 +332,62 @@ export function isStaleSubmit(
   error: { code?: string } | null | undefined,
 ): boolean {
   return error?.code === "PT409" || error?.code === "23505";
+}
+
+/**
+ * Everything runTurn needs, from the stored session, its resume (null without
+ * one) and its latest turns. The stored plan is parsed, not trusted: a
+ * malformed one means the fixed openings, not a 500. This session's job
+ * outranks the resume's, and the plan's summary beats the raw posting.
+ */
+export function turnContextFrom(args: {
+  state: EngineState;
+  answer: { transcript: string; holdMs: number; captureMs?: number };
+  storedPlan: unknown;
+  /** The session's posting text, `role_text`. */
+  postingText: string | null;
+  resume: { resume_facts?: unknown; role_profile?: unknown } | null;
+  recentTurns: Parameters<typeof threadHistory>[1];
+}): TurnContext {
+  const parsed = QuestionPlan.safeParse(args.storedPlan);
+  const plan = parsed.success ? parsed.data : null;
+  return {
+    state: args.state,
+    transcript: args.answer.transcript,
+    holdMs: args.answer.holdMs,
+    captureMs: args.answer.captureMs,
+    // Distilled facts go in every prompt (a fixed prefix).
+    resumeFacts: args.resume ? formatFactsForPrompt((args.resume.resume_facts ?? null) as ResumeFacts | null) : null,
+    role: args.resume ? ((args.resume.role_profile ?? null) as RoleProfile | null) : null,
+    roleText: plan?.role ? formatRoleForPrompt(plan.role) : args.postingText,
+    priorThreadTurns: threadHistory(args.state, args.recentTurns),
+    plan,
+  };
+}
+
+/** The answer to an answered turn: the note, what comes next, and progress. */
+export function turnResponseBody(result: Extract<TurnResult, { kind: "turn" }>) {
+  const { state } = result;
+  return {
+    kind: "turn" as const,
+    move: result.move,
+    notepad: result.notepad,
+    // `lead` (a new thread only) is spoken before `text`, never shown alone.
+    next: result.next ? { ...result.next, lead: result.lead } : null,
+    done: result.done,
+    wrapLine: result.wrapLine,
+    progress: {
+      questionCount: state.questionCount,
+      questionCap: state.questionCap,
+      topicIndex: state.topicIndex,
+      topicsTotal: state.topics.length,
+      coverageDone: state.resumeItems.filter((i) => i.covered).length,
+      coverageTotal: state.resumeItems.length,
+    },
+  };
+}
+
+/** The 409 for a submit that isn't the next turn: the state to resync from. */
+export function staleTurnBody(state: EngineState, received: number) {
+  return { error: "Stale turn sequence", expected: state.turnSeq + 1, received, state };
 }

@@ -86,10 +86,12 @@ export async function storeResume(args: {
   );
 
   if (chunkError) {
-    // Roll back by hand, so no resume survives without its chunks.
-    await supabase.from("resumes").delete().eq("id", resume.id);
+    // Roll back by hand, so no resume survives without its chunks. If that
+    // fails too, say so: the row is then an orphan to clean up.
+    const { error: rollbackError } = await supabase.from("resumes").delete().eq("id", resume.id);
     throw new ResumeStoreError(
-      `Could not save resume chunks: ${chunkError.message}`,
+      `Could not save resume chunks: ${chunkError.message}` +
+        (rollbackError ? `; resume ${resume.id} was left behind: ${rollbackError.message}` : ""),
     );
   }
 

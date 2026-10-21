@@ -5,14 +5,14 @@
 
 import { NextResponse } from "next/server";
 
-import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { getUserOrNull } from "@/lib/auth";
 import type { Dimension, Scores } from "@/lib/engine/types";
+import { isSessionId, notFound, serverError, unauthorized } from "@/lib/http";
 import {
   runReport,
   type ReportStore,
   type StoredReport,
 } from "@/lib/interview/report";
-import { SessionId } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
 /** One model call plus a few queries; the default can be too tight on Vercel. */
@@ -26,23 +26,14 @@ export async function POST(
 ) {
   const { id } = await ctx.params;
 
-  const user = await getUserOrNull();
-  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-
-  if (!SessionId.safeParse(id).success) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!(await getUserOrNull())) return unauthorized();
+  if (!isSessionId(id)) return notFound();
 
   try {
     const outcome = await runReport(reportStore(await createClient(), id));
     return NextResponse.json(outcome.body, { status: outcome.status });
   } catch (err) {
-    // The detail is for the server log only — never the candidate's screen.
-    console.error(`[report] session ${id}: ${(err as Error).message}`);
-    return NextResponse.json(
-      { error: "Couldn't build your scorecard. Please try again." },
-      { status: 500 },
-    );
+    return serverError(`[report] session ${id}: ${(err as Error).message}`, "Couldn't build your scorecard. Please try again.");
   }
 }
 

@@ -11,9 +11,13 @@ import {
   degradedReasonFor,
   isStaleSubmit,
   runTurn,
+  staleTurnBody,
   threadHistory,
+  turnContextFrom,
+  turnResponseBody,
   turnRowFor,
   type TurnContext,
+  type TurnResult,
 } from "./turn";
 
 const flat = (n: number): Scores => ({
@@ -362,5 +366,82 @@ describe("runTurn — telemetry", () => {
       expect(Number.isInteger(result.evalMs)).toBe(true);
       expect(result.evalMs).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describe("turnContextFrom", () => {
+  const answer = { transcript: ANSWER, holdMs: 9000, captureMs: 8000 };
+  const role = { title: "Backend Intern", seniority: "intern", requiredSkills: ["Go"], responsibilities: [], competencies: [] };
+
+  it("prefers the plan's role summary to the raw posting, and parses the plan", () => {
+    const plan: QuestionPlan = { version: 1, role, topics: {}, resume: {} };
+    const ctx = turnContextFrom({ state: freshState(), answer, storedPlan: plan, postingText: "Raw posting", resume: null, recentTurns: [] });
+    expect(ctx).toMatchObject({ transcript: ANSWER, holdMs: 9000, captureMs: 8000, plan, resumeFacts: null, role: null });
+    expect(ctx.roleText).toContain("Backend Intern");
+  });
+
+  it("falls back to the posting, and to no plan, when the stored plan is malformed", () => {
+    const ctx = turnContextFrom({ state: freshState(), answer, storedPlan: { version: 2 }, postingText: "Raw posting", resume: null, recentTurns: [] });
+    expect(ctx.plan).toBeNull();
+    expect(ctx.roleText).toBe("Raw posting");
+  });
+
+  it("reads the resume's facts and role when there is a resume, even without facts", () => {
+    const withFacts = turnContextFrom({
+      state: freshState(),
+      answer,
+      storedPlan: null,
+      postingText: null,
+      resume: { resume_facts: { skills: ["Go"] }, role_profile: role },
+      recentTurns: [],
+    });
+    expect(withFacts.resumeFacts).toContain("Go");
+    expect(withFacts.role).toEqual(role);
+    const bare = turnContextFrom({ state: freshState(), answer, storedPlan: null, postingText: null, resume: {}, recentTurns: [] });
+    expect(bare.resumeFacts).toBe("");
+    expect(bare.role).toBeNull();
+  });
+
+  it("keeps only this thread's earlier answers, oldest first", () => {
+    const state = { ...freshState(), turnSeq: 3, threadScores: [flat(2), flat(2)] };
+    const recentTurns = [3, 2, 1].map((seq) => ({ seq, question_text: `Q${seq}`, answer_transcript: `A${seq}` }));
+    const ctx = turnContextFrom({ state, answer, storedPlan: null, postingText: null, resume: null, recentTurns });
+    expect(ctx.priorThreadTurns).toEqual([
+      { question: "Q2", answer: "A2" },
+      { question: "Q3", answer: "A3" },
+    ]);
+  });
+});
+
+describe("turnResponseBody and staleTurnBody", () => {
+  const item = (covered: boolean): ResumeItem => ({ id: "x", kind: "role", label: "Role", chunkSeqs: [], relevanceToRole: 1, covered });
+
+  it("answers with the note, the next question with its lead, and progress", () => {
+    const state = { ...freshState(), turnSeq: 1, questionCount: 2, topicIndex: 1, resumeItems: [item(true), item(false)] };
+    const result = {
+      kind: "turn",
+      state,
+      move: "opening",
+      notepad: { seq: 1 },
+      next: FIRST,
+      lead: "Let's switch topics.",
+      done: false,
+      wrapLine: undefined,
+    } as unknown as Extract<TurnResult, { kind: "turn" }>;
+    expect(turnResponseBody(result)).toEqual({
+      kind: "turn",
+      move: "opening",
+      notepad: { seq: 1 },
+      next: { ...FIRST, lead: "Let's switch topics." },
+      done: false,
+      wrapLine: undefined,
+      progress: { questionCount: 2, questionCap: state.questionCap, topicIndex: 1, topicsTotal: 4, coverageDone: 1, coverageTotal: 2 },
+    });
+    expect(turnResponseBody({ ...result, next: null }).next).toBeNull();
+  });
+
+  it("tells a stale submit which turn is expected, with the state to resync from", () => {
+    const state = { ...freshState(), turnSeq: 4 };
+    expect(staleTurnBody(state, 2)).toEqual({ error: "Stale turn sequence", expected: 5, received: 2, state });
   });
 });

@@ -7,7 +7,8 @@
 import { NextResponse } from "next/server";
 
 import { embedMany } from "@/lib/ai/embeddings";
-import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { getUserOrNull } from "@/lib/auth";
+import { serverError, unauthorized } from "@/lib/http";
 import { MAX_JD_CHARS, distillJobDescription } from "@/lib/jd/distill";
 import { chunkResume } from "@/lib/resume/chunk";
 import { distillResume } from "@/lib/resume/distill";
@@ -20,8 +21,7 @@ import { ResumeStoreError, storeResume } from "@/lib/resume/store";
 const MAX_BYTES = 4 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  const user = await getUserOrNull();
-  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+  if (!(await getUserOrNull())) return unauthorized();
 
   // Reject on the declared size BEFORE reading the body.
   const declared = Number(request.headers.get("content-length") ?? 0);
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     if (err instanceof ResumeStoreError) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
+      return serverError(`[resume] store: ${err.message}`, "Couldn't save your resume. Please try again.");
     }
     throw err;
   }
