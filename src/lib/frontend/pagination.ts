@@ -17,20 +17,3 @@ export function rowRange(page: number, pageSize: number): [number, number] {
   const from = (page - 1) * pageSize;
   return [from, from + pageSize - 1];
 }
-
-export type PageSlot = number | "gap";
-
-/** Page numbers to show: first, last, a window around the current page, and gaps (constant width). */
-export function pageWindow(page: number, totalPages: number, radius = 1): PageSlot[] {
-  if (totalPages <= 2 * radius + 5) {
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  }
-  const start = Math.max(2, Math.min(page - radius, totalPages - 2 * radius - 2));
-  const end = Math.min(totalPages - 1, Math.max(page + radius, 2 * radius + 3));
-  const slots: PageSlot[] = [1];
-  if (start > 2) slots.push("gap");
-  for (let p = start; p <= end; p++) slots.push(p);
-  if (end < totalPages - 1) slots.push("gap");
-  slots.push(totalPages);
-  return slots;
-}

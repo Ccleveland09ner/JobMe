@@ -13,7 +13,6 @@ import type {
   Scores,
   TopicId,
 } from "../engine/types";
-import type { ReportStats } from "../ai/report";
 
 /** Typed answers, or push-to-talk voice. Chosen on setup, passed as `?input=`. */
 export type InputMode = "typed" | "voice";
@@ -103,15 +102,6 @@ export interface ResumeUploadResponse {
   role: { title: string; seniority: string } | null;
   layoutSuspect: boolean;
   extractedPreview: string;
-}
-
-export interface ReportView {
-  summary: string;
-  weakestTurnId: string | null;
-  rewrite: string | null;
-  stats: ReportStats | null;
-  /** Backend-computed, scored turns only. Never re-averaged on the client. */
-  overallScores: Partial<Scores> | null;
 }
 
 // Rows the pages read directly (RLS-scoped)
