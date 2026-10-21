@@ -9,7 +9,7 @@ import { useEffect } from "react";
 
 import { useBuilding } from "@/components/building/BuildingProvider";
 import type { Held } from "@/components/building/heldMachine";
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 export const CLOSE_MS = 420;
 

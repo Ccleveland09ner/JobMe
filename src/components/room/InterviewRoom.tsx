@@ -24,7 +24,7 @@ import { isSttSupported } from "@/lib/voice/stt";
 import type { SttErrorCode } from "@/lib/voice/sttMachine";
 import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 
-import type { MicControl, MicState } from "./Recruiter3D";
+import type { MicControl, MicState } from "./types";
 import { RecruiterStage } from "./RecruiterStage";
 import { Captions } from "./Captions";
 import { EndInterviewDialog } from "./EndInterviewDialog";

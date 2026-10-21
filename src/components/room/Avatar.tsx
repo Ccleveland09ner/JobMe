@@ -8,7 +8,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
 

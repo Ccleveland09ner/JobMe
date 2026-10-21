@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { fakeSupabase } from "@/lib/testing/fake-supabase";
+
 import type { TurnRow } from "./adapters";
 import { packPages } from "./paginate";
 import {
@@ -8,6 +10,8 @@ import {
   folderFlow,
   FOLDER_FLOW_START,
   isFiled,
+  loadReportDocument,
+  loadReportIndex,
   reportDocumentFromRows,
   reportTabsFromRows,
   sectionStarts,
@@ -130,5 +134,34 @@ describe("describeFolder", () => {
     expect(describeFolder({ spread: [0, 1], total: 18 })).toBe("Page 1 of 17");
     expect(describeFolder({ spread: [10, 11], total: 18 })).toBe("Pages 10–11 of 17");
     expect(describeFolder({ spread: [0], total: 18 })).toBe("Inside the flap, 17 pages");
+  });
+});
+
+describe("loadReportDocument and loadReportIndex", () => {
+  it("reads one interview's session, turns and report", async () => {
+    const db = fakeSupabase((q) => {
+      if (q.table === "interview_sessions") return { data: session };
+      if (q.table === "turns") return { data: [turn(2), turn(1)] };
+      return { data: report };
+    });
+    const doc = await loadReportDocument(db.client as never, "s1");
+    expect(doc).toMatchObject({ id: "s1", title: "Backend Intern", mode: "quick", report: { weakestTurnId: "t1" } });
+    expect(doc?.turns.map((t) => t.seq)).toEqual([1, 2]);
+    expect(db.queries.find((q) => q.table === "interview_sessions")?.columns).toContain("mode:engine_state->>mode");
+  });
+
+  it("is null for an interview it can't see, and fails loudly on a broken read", async () => {
+    expect(await loadReportDocument(fakeSupabase(() => ({ data: null })).client as never, "s1")).toBeNull();
+    const broken = fakeSupabase((q) => (q.table === "turns" ? { error: { message: "down" } } : { data: null }));
+    await expect(loadReportDocument(broken.client as never, "s1")).rejects.toThrow("report turns: down");
+  });
+
+  it("lists finished interviews, newest first, as tabs", async () => {
+    const db = fakeSupabase(() => ({ data: [session] }));
+    expect(await loadReportIndex(db.client as never)).toEqual([
+      { id: "s1", startedAt: session.started_at, mode: "quick", title: "Backend Intern", average: 2.5 },
+    ]);
+    expect(db.queries[0].filters).toContainEqual(["eq", "status", "completed"]);
+    expect(db.queries[0].modifiers).toContain("limit:60");
   });
 });

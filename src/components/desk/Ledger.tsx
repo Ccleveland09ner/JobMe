@@ -11,7 +11,6 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import type { TrendPoint } from "@/components/dashboard/TrendChart";
 import { useDeleteSession } from "@/components/dashboard/useDeleteSession";
 import { CloseTag, useHeldShell } from "@/components/held/Held";
 import { BookSlider, FlipSafe, type BookSliderHandle, type BookState } from "@/components/ui/book-slider";
@@ -20,14 +19,19 @@ import { usePaginatedPages, type DocBlock } from "@/components/ui/usePaginatedPa
 import { isLeftPage } from "@/lib/frontend/book-layout";
 import {
   describeLedger,
+  entryNumber,
   LEDGER_FLOW_START,
   ledgerBook,
   ledgerFlow,
   ledgerStartPage,
   pageOf,
   type LedgerEntry,
+  type LedgerOwner,
+  type LedgerProgress,
+  type LedgerVolume,
 } from "@/lib/frontend/ledger";
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
+import type { TrendPoint } from "@/lib/frontend/types";
 
 import {
   BackCoverPage,
@@ -36,29 +40,17 @@ import {
   CoverPage,
   EmptyPage,
   EndPage,
-  entryNumber,
   entryTitle,
   LedgerBlockView,
   NotesPage,
   ProgressPage,
   TrendsPage,
-  type LedgerOwner,
-  type LedgerProgress,
-  type LedgerVolume,
 } from "./LedgerPages";
 
 const PAGE_SIZE = { width: DOC_PAGE.width, height: DOC_PAGE.height };
 const leftPage = (i: number) => isLeftPage(i, true);
 /** The cover opens once the ledger has settled in the hands (held-in). */
 const OPEN_DELAY_MS = 380;
-
-/** Moves focus to an element on the page just turned to. */
-function focusOn(id: string) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (!el.hasAttribute("tabindex")) el.tabIndex = -1;
-  el.focus({ preventScroll: true });
-}
 
 export function Ledger({
   owner,
@@ -121,17 +113,8 @@ export function Ledger({
     if (state.page === 0) openTimer.current = window.setTimeout(() => slider.current?.next(), OPEN_DELAY_MS);
   }, []);
 
-  // A contents link turns to its page, then hands focus to what it names.
-  const arriving = useRef<string | null>(null);
-  const openAt = useCallback((page: number, focusId: string) => {
-    arriving.current = focusId;
-    slider.current?.turnTo(page);
-  }, []);
-  const onPageChange = useCallback(() => {
-    const id = arriving.current;
-    arriving.current = null;
-    if (id) focusOn(id);
-  }, []);
+  // A contents line turns to its page, then hands focus to what it names.
+  const openAt = useCallback((page: number, focus: string) => slider.current?.turnTo(page, { focus }), []);
 
   const nodes = new Map(blocks.map((b) => [b.id, b.node]));
   const entryOf = new Map(flow.map((b) => [b.id, b.entry]));
@@ -204,7 +187,6 @@ export function Ledger({
           reserveHeight={200}
           describe={describeLedger}
           onReady={startPage === 0 ? openCover : undefined}
-          onPageChange={onPageChange}
           className="pt-8"
         >
           <CloseTag onClick={close} className="absolute -top-8 right-14 z-30">

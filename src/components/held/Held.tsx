@@ -9,6 +9,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button";
 import type { Held } from "@/components/building/heldMachine";
+import { isTextEntry } from "@/lib/frontend/dom";
 
 import { useHeld } from "./useHeld";
 
@@ -122,8 +123,7 @@ export function Pages({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      if (isTextEntry(e.target)) return;
       if (e.key === "ArrowRight") turn(page + 1);
       else if (e.key === "ArrowLeft") turn(page - 1);
     };

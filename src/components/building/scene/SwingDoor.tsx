@@ -7,7 +7,7 @@ import { useRef } from "react";
 import * as THREE from "three";
 
 import { glassMaterial } from "@/components/three/toon";
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { Box, InkEdges, unitBox } from "./parts";
 

@@ -11,7 +11,7 @@ import gsap from "gsap";
 import { useEffect, useRef, type ReactNode } from "react";
 import * as THREE from "three";
 
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "../BuildingProvider";
 import type { Held } from "../heldMachine";

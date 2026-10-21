@@ -12,12 +12,7 @@ import { LocalDate } from "@/components/common/LocalDate";
 import { DIMENSIONS, type Dimension, type Scores } from "@/lib/engine/types";
 import { displayAverage } from "@/lib/frontend/adapters";
 import { DIMENSION_LABELS } from "@/lib/frontend/labels";
-
-export interface TrendPoint {
-  id: string;
-  startedAt: string;
-  scores: Partial<Scores> | null;
-}
+import type { TrendPoint } from "@/lib/frontend/types";
 
 type Series = "average" | Dimension;
 

@@ -13,7 +13,7 @@ import { useBuilding } from "@/components/building/BuildingProvider";
 import { webglAvailable } from "@/lib/frontend/webgl";
 import type { VisemeWeights } from "@/lib/voice/lipsync";
 
-import type { MicControl } from "./Recruiter3D";
+import type { MicControl } from "./types";
 
 import { Avatar, type AvatarProps } from "./Avatar";
 import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";

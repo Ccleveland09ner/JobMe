@@ -11,7 +11,7 @@ import gsap from "gsap";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "./BuildingProvider";
 import { fovFor, NOTE_CLOSE_UPS, pathBetween, POSES, type Pose, type Station } from "./stations";

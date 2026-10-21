@@ -6,52 +6,19 @@
  * desk the user clicks the 3D objects; hidden twin buttons serve the keyboard.
  */
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useRef, type ReactNode } from "react";
 
-import { CLOSE_MS } from "@/components/held/useHeld";
 import { buttonClasses } from "@/components/ui/Button";
 
 import { useBuilding, useShow3D } from "./BuildingProvider";
-import { domVisible, type Held } from "./heldMachine";
-import { stationForPath } from "./stations";
-
-type Layout = "overlay" | "clipboard" | "held" | "board" | "room" | "panel";
-
-/** Routes whose page is a standalone clipboard, and its width. */
-const CLIPBOARD_PAGES: { match: (path: string) => boolean; width: string }[] = [
-  { match: (p) => p.startsWith("/login"), width: "md:w-[27rem]" },
-];
-
-const REPORT_ROUTE = /^\/interview\/[^/]+\/report$/;
-
-function layoutFor(pathname: string): Layout {
-  if (CLIPBOARD_PAGES.some((c) => c.match(pathname))) return "clipboard";
-  if (pathname.startsWith("/dev/")) return "panel";
-  const station = stationForPath(pathname);
-  if (station === "street") return "overlay";
-  if (station === "noteboard") return "board";
-  if (station === "room") return "room";
-  if (pathname === "/dashboard" || pathname === "/reports" || pathname === "/interview/new" || REPORT_ROUTE.test(pathname))
-    return "held";
-  return "panel";
-}
-
-/** The desk object a route asks to be holding. */
-function heldFor(pathname: string, open: string | null): Held | null {
-  if (pathname === "/dashboard") return open === "ledger" ? "ledger" : null;
-  if (pathname === "/reports" || REPORT_ROUTE.test(pathname)) return "reports";
-  if (pathname === "/interview/new") return "clipboard";
-  return null;
-}
-
-/** Tailwind's md breakpoint, where a panel moves to the side. */
-const SIDE_PANEL_QUERY = "(min-width: 48rem)";
+import { domVisible } from "./heldMachine";
+import { useCameraInset, useDeskActions, useHeldContent, useHeldFromRoute, useRouteHeadingFocus } from "./stationEffects";
+import { clipboardWidth, heldFor, layoutFor, type Layout } from "./stationLayout";
 
 export function StationLayer({ children }: { children: ReactNode }) {
   const building = useBuilding();
   const show3D = useShow3D();
-  const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
   const main = useRef<HTMLElement>(null);
@@ -59,88 +26,15 @@ export function StationLayer({ children }: { children: ReactNode }) {
   const routeHeld = heldFor(pathname, search.get("open"));
   const walking = building !== null && building.state.target !== null && !building.state.returning;
 
-  // Focus the page heading on route changes (not on first load), but not
-  // when a held document only moved its URL along (the folder's tabs).
-  const shown = useRef({ pathname, held: routeHeld });
-  useEffect(() => {
-    const before = shown.current;
-    if (before.pathname === pathname) return;
-    shown.current = { pathname, held: routeHeld };
-    if (routeHeld !== null && before.held === routeHeld) return;
-    const heading = main.current?.querySelector("h1");
-    if (heading instanceof HTMLElement) {
-      heading.tabIndex = -1;
-      heading.focus({ preventScroll: true });
-    }
-  }, [pathname, routeHeld]);
-
-  // The URL says what is held. In the room only the notepad can be.
-  const dispatchHeld = building?.dispatchHeld;
-  const heldNow = building?.held.held ?? null;
-  useEffect(() => {
-    if (layout !== "room") dispatchHeld?.({ type: "REQUEST", want: routeHeld });
-    else if (heldNow !== null && heldNow !== "notepad") dispatchHeld?.({ type: "REQUEST", want: null });
-  }, [dispatchHeld, layout, routeHeld, heldNow]);
-
-  // A closing ends even if its page isn't shown here or never reports back.
-  const heldPhase = building?.held.phase;
-  const shownHere = layout === "held" ? heldNow !== "notepad" : layout === "room" ? heldNow === "notepad" : false;
-  useEffect(() => {
-    if (heldPhase !== "closing" || !dispatchHeld) return;
-    if (!shownHere) {
-      dispatchHeld({ type: "DOM_CLOSED" });
-      return;
-    }
-    const timer = setTimeout(() => dispatchHeld({ type: "DOM_CLOSED" }), CLOSE_MS + 600);
-    return () => clearTimeout(timer);
-  }, [heldPhase, shownHere, dispatchHeld]);
-
-  // Object actions, shared by the 3D objects and their twin buttons.
-  const setAction = building?.setAction;
-  useEffect(() => {
-    if (!setAction) return;
-    const actions: Record<string, string> = {
-      ledger: "/dashboard?open=ledger",
-      clipboard: "/interview/new",
-      reports: "/reports",
-      settings: "/settings",
-      desk: "/dashboard",
-    };
-    for (const [name, href] of Object.entries(actions)) setAction(name, () => router.push(href));
-    return () => {
-      for (const name of Object.keys(actions)) setAction(name, null);
-    };
-  }, [setAction, router]);
-
-  // Keep the closing object's content after the route has moved on.
-  const held = building?.held;
-  const [heldContent, setHeldContent] = useState<ReactNode>(null);
-  if (held && held.phase === "open" && held.held === routeHeld && heldContent !== children) setHeldContent(children);
-
-  // Tell the camera how much of the screen a panel or clipboard covers.
-  const measured = layout === "panel" || layout === "clipboard";
-  const setInset = building?.setInset;
-  useEffect(() => {
-    const el = main.current;
-    if (!setInset || !el) return;
-    const measure = () => {
-      if (!measured) setInset({ right: 0, bottom: 0 });
-      else if (window.matchMedia(SIDE_PANEL_QUERY).matches)
-        setInset({ right: Math.max(0, window.innerWidth - el.getBoundingClientRect().left), bottom: 0 });
-      else setInset({ right: 0, bottom: Math.max(0, window.innerHeight - el.getBoundingClientRect().top) });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [setInset, measured]);
+  useRouteHeadingFocus(main, pathname, routeHeld);
+  useHeldFromRoute(layout, routeHeld);
+  useDeskActions();
+  const heldContent = useHeldContent(routeHeld, children);
+  useCameraInset(main, layout === "panel" || layout === "clipboard");
 
   const fade = `transition-opacity duration-300 ${walking ? "pointer-events-none opacity-0" : "opacity-100"}`;
 
+  const held = building?.held;
   if (layout === "held") {
     // Without the building (no provider) the page simply renders.
     const showHeld = !building || (held !== undefined && domVisible(held) && held.held !== "notepad");
@@ -167,7 +61,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
 
   const frame: Record<Exclude<Layout, "held">, string> = {
     overlay: "relative z-10 flex min-h-dvh flex-1 flex-col",
-    clipboard: `fixed inset-x-0 bottom-0 z-10 max-h-[70vh] overflow-y-auto px-3 pt-4 [scrollbar-width:thin] md:inset-y-0 md:left-auto md:right-6 md:max-h-none md:px-2 md:py-6 ${CLIPBOARD_PAGES.find((c) => c.match(pathname))?.width ?? ""}`,
+    clipboard: `fixed inset-x-0 bottom-0 z-10 max-h-[70vh] overflow-y-auto px-3 pt-4 [scrollbar-width:thin] md:inset-y-0 md:left-auto md:right-6 md:max-h-none md:px-2 md:py-6 ${clipboardWidth(pathname)}`,
     // Click-through to the 3D board; only the pinned controls take the pointer.
     board: "pointer-events-none fixed inset-0 z-10",
     room: "pointer-events-none fixed inset-0 z-10",

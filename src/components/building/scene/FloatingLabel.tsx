@@ -12,7 +12,7 @@ import * as THREE from "three";
 
 import { letteringGeometry, letteringMaterials, letteringWidth, useLetteringFont } from "@/components/three/lettering";
 import { toonMaterial } from "@/components/three/toon";
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "../BuildingProvider";
 import type { Held } from "../heldMachine";

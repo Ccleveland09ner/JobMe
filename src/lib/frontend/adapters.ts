@@ -135,6 +135,12 @@ export function reportTurnFromRow(row: TurnRow & { id: string }): ReportTurnView
   };
 }
 
+/**
+ * Columns read out of a session's JSON as plain ones: the interview's mode,
+ * and the job title it was for (the question plan keeps the distilled role).
+ */
+export const SESSION_JSON_COLUMNS = "mode:engine_state->>mode, role_title:question_plan->role->>title";
+
 export interface SessionRowData {
   id: string;
   status: string;
@@ -142,15 +148,20 @@ export interface SessionRowData {
   overall_scores: unknown;
   started_at: string;
   ended_at: string | null;
-  /** `engine_state->>mode`, selected as a plain column. */
+  /** `engine_state->>mode` (SESSION_JSON_COLUMNS). */
   mode?: string | null;
+}
+
+/** A stored mode, or null for anything else. */
+export function modeFromRow(mode: string | null | undefined): InterviewMode | null {
+  return mode === "quick" || mode === "full" ? mode : null;
 }
 
 export function sessionSummaryFromRow(row: SessionRowData): SessionSummary {
   return {
     id: row.id,
     status: (row.status === "completed" ? "completed" : "in_progress") as SessionStatus,
-    mode: row.mode === "quick" || row.mode === "full" ? (row.mode as InterviewMode) : null,
+    mode: modeFromRow(row.mode),
     startedAt: row.started_at,
     endedAt: row.ended_at,
     questionCount: row.question_count ?? 0,

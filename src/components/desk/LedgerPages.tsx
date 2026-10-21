@@ -5,55 +5,32 @@
  */
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
-import { TrendChart, type TrendPoint } from "@/components/dashboard/TrendChart";
+import { TrendChart } from "@/components/dashboard/TrendChart";
 import { BandBadge } from "@/components/score/BandBadge";
 import { ScoreList } from "@/components/score/ScoreList";
 import { Badge } from "@/components/ui/Badge";
 import { FlipSafe } from "@/components/ui/book-slider";
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { ContentsList, kickerClass, PaperStat } from "@/components/ui/DocumentParts";
 import { DocumentPage } from "@/components/ui/DocumentPage";
-import type { Scores } from "@/lib/engine/types";
 import { displayAverage } from "@/lib/frontend/adapters";
 import { dimensionLabel, MODE_LABELS, topicLabel } from "@/lib/frontend/labels";
 import {
+  entryNumber,
   LEDGER_CONTENTS_PAGE,
   LEDGER_PROGRESS_PAGE,
   ledgerVolumeHref,
   type LedgerBlock,
   type LedgerEntry,
+  type LedgerOwner,
+  type LedgerProgress,
   type LedgerQuestion,
+  type LedgerVolume,
 } from "@/lib/frontend/ledger";
-import type { SessionSummary } from "@/lib/frontend/types";
+import type { SessionSummary, TrendPoint } from "@/lib/frontend/types";
 import { unlockAudio } from "@/lib/frontend/voiceSession";
-
-export interface LedgerVolume {
-  number: number;
-  count: number;
-  /** Interviews in the volumes before this one (the newer ones). */
-  offset: number;
-  /** Interviews in every volume. */
-  total: number;
-}
-
-export interface LedgerOwner {
-  username: string | null;
-  memberCode: string;
-}
-
-export interface LedgerProgress {
-  completed: number;
-  inProgress: number;
-  /** overall_scores of the most recent completed interview. */
-  latestScores: Partial<Scores> | null;
-}
-
-/** An interview's running number: the first one ever is no. 1. */
-export function entryNumber(volume: LedgerVolume, index: number): number {
-  return volume.total - volume.offset - index;
-}
 
 export function entryTitle(entry: LedgerEntry): string {
   return entry.title ?? "Behavioral interview";
@@ -64,17 +41,7 @@ export const entryHeadingId = (id: string) => `ledger-entry-${id}`;
 export const PROGRESS_HEADING_ID = "ledger-progress";
 export const TRENDS_HEADING_ID = "trend-title";
 
-const KICKER = "text-[11px] font-bold uppercase tracking-[0.2em] text-muted";
 const EMBOSSED = "text-leather-light [text-shadow:0_2px_0_var(--color-leather-dark)]";
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="text-lg font-semibold tabular-nums text-ink">{value}</dd>
-    </div>
-  );
-}
 
 // Front matter
 
@@ -98,7 +65,7 @@ export function BookplatePage({ owner, volume, shown }: { owner: LedgerOwner | n
     <DocumentPage face="endpaper">
       <div className="flex flex-1 items-center justify-center px-9">
         <FlipSafe className="w-full -rotate-1 rounded-md border-2 border-ink bg-paper px-6 py-7 text-center shadow-[5px_6px_0_0_rgb(28_27_26/0.22)]">
-          <p className={KICKER}>This record belongs to</p>
+          <p className={kickerClass}>This record belongs to</p>
           <p className="mt-2 text-2xl font-bold text-ink">{owner?.username ? `@${owner.username}` : "You"}</p>
           {owner && <p className="mt-1 font-mono text-sm tracking-wider text-muted">{owner.memberCode}</p>}
           <div aria-hidden="true" className="mx-auto my-4 h-0.5 w-20 bg-ink/25" />
@@ -113,25 +80,6 @@ export function BookplatePage({ owner, volume, shown }: { owner: LedgerOwner | n
         </FlipSafe>
       </div>
     </DocumentPage>
-  );
-}
-
-function ContentsLine({ page, onOpen, children }: { page: number; onOpen: () => void; children: ReactNode }) {
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-baseline gap-2 rounded-sm py-1 text-left text-sm text-ink hover:text-accent-strong"
-      >
-        <span className="min-w-0 truncate">{children}</span>
-        <span aria-hidden="true" className="flex-1 border-b-2 border-dotted border-ink/30" />
-        <span aria-hidden="true" className="tabular-nums">
-          {page}
-        </span>
-        <span className="sr-only">, page {page}</span>
-      </button>
-    </li>
   );
 }
 
@@ -177,21 +125,25 @@ export function ContentsPage({
     <DocumentPage face="ledger" running="Contents" number={LEDGER_CONTENTS_PAGE}>
       <FlipSafe className="flex flex-col gap-2">
         <h2 className="text-lg font-bold text-ink">Contents</h2>
-        <ol className="flex flex-col">
-          <ContentsLine page={LEDGER_PROGRESS_PAGE} onOpen={() => onOpen(LEDGER_PROGRESS_PAGE, PROGRESS_HEADING_ID)}>
-            Your progress
-          </ContentsLine>
-          <ContentsLine page={LEDGER_PROGRESS_PAGE + 1} onOpen={() => onOpen(LEDGER_PROGRESS_PAGE + 1, TRENDS_HEADING_ID)}>
-            Score trends
-          </ContentsLine>
-          {entries.map((e, i) => (
-            <ContentsLine key={e.id} page={overviewPages[i]} onOpen={() => onOpen(overviewPages[i], entryHeadingId(e.id))}>
-              <span className="font-semibold">No. {entryNumber(volume, i)}</span> · <LocalDate iso={e.startedAt} />
-              {e.title && ` · ${e.title}`}
-              {e.status === "in_progress" && " · in progress"}
-            </ContentsLine>
-          ))}
-        </ol>
+        <ContentsList
+          onOpen={onOpen}
+          items={[
+            { key: "progress", label: "Your progress", page: LEDGER_PROGRESS_PAGE, focusId: PROGRESS_HEADING_ID },
+            { key: "trends", label: "Score trends", page: LEDGER_PROGRESS_PAGE + 1, focusId: TRENDS_HEADING_ID },
+            ...entries.map((e, i) => ({
+              key: e.id,
+              page: overviewPages[i],
+              focusId: entryHeadingId(e.id),
+              label: (
+                <>
+                  <span className="font-semibold">No. {entryNumber(volume, i)}</span> · <LocalDate iso={e.startedAt} />
+                  {e.title && ` · ${e.title}`}
+                  {e.status === "in_progress" && " · in progress"}
+                </>
+              ),
+            })),
+          ]}
+        />
       </FlipSafe>
       <FlipSafe className="mt-auto flex flex-col gap-3">
         <VolumeLinks volume={volume} />
@@ -212,9 +164,9 @@ export function ProgressPage({ progress }: { progress: LedgerProgress }) {
           Your progress
         </h2>
         <dl className="grid grid-cols-3 gap-3">
-          <Stat label="Completed" value={String(progress.completed)} />
-          <Stat label="In progress" value={String(progress.inProgress)} />
-          <Stat label="Latest average" value={latest === null ? "—" : `${latest} / 4`} />
+          <PaperStat label="Completed" value={String(progress.completed)} />
+          <PaperStat label="In progress" value={String(progress.inProgress)} />
+          <PaperStat label="Latest average" value={latest === null ? "—" : `${latest} / 4`} />
         </dl>
         {progress.latestScores ? (
           <div className="flex flex-col gap-2">
@@ -247,7 +199,7 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
   return (
     <section aria-labelledby={entryHeadingId(entry.id)} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <p className={KICKER}>Interview no. {number}</p>
+        <p className={kickerClass}>Interview no. {number}</p>
         <h2 id={entryHeadingId(entry.id)} tabIndex={-1} className="line-clamp-2 text-xl font-bold leading-snug text-ink outline-none">
           {entryTitle(entry)}
         </h2>
@@ -260,8 +212,8 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
         </p>
       </div>
       <dl className="grid grid-cols-2 gap-3 border-y-2 border-dashed border-ink/20 py-3">
-        <Stat label={completed ? "Questions answered" : "Reached question"} value={String(entry.questionCount)} />
-        <Stat label="Average" value={!completed ? "—" : average === null ? "Not scored" : `${average} / 4`} />
+        <PaperStat label={completed ? "Questions answered" : "Reached question"} value={String(entry.questionCount)} />
+        <PaperStat label="Average" value={!completed ? "—" : average === null ? "Not scored" : `${average} / 4`} />
       </dl>
       {entry.overallScores && (
         <div className="flex flex-col gap-2">
@@ -334,19 +286,19 @@ export function LedgerBlockView({
     case "summary":
       return (
         <div className="flex flex-col gap-1.5">
-          {block.first && <h3 className={KICKER}>The interviewer&apos;s summary</h3>}
+          {block.first && <h3 className={kickerClass}>The interviewer&apos;s summary</h3>}
           <p className="text-sm leading-relaxed text-ink">{block.text}</p>
         </div>
       );
     case "metrics":
       return (
         <dl className="grid grid-cols-2 gap-3 rounded-md border-2 border-ink/15 px-3 py-2">
-          <Stat label="Words per minute" value={entry.wpm ? String(entry.wpm) : "—"} />
-          <Stat label="Filler words (approx.)" value={entry.fillers === null ? "—" : String(entry.fillers)} />
+          <PaperStat label="Words per minute" value={entry.wpm ? String(entry.wpm) : "—"} />
+          <PaperStat label="Filler words (approx.)" value={entry.fillers === null ? "—" : String(entry.fillers)} />
         </dl>
       );
     case "questions":
-      return <h3 className={KICKER}>Questions and answers</h3>;
+      return <h3 className={kickerClass}>Questions and answers</h3>;
     case "question":
       return <QuestionEntry question={entry.questions[block.question ?? 0]} />;
     case "pending":

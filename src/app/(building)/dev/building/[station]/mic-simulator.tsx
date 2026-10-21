@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useBuilding } from "@/components/building/BuildingProvider";
-import type { MicControl, MicState, RecruiterState } from "@/components/room/Recruiter3D";
+import type { MicControl, MicState, RecruiterState } from "@/components/room/types";
 import { TableMic } from "@/components/room/TableMic";
 import { Button } from "@/components/ui/Button";
 

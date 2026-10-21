@@ -5,17 +5,24 @@
  * through RLS; the shaping and the layout are pure.
  */
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import type { ReportStats } from "@/lib/ai/report";
+import type { RowReader } from "@/lib/supabase/reader";
 
 import type { Dimension, InterviewMode, Scores } from "../engine/types";
-import { displayAverage, findEvidence, pickScores, reportTurnFromRow, scoreEntries, type TurnRow } from "./adapters";
+import {
+  displayAverage,
+  findEvidence,
+  modeFromRow,
+  pickScores,
+  reportTurnFromRow,
+  scoreEntries,
+  SESSION_JSON_COLUMNS,
+  type TurnRow,
+} from "./adapters";
 import { splitText, type FlowBlock, type PagePlan } from "./paginate";
 import type { ReportTurnView, SessionStatus } from "./types";
 
-const SESSION_COLUMNS =
-  "id, status, overall_scores, started_at, mode:engine_state->>mode, role_title:question_plan->role->>title";
+const SESSION_COLUMNS = `id, status, overall_scores, started_at, ${SESSION_JSON_COLUMNS}`;
 const TURN_COLUMNS =
   "id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text, wpm, filler_count";
 
@@ -71,11 +78,6 @@ interface ReportRow {
   stats: ReportStats | null;
 }
 
-type Reader = Pick<SupabaseClient, "from">;
-
-const modeOf = (mode: string | null | undefined): InterviewMode | null =>
-  mode === "quick" || mode === "full" ? mode : null;
-
 export function reportDocumentFromRows(
   session: SessionRow,
   turns: (TurnRow & { id: string })[],
@@ -85,7 +87,7 @@ export function reportDocumentFromRows(
     id: session.id,
     status: session.status === "completed" ? "completed" : "in_progress",
     startedAt: session.started_at,
-    mode: modeOf(session.mode),
+    mode: modeFromRow(session.mode),
     title: session.role_title?.trim() || null,
     overallScores: pickScores(session.overall_scores),
     turns: [...turns]
@@ -101,7 +103,7 @@ export function reportDocumentFromRows(
 }
 
 /** One interview's report, or null when there is no such interview. */
-export async function loadReportDocument(supabase: Reader, id: string): Promise<ReportDocument | null> {
+export async function loadReportDocument(supabase: RowReader, id: string): Promise<ReportDocument | null> {
   const [sessionRes, turnsRes, reportRes] = await Promise.all([
     supabase.from("interview_sessions").select(SESSION_COLUMNS).eq("id", id).maybeSingle(),
     supabase.from("turns").select(TURN_COLUMNS).eq("session_id", id).order("seq", { ascending: true }),
@@ -122,14 +124,14 @@ export function reportTabsFromRows(rows: SessionRow[]): ReportTab[] {
   return rows.map((r) => ({
     id: r.id,
     startedAt: r.started_at,
-    mode: modeOf(r.mode),
+    mode: modeFromRow(r.mode),
     title: r.role_title?.trim() || null,
     average: displayAverage(pickScores(r.overall_scores)),
   }));
 }
 
 /** The folder's tabs: finished interviews, newest first. */
-export async function loadReportIndex(supabase: Reader): Promise<ReportTab[]> {
+export async function loadReportIndex(supabase: RowReader): Promise<ReportTab[]> {
   const { data, error } = await supabase
     .from("interview_sessions")
     .select(SESSION_COLUMNS)

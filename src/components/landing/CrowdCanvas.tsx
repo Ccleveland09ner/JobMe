@@ -8,6 +8,8 @@
 import { gsap } from "gsap";
 import { useEffect, useRef } from "react";
 
+import { prefersReducedMotion } from "@/lib/frontend/motion";
+
 /** public/images/crowd-peeps.png is 3600x2268: 15 sprites across, 7 down. */
 const SHEET_COLS = 15;
 const SHEET_ROWS = 7;
@@ -64,7 +66,7 @@ export function CrowdCanvas({ src, className }: CrowdCanvasProps) {
     const ctx: CanvasRenderingContext2D = context;
 
     // Read once; a change mid-visit isn't worth a listener.
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = prefersReducedMotion();
 
     // `scale` draws the sprite; `depth` spaces the rows back from the front.
     const stage = { width: 0, height: 0, scale: 1, depth: 1 };

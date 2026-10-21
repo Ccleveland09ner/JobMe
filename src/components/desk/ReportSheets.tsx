@@ -5,7 +5,6 @@
  */
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
 import { ReportGenerator } from "@/components/report/ReportGenerator";
@@ -13,6 +12,7 @@ import { BandBadge } from "@/components/score/BandBadge";
 import { ScoreList } from "@/components/score/ScoreList";
 import { FlipSafe } from "@/components/ui/book-slider";
 import { buttonClasses } from "@/components/ui/Button";
+import { ContentsList, kickerClass, PaperStat } from "@/components/ui/DocumentParts";
 import { DocumentPage } from "@/components/ui/DocumentPage";
 import { DIMENSIONS } from "@/lib/engine/types";
 import { displayAverage, findEvidence, scoreLevel } from "@/lib/frontend/adapters";
@@ -27,7 +27,6 @@ import {
   type ReportTurn,
 } from "@/lib/frontend/report-document";
 
-const KICKER = "text-[11px] font-bold uppercase tracking-[0.2em] text-muted";
 const SCORE_TEXT = { 1: "text-score-1", 2: "text-score-2", 3: "text-score-3", 4: "text-score-4" } as const;
 
 export const sectionHeadingId = (id: FolderSection) => `report-${id}`;
@@ -61,7 +60,7 @@ export function FlapPage({
   return (
     <DocumentPage face="flap" running="Reports">
       <FlipSafe className="-rotate-1 rounded-md border-2 border-ink bg-paper px-5 py-4 shadow-[4px_5px_0_0_rgb(28_27_26/0.2)]">
-        <p className={KICKER}>Interview report</p>
+        <p className={kickerClass}>Interview report</p>
         {doc ? (
           <>
             <p className="mt-1 line-clamp-2 text-lg font-bold leading-snug text-ink">{reportTitle(doc)}</p>
@@ -85,25 +84,11 @@ export function FlapPage({
       </FlipSafe>
       {starts.length > 0 && (
         <FlipSafe className="flex flex-col gap-1">
-          <h2 className={`${KICKER} text-ink/70`}>In this file</h2>
-          <ol className="flex flex-col">
-            {starts.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => onOpen(s.page, sectionHeadingId(s.id))}
-                  className="flex w-full items-baseline gap-2 rounded-sm py-1 text-left text-sm text-ink hover:text-accent-strong"
-                >
-                  <span className="min-w-0 truncate">{s.title}</span>
-                  <span aria-hidden="true" className="flex-1 border-b-2 border-dotted border-ink/30" />
-                  <span aria-hidden="true" className="tabular-nums">
-                    {s.page}
-                  </span>
-                  <span className="sr-only">, page {s.page}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
+          <h2 className={`${kickerClass} text-ink/70`}>In this file</h2>
+          <ContentsList
+            onOpen={onOpen}
+            items={starts.map((s) => ({ key: s.id, label: s.title, page: s.page, focusId: sectionHeadingId(s.id) }))}
+          />
         </FlipSafe>
       )}
       <p className="mt-auto text-xs text-ink/70">Practice feedback, not a prediction of any hiring decision.</p>
@@ -183,23 +168,13 @@ function SectionHead({ id, doc }: { id: FolderSection; doc: ReportDocument }) {
   );
 }
 
-function Stat({ label, value, note }: { label: string; value: ReactNode; note?: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="text-xl font-semibold tabular-nums text-ink">{value}</dd>
-      {note && <dd className="text-xs text-muted">{note}</dd>}
-    </div>
-  );
-}
-
 function Averages({ doc }: { doc: ReportDocument }) {
   const answered = doc.report?.stats?.answered ?? doc.turns.length;
   const scored = doc.report?.stats?.scored ?? doc.turns.filter((t) => t.scores).length;
   const left = answered - scored;
   return (
     <div className="flex flex-col gap-2">
-      <h3 className={KICKER}>Average scores, 1–4</h3>
+      <h3 className={kickerClass}>Average scores, 1–4</h3>
       {doc.overallScores ? (
         <ScoreList scores={doc.overallScores} />
       ) : (
@@ -218,7 +193,7 @@ function Strengths({ doc }: { doc: ReportDocument }) {
   const { strongest, weakest } = strengths(doc.overallScores);
   const list = (title: string, rows: typeof strongest) => (
     <div className="flex flex-col gap-1">
-      <h3 className={KICKER}>{title}</h3>
+      <h3 className={kickerClass}>{title}</h3>
       <ul className="flex flex-col gap-0.5">
         {rows.map(([dim, value]) => (
           <li key={dim} className="flex items-baseline justify-between gap-2 text-sm text-ink">
@@ -242,8 +217,8 @@ function Speaking({ doc }: { doc: ReportDocument }) {
   const fillers = doc.report?.stats?.fillers ?? null;
   return (
     <dl className="grid grid-cols-2 gap-4">
-      <Stat label="Words per minute" value={wpm ?? "—"} note={wpm === null ? "Measured on spoken answers only." : undefined} />
-      <Stat label="Filler words (approx.)" value={fillers ?? "—"} />
+      <PaperStat size="lg" label="Words per minute" value={wpm ?? "—"} note={wpm === null ? "Measured on spoken answers only." : undefined} />
+      <PaperStat size="lg" label="Filler words (approx.)" value={fillers ?? "—"} />
     </dl>
   );
 }
@@ -251,7 +226,7 @@ function Speaking({ doc }: { doc: ReportDocument }) {
 function Bands({ doc, range: [from, to] }: { doc: ReportDocument; range: [number, number] }) {
   return (
     <div className="flex flex-col gap-1.5">
-      {from === 0 && <h3 className={KICKER}>How each answer landed</h3>}
+      {from === 0 && <h3 className={kickerClass}>How each answer landed</h3>}
       <ul className="flex flex-col">
         {doc.turns.slice(from, to).map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-3 border-b border-dashed border-ink/15 py-1 text-sm text-ink">

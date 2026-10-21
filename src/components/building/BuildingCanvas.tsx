@@ -10,7 +10,8 @@ import { Canvas, useLoader } from "@react-three/fiber";
 import { Suspense, useEffect, useRef } from "react";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 
-import { RECRUITER_MODEL, RecruiterModel, type Look, type Speaker } from "@/components/room/Recruiter3D";
+import { RECRUITER_MODEL, RecruiterModel } from "@/components/room/Recruiter3D";
+import type { Look, Speaker } from "@/components/room/types";
 import { LETTERING_FONT } from "@/components/three/lettering";
 import { OutlineRenderer } from "@/components/three/OutlineRenderer";
 import { PALETTE } from "@/components/three/toon";

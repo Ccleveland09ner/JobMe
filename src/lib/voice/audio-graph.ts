@@ -6,6 +6,8 @@
  * goes silent; the context only resumes in a user gesture.
  */
 
+import { prefersReducedMotion } from "../frontend/motion";
+
 import { getSharedAudio } from "./tts";
 
 export interface AudioGraph {
@@ -19,11 +21,6 @@ export interface AudioGraph {
 
 let context: AudioContext | null = null;
 const sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
-
-export function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 /** Call from the Begin click handler, once per session. */
 export function createAudioGraph(

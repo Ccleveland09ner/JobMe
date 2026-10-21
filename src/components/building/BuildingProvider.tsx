@@ -20,7 +20,7 @@ import {
   type RefObject,
 } from "react";
 
-import type { Speaker } from "@/components/room/Recruiter3D";
+import type { Speaker } from "@/components/room/types";
 import { webglAvailable } from "@/lib/frontend/webgl";
 
 import { buildingReducer, initialBuilding, type BuildingEvent, type BuildingState } from "./buildingMachine";

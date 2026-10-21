@@ -9,6 +9,7 @@
 import { useEffect, useId, useRef } from "react";
 
 import { Button } from "@/components/ui/Button";
+import { isTextEntry } from "@/lib/frontend/dom";
 import type { InputMode } from "@/lib/frontend/types";
 
 import { LiveTranscript } from "./LiveTranscript";
@@ -16,11 +17,9 @@ import { SpeechBubble } from "./SpeechBubble";
 import { TableMic } from "./TableMic";
 import type { Phase } from "./roomMachine";
 
-/** True when a key event belongs to something the user is typing into or operating. */
+/** True when a key event belongs to something the user is typing into or operating (Space presses a button). */
 export function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName);
+  return isTextEntry(target) || (target instanceof HTMLElement && ["BUTTON", "A"].includes(target.tagName));
 }
 
 export function PushToTalk({

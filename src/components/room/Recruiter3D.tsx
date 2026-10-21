@@ -18,12 +18,12 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { OutlineRenderer } from "@/components/three/OutlineRenderer";
 import { studioEnvironment } from "@/components/three/environment";
 import { INK, toonGradient } from "@/components/three/toon";
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 import { VISEMES, openness, type VisemeWeights } from "@/lib/voice/lipsync";
 
-export const RECRUITER_MODEL = "/models/recruiter.glb";
+import type { Look, RecruiterState, Speaker } from "./types";
 
-export type RecruiterState = "idle" | "listening" | "thinking" | "speaking";
+export const RECRUITER_MODEL = "/models/recruiter.glb";
 
 export interface Recruiter3DProps {
   state: RecruiterState;
@@ -33,36 +33,6 @@ export interface Recruiter3DProps {
   readVisemes?: () => VisemeWeights | null;
   /** Called once the model is loaded and has drawn its first frame. */
   onReady?: () => void;
-}
-
-/** The candidate's mic, shown as the panel button and the 3D desk mic. */
-export type MicState = "off" | "disabled" | "ready" | "recording";
-
-export interface MicControl {
-  state: MicState;
-  /** Start recording when ready, send when recording; nothing otherwise. */
-  toggle: () => void;
-}
-
-/** What drives the face, read every frame without re-rendering React. */
-export interface Speaker {
-  state: RecruiterState;
-  readMouth?: () => number | null;
-  readVisemes?: () => VisemeWeights | null;
-  /** The candidate's mic, for the 3D desk mic. */
-  mic?: MicControl;
-  /** A world point to look at instead of the camera; null for eye contact. */
-  lookAt?: readonly [number, number, number] | null;
-}
-
-/** Recolouring by material name, so one model can play several people. */
-export interface Look {
-  colors?: Record<string, string>;
-  glasses?: boolean;
-  /** "rendered" (default): PBR, studio lit, no outline. "toon": flat tones and an outline. */
-  style?: "rendered" | "toon";
-  /** Glance away now and then instead of constant eye contact (a waiting character). */
-  idleGlances?: boolean;
 }
 
 /** How strongly the studio lighting (environment) lights a rendered character. */

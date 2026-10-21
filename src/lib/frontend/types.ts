@@ -128,6 +128,13 @@ export interface SessionSummary {
   overallScores: Partial<Scores> | null;
 }
 
+/** One completed interview on the trend chart. */
+export interface TrendPoint {
+  id: string;
+  startedAt: string;
+  scores: Partial<Scores> | null;
+}
+
 /** One answered question on the scorecard. */
 export interface ReportTurnView {
   id: string;

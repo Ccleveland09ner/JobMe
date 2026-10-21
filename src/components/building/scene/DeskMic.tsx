@@ -11,7 +11,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import * as THREE from "three";
 
-import type { MicState, Speaker } from "@/components/room/Recruiter3D";
+import type { MicState, Speaker } from "@/components/room/types";
 import { renderedMaterial } from "@/components/three/rendered";
 
 type Vec3 = [number, number, number];

@@ -6,10 +6,25 @@
  */
 
 import type { ReportStats } from "@/lib/ai/report";
+import { FULL_QUESTION_CAP_MAX, type Scores } from "@/lib/engine/types";
+import type { RowReader } from "@/lib/supabase/reader";
 
-import { reportTurnFromRow, sessionSummaryFromRow, type SessionRowData, type TurnRow } from "./adapters";
+import {
+  pickScores,
+  reportTurnFromRow,
+  SESSION_JSON_COLUMNS,
+  sessionSummaryFromRow,
+  type SessionRowData,
+  type TurnRow,
+} from "./adapters";
 import { splitText, type FlowBlock, type PagePlan } from "./paginate";
-import type { ReportTurnView, SessionSummary } from "./types";
+import type { ReportTurnView, SessionSummary, TrendPoint } from "./types";
+
+/** Interviews per volume of the ledger. */
+export const VOLUME_SIZE = 6;
+
+/** Completed interviews plotted on the trend chart, most recent. */
+export const TREND_LIMIT = 20;
 
 /** How much of an answer the ledger shows; the full answer is in the report. */
 export const LEDGER_ANSWER_CHARS = 220;
@@ -47,6 +62,32 @@ export interface LedgerReportRow {
   session_id: string;
   summary: string | null;
   stats: Partial<ReportStats> | null;
+}
+
+export interface LedgerVolume {
+  number: number;
+  count: number;
+  /** Interviews in the volumes before this one (the newer ones). */
+  offset: number;
+  /** Interviews in every volume. */
+  total: number;
+}
+
+export interface LedgerOwner {
+  username: string | null;
+  memberCode: string;
+}
+
+export interface LedgerProgress {
+  completed: number;
+  inProgress: number;
+  /** overall_scores of the most recent completed interview. */
+  latestScores: Partial<Scores> | null;
+}
+
+/** An interview's running number: the first one ever is no. 1. */
+export function entryNumber(volume: LedgerVolume, index: number): number {
+  return volume.total - volume.offset - index;
 }
 
 /** The start of `text`, cut at a word and marked with an ellipsis when cut. */
@@ -186,4 +227,70 @@ export function describeLedger({ spread, total }: { spread: number[]; total: num
   const printed = spread.filter((i) => i > 0 && i < total - 1);
   const of = total - 2;
   return printed.length === 2 ? `Pages ${printed[0]}–${printed[1]} of ${of}` : `Page ${printed[0]} of ${of}`;
+}
+
+// Loading (RLS scopes every row to the signed-in user)
+
+const VOLUME_COLUMNS = `id, status, question_count, overall_scores, started_at, ended_at, ${SESSION_JSON_COLUMNS}`;
+const TURN_COLUMNS =
+  "id, session_id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text";
+
+/** The record as a whole: how many interviews, how many finished, the trend, and whose it is. */
+export interface LedgerShelf {
+  total: number;
+  completed: number;
+  trend: TrendPoint[];
+  owner: LedgerOwner | null;
+}
+
+export async function loadLedgerShelf(supabase: RowReader, userId: string): Promise<LedgerShelf> {
+  const [totalRes, trendRes, profileRes] = await Promise.all([
+    supabase.from("interview_sessions").select("id", { count: "exact", head: true }),
+    supabase
+      .from("interview_sessions")
+      .select("id, started_at, overall_scores", { count: "exact" })
+      .eq("status", "completed")
+      .order("started_at", { ascending: false })
+      .limit(TREND_LIMIT),
+    // Not essential: without it the ledger just doesn't say whose it is.
+    supabase.from("profiles").select("username, member_code").eq("id", userId).maybeSingle(),
+  ]);
+  if (totalRes.error) throw new Error(`dashboard count: ${totalRes.error.message}`);
+  if (trendRes.error) throw new Error(`dashboard trend: ${trendRes.error.message}`);
+  const profile = profileRes.error ? null : (profileRes.data as { username: string | null; member_code: string } | null);
+  const trendRows = (trendRes.data ?? []) as { id: string; started_at: string; overall_scores: unknown }[];
+  return {
+    total: totalRes.count ?? 0,
+    completed: trendRes.count ?? 0,
+    // Oldest first, for the chart.
+    trend: trendRows.map((r) => ({ id: r.id, startedAt: r.started_at, scores: pickScores(r.overall_scores) })).reverse(),
+    owner: profile ? { username: profile.username, memberCode: profile.member_code } : null,
+  };
+}
+
+/** One volume: rows `from` to `to` (newest first), each with its turns and its report's summary. */
+export async function loadLedgerVolume(supabase: RowReader, [from, to]: [number, number]): Promise<LedgerEntry[]> {
+  const { data: rows, error } = await supabase
+    .from("interview_sessions")
+    .select(VOLUME_COLUMNS)
+    .order("started_at", { ascending: false })
+    .range(from, to);
+  if (error) throw new Error(`dashboard sessions: ${error.message}`);
+  const sessions = (rows ?? []) as unknown as LedgerSessionRow[];
+  const ids = sessions.map((s) => s.id);
+  if (!ids.length) return [];
+
+  const [turnsRes, reportsRes] = await Promise.all([
+    supabase
+      .from("turns")
+      .select(TURN_COLUMNS)
+      .in("session_id", ids)
+      .order("seq", { ascending: true })
+      .limit(VOLUME_SIZE * FULL_QUESTION_CAP_MAX),
+    supabase.from("reports").select("session_id, summary, stats").in("session_id", ids),
+  ]);
+  if (turnsRes.error) throw new Error(`dashboard turns: ${turnsRes.error.message}`);
+  // Not essential: without them the ledger just doesn't quote the summaries.
+  const reports = reportsRes.error ? [] : ((reportsRes.data ?? []) as unknown as LedgerReportRow[]);
+  return ledgerEntries(sessions, (turnsRes.data ?? []) as unknown as LedgerTurnRow[], reports);
 }

@@ -7,7 +7,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
-import type { MicState } from "./Recruiter3D";
+import type { MicState } from "./types";
 
 const LABEL: Record<Exclude<MicState, "off">, string> = {
   disabled: "Microphone unavailable while the interviewer is speaking",

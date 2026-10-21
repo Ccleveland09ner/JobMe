@@ -4,7 +4,7 @@
 
 import type { RefObject } from "react";
 
-import type { Speaker } from "@/components/room/Recruiter3D";
+import type { Speaker } from "@/components/room/types";
 
 import { TABLE, RECRUITER, ROOM } from "../world";
 import { DeskMic } from "./DeskMic";

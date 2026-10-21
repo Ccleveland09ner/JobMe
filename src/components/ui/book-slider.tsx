@@ -30,7 +30,8 @@ import {
 import HTMLFlipBook from "react-pageflip";
 
 import { fitBook, spreadAt, type BookFit, type BookOrientation } from "@/lib/frontend/book-layout";
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { isTextEntry } from "@/lib/frontend/dom";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 export type BookMode = "book" | "folder" | "clipboard";
 
@@ -51,7 +52,8 @@ export interface BookState {
 export interface BookSliderHandle {
   next(): void;
   prev(): void;
-  turnTo(page: number, options?: { animate?: boolean }): void;
+  /** `focus`: the id of an element on that page to focus once the turn lands. */
+  turnTo(page: number, options?: { animate?: boolean; focus?: string }): void;
 }
 
 export interface BookSliderProps {
@@ -152,14 +154,17 @@ export function describePages({ spread, total }: BookState): string {
   return second ? `Pages ${first}–${second} of ${total}` : `Page ${first} of ${total}`;
 }
 
+/** Moves focus to an element on the page just turned to (a heading, usually). */
+function focusOn(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!el.hasAttribute("tabindex")) el.tabIndex = -1;
+  el.focus({ preventScroll: true });
+}
+
 /** Between the covers, rather than shut on one of them. */
 function isOpen({ spread, total }: BookState): boolean {
   return !spread.includes(0) && !spread.includes(total - 1);
-}
-
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 }
 
 /** What a page element renders: its content, from the latest render. */
@@ -374,9 +379,16 @@ export function BookSlider({
   useEffect(() => {
     latest.current = { onPageChange, onReady, covers };
   });
+  // Where a turn asked for is to put focus when it lands.
+  const arrival = useRef<string | null>(null);
+  const shown = useRef<BookState | null>(null);
   const report = useCallback((next: BookState) => {
+    shown.current = next;
     setState(next);
     latest.current.onPageChange?.(next);
+    const id = arrival.current;
+    arrival.current = null;
+    if (id) focusOn(id);
   }, []);
   const onInit = useCallback(
     (e: FlipEvent) => {
@@ -416,9 +428,15 @@ export function BookSlider({
     else programmatic(e, () => e.flipPrev("top"));
   }, [reduced]);
   const turnTo = useCallback(
-    (page: number, options?: { animate?: boolean }) => {
+    (page: number, options?: { animate?: boolean; focus?: string }) => {
       const e = engine.current;
       if (!e) return;
+      // Already on show: nothing turns, so nothing would land.
+      if (shown.current?.spread.includes(page)) {
+        if (options?.focus) focusOn(options.focus);
+        return;
+      }
+      arrival.current = options?.focus ?? null;
       if (options?.animate === false || reduced) e.turnToPage(page);
       else programmatic(e, () => e.flip(page, "top"));
     },
@@ -429,7 +447,7 @@ export function BookSlider({
   useEffect(() => {
     if (!keyboard) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || isTyping(e.target) || document.querySelector("dialog[open]")) return;
+      if (e.defaultPrevented || isTextEntry(e.target) || document.querySelector("dialog[open]")) return;
       if (e.key === "ArrowRight") next();
       else if (e.key === "ArrowLeft") prev();
     };

@@ -42,17 +42,6 @@ import { BlankPage, EmptyFolderPage, FlapPage, FolderBlockView, GeneratePage } f
 
 const PAGE_SIZE = { width: DOC_PAGE.width, height: DOC_PAGE.height };
 
-let browserClient: ReturnType<typeof createClient> | null = null;
-const supabase = () => (browserClient ??= createClient());
-
-/** Moves focus to an element on the page just turned to. */
-function focusOn(id: string) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (!el.hasAttribute("tabindex")) el.tabIndex = -1;
-  el.focus({ preventScroll: true });
-}
-
 /** A laid-out file: what the folder shows. */
 interface Filed {
   key: string;
@@ -126,7 +115,7 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
     if (docs.has(id)) return show(id);
     setOpening(id);
     try {
-      const loaded = await loadReportDocument(supabase(), id);
+      const loaded = await loadReportDocument(createClient(), id);
       if (!loaded) throw new Error("not found");
       setDocs((m) => new Map(m).set(id, loaded));
       if (wanted.current === id) show(id);
@@ -145,17 +134,8 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
     [doc],
   );
 
-  // A contents line turns to its page, then hands focus to its heading.
-  const arriving = useRef<string | null>(null);
-  const openAt = useCallback((page: number, focusId: string) => {
-    arriving.current = focusId;
-    slider.current?.turnTo(page);
-  }, []);
-  const onPageChange = useCallback(() => {
-    const id = arriving.current;
-    arriving.current = null;
-    if (id) focusOn(id);
-  }, []);
+  // A contents line turns to its page, then hands focus to what it names.
+  const openAt = useCallback((page: number, focus: string) => slider.current?.turnTo(page, { focus }), []);
 
   const pages = view && folderBook(view.doc, view.plan);
   const nodes = new Map(view?.blocks.map((b) => [b.id, b.node]));
@@ -213,8 +193,7 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
             label={view?.doc ? `Report: ${view.doc.title ?? "Behavioral interview"}` : "Reports folder"}
             reserveHeight={230}
             describe={describeFolder}
-            onPageChange={onPageChange}
-            className="pt-24 sm:pt-14"
+              className="pt-24 sm:pt-14"
           >
             {tabs.length > 0 && (
               <DocumentTabs

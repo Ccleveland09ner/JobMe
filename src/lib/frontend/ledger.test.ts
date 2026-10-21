@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { fakeSupabase } from "@/lib/testing/fake-supabase";
+
 import { isLeftPage } from "./book-layout";
 import {
   describeLedger,
@@ -10,6 +12,8 @@ import {
   ledgerEntries,
   ledgerFlow,
   ledgerStartPage,
+  loadLedgerShelf,
+  loadLedgerVolume,
   pageOf,
   type LedgerEntry,
   type LedgerTurnRow,
@@ -151,5 +155,62 @@ describe("describeLedger", () => {
     expect(describeLedger({ spread: [3, 4], total: 12 })).toBe("Pages 3–4 of 10");
     expect(describeLedger({ spread: [7], total: 12 })).toBe("Page 7 of 10");
     expect(describeLedger({ spread: [11], total: 12 })).toBe("Back cover");
+  });
+});
+
+describe("loading", () => {
+  it("reads the shelf: counts, the trend oldest first, and whose record it is", async () => {
+    const shelf = loadLedgerShelf;
+    const db = fakeSupabase((q) => {
+      if (q.table === "profiles") return { data: { username: "kazu", member_code: "JM-1" } };
+      if (q.filters.some(([, col]) => col === "status")) {
+        return { count: 2, data: [{ id: "b", started_at: "2026-10-18", overall_scores: { task: 3 } }, { id: "a", started_at: "2026-10-10", overall_scores: null }] };
+      }
+      return { count: 5 };
+    });
+    expect(await shelf(db.client as never, "user-1")).toEqual({
+      total: 5,
+      completed: 2,
+      trend: [
+        { id: "a", startedAt: "2026-10-10", scores: null },
+        { id: "b", startedAt: "2026-10-18", scores: { task: 3 } },
+      ],
+      owner: { username: "kazu", memberCode: "JM-1" },
+    });
+  });
+
+  it("does without the owner, but not without the counts", async () => {
+    const shelf = loadLedgerShelf;
+    const noProfile = fakeSupabase((q) => (q.table === "profiles" ? { error: { message: "rls" } } : { count: 0, data: [] }));
+    expect((await shelf(noProfile.client as never, "user-1")).owner).toBeNull();
+    const broken = fakeSupabase((q) => (q.table === "profiles" ? {} : { error: { message: "down" } }));
+    await expect(shelf(broken.client as never, "user-1")).rejects.toThrow("dashboard count: down");
+  });
+
+  it("reads a volume with each interview's turns and report summary", async () => {
+    const volume = loadLedgerVolume;
+    const db = fakeSupabase((q) => {
+      if (q.table === "interview_sessions") return { data: [session] };
+      if (q.table === "turns") return { data: [turn(1)] };
+      return { data: [{ session_id: "s1", summary: "Clear.", stats: { wpm: 120, fillers: 2 } }] };
+    });
+    const [entry] = await volume(db.client as never, [0, 5]);
+    expect(entry).toMatchObject({ id: "s1", title: "Backend Intern", summary: "Clear.", wpm: 120 });
+    expect(entry.questions).toHaveLength(1);
+    const sessions = db.queries.find((q) => q.table === "interview_sessions");
+    expect(sessions?.columns).toContain("role_title:question_plan->role->>title");
+    expect(sessions?.modifiers).toContain("range:0-5");
+    expect(db.queries.find((q) => q.table === "turns")?.filters).toContainEqual(["in", "session_id", ["s1"]]);
+  });
+
+  it("asks nothing more for an empty volume, and does without the summaries", async () => {
+    const volume = loadLedgerVolume;
+    const empty = fakeSupabase(() => ({ data: [] }));
+    expect(await volume(empty.client as never, [0, 5])).toEqual([]);
+    expect(empty.queries).toHaveLength(1);
+    const noReports = fakeSupabase((q) =>
+      q.table === "reports" ? { error: { message: "rls" } } : q.table === "turns" ? { data: [] } : { data: [session] },
+    );
+    expect((await volume(noReports.client as never, [0, 5]))[0].summary).toBeNull();
   });
 });
