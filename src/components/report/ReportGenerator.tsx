@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { buttonClasses } from "@/components/ui/Button";
-import { friendlyError } from "@/lib/frontend/adapters";
+import { generateReport, OFFLINE_MESSAGE } from "@/lib/frontend/api";
 import type { GeneratedReport } from "@/lib/frontend/report-document";
 
 type Status = { kind: "generating" } | { kind: "empty" } | { kind: "error"; message: string };
@@ -43,20 +43,23 @@ export function ReportGenerator({
 
     void (async () => {
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/report`, { method: "POST" });
-        if (res.ok) {
-          const report = (await res.json().catch(() => null)) as GeneratedReport | null;
-          if (report && handOver.current) handOver.current(report);
+        const result = await generateReport(sessionId);
+        if (result.ok) {
+          if (result.data && handOver.current) handOver.current(result.data);
           else startRefresh(() => router.refresh());
           return;
         }
-        if (res.status === 409) {
+        if (result.offline) {
+          setStatus({ kind: "error", message: OFFLINE_MESSAGE });
+          return;
+        }
+        if (result.status === 409) {
           setStatus({ kind: "empty" });
           return;
         }
-        setStatus({ kind: "error", message: friendlyError(res.status, await res.json().catch(() => null)) });
+        setStatus({ kind: "error", message: result.message });
       } catch {
-        setStatus({ kind: "error", message: "We couldn't reach the server. Check your connection and try again." });
+        setStatus({ kind: "error", message: OFFLINE_MESSAGE });
       }
     })();
   }, [attempt, sessionId, router]);

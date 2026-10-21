@@ -12,7 +12,7 @@ import { useId, useRef, useState } from "react";
 import { LocalDate } from "@/components/common/LocalDate";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
-import { friendlyError } from "@/lib/frontend/adapters";
+import { uploadResume } from "@/lib/frontend/api";
 import type { ResumeState } from "@/lib/frontend/setup";
 import type { ResumeSummary, ResumeUploadResponse } from "@/lib/frontend/types";
 
@@ -69,17 +69,17 @@ export function ResumeSelector({
     const form = new FormData();
     form.append("file", file);
     if (roleText.trim()) form.append("roleText", roleText.trim());
+    const offline = "We couldn't upload that file. Check your connection and try again.";
     try {
-      const res = await fetch("/api/resume", { method: "POST", body: form });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        setUpload({ status: "error", message: friendlyError(res.status, body) });
+      const uploaded = await uploadResume(form);
+      if (!uploaded.ok) {
+        setUpload({ status: "error", message: uploaded.offline ? offline : uploaded.message });
         return;
       }
-      const result = body as ResumeUploadResponse;
+      const result = uploaded.data;
       setUpload({ status: result.layoutSuspect ? "review" : "ready", result });
     } catch {
-      setUpload({ status: "error", message: "We couldn't upload that file. Check your connection and try again." });
+      setUpload({ status: "error", message: offline });
     }
   }
 

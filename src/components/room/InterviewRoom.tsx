@@ -15,9 +15,10 @@ import { useBuilding } from "@/components/building/BuildingProvider";
 import { domVisible } from "@/components/building/heldMachine";
 import { LoadingState } from "@/components/common/LoadingState";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { friendlyError, noteFromResponse } from "@/lib/frontend/adapters";
+import { noteFromResponse } from "@/lib/frontend/adapters";
+import { submitTurn } from "@/lib/frontend/api";
 import { takeIntro } from "@/lib/frontend/handoff";
-import type { InputMode, NoteView, ProgressView, QuestionView, TurnResponse } from "@/lib/frontend/types";
+import type { InputMode, NoteView, ProgressView, QuestionView } from "@/lib/frontend/types";
 import { readMouth, readSpokenWord, readVisemes, unlockAudio } from "@/lib/frontend/voiceSession";
 import { isSttSupported } from "@/lib/voice/stt";
 import type { SttErrorCode } from "@/lib/voice/sttMachine";
@@ -177,36 +178,33 @@ export function InterviewRoom(props: InterviewRoomProps) {
       // Covers the scoring wait (~0.3s target). Silent if clips are missing.
       playAck();
 
+      const offline = () => {
+        submittedSeq.current = null;
+        dispatch({ type: "SUBMIT_FAILED", message: "We couldn't reach the server. Your answer is kept — try sending again." });
+      };
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/turns`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript, clientTurnSeq, ...timings }),
-        });
-        const body = await res.json().catch(() => null);
-
-        if (res.status === 409) {
-          if (body && typeof body === "object" && "state" in body) {
+        const outcome = await submitTurn(sessionId, { transcript, clientTurnSeq, ...timings });
+        switch (outcome.kind) {
+          case "stale":
             dispatch({ type: "STALE" });
             router.refresh();
-          } else {
+            return;
+          case "finished":
             // Already finished elsewhere: the scorecard is the right place.
             router.push(reportHref);
-          }
-          return;
+            return;
+          case "failed":
+            submittedSeq.current = null;
+            dispatch({ type: "SUBMIT_FAILED", message: outcome.message });
+            return;
+          case "offline":
+            return offline();
+          case "nudge":
+            submittedSeq.current = null;
+            dispatch({ type: "NUDGE", line: outcome.line });
+            return;
         }
-        if (!res.ok) {
-          submittedSeq.current = null;
-          dispatch({ type: "SUBMIT_FAILED", message: friendlyError(res.status, body) });
-          return;
-        }
-
-        const turn = body as TurnResponse;
-        if (turn.kind === "nudge") {
-          submittedSeq.current = null;
-          dispatch({ type: "NUDGE", line: turn.line });
-          return;
-        }
+        const { turn } = outcome;
         lastVoiceTimings.current = null;
         // The note renders before the next question is spoken.
         dispatch({
@@ -226,11 +224,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
           progress: turn.progress,
         });
       } catch {
-        submittedSeq.current = null;
-        dispatch({
-          type: "SUBMIT_FAILED",
-          message: "We couldn't reach the server. Your answer is kept — try sending again.",
-        });
+        offline();
       }
     })();
     // `voice` is stable in behaviour; its identity changes every render.

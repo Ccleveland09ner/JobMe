@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Clipboard, paperField } from "@/components/ui/Clipboard";
 import { ScaleToFit } from "@/components/ui/ScaleToFit";
 import type { InterviewMode } from "@/lib/engine/types";
-import { friendlyError } from "@/lib/frontend/adapters";
+import { createSession, OFFLINE_MESSAGE } from "@/lib/frontend/api";
 import { saveIntro } from "@/lib/frontend/handoff";
 import { useDefaults } from "@/lib/frontend/preferences";
 import {
@@ -35,7 +35,7 @@ import {
   type SetupValues,
 } from "@/lib/frontend/setup";
 import { unlockAudio } from "@/lib/frontend/voiceSession";
-import type { CreateSessionResponse, InputMode, ResumeSummary } from "@/lib/frontend/types";
+import type { InputMode, ResumeSummary } from "@/lib/frontend/types";
 import { LIMITS } from "@/lib/schemas";
 
 import { FieldError, JobDescriptionField } from "./JobDescriptionField";
@@ -166,20 +166,15 @@ export function SetupForm({
       sending.current = false;
     };
     try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sessionBody(values)),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) return failed(friendlyError(res.status, data));
-      const created = data as CreateSessionResponse;
-      saveIntro(created.sessionId, created.introLine);
+      const created = await createSession(sessionBody(values));
+      if (!created.ok) return failed(created.offline ? OFFLINE_MESSAGE : created.message);
+      const { sessionId, introLine } = created.data;
+      saveIntro(sessionId, introLine);
       building?.release();
       // Stay "submitting" through navigation so Begin cannot fire again.
-      router.push(`/interview/${created.sessionId}?input=${inputMode}`);
+      router.push(`/interview/${sessionId}?input=${inputMode}`);
     } catch {
-      failed("We couldn't reach the server. Check your connection and try again.");
+      failed(OFFLINE_MESSAGE);
     }
   }
 

@@ -11,7 +11,7 @@ import { useState, useTransition } from "react";
 import { LocalDate } from "@/components/common/LocalDate";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { friendlyError } from "@/lib/frontend/adapters";
+import { deleteSession, OFFLINE_MESSAGE } from "@/lib/frontend/api";
 import type { SessionSummary } from "@/lib/frontend/types";
 
 export function useDeleteSession(onDeleted?: () => void) {
@@ -32,16 +32,17 @@ export function useDeleteSession(onDeleted?: () => void) {
     setDeleting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sessions/${target.id}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 404) {
-        setError(friendlyError(res.status, await res.json().catch(() => null)));
+      const result = await deleteSession(target.id);
+      // A 404 is a success: the row is gone either way.
+      if (!result.ok && (result.offline || result.status !== 404)) {
+        setError(result.offline ? OFFLINE_MESSAGE : result.message);
         return;
       }
       setTarget(null);
       startRefresh(() => router.refresh());
       onDeleted?.();
     } catch {
-      setError("We couldn't reach the server. Check your connection and try again.");
+      setError(OFFLINE_MESSAGE);
     } finally {
       setDeleting(false);
     }
