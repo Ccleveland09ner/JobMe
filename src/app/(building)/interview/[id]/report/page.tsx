@@ -1,27 +1,16 @@
 /**
- * The scorecard: the top sheet in the reports folder. Without a saved report,
- * ReportGenerator builds it once. Scores are shown as stored.
+ * An interview's report, filed in the reports folder with a tab for every
+ * finished interview. Without a saved report the folder's sheet writes it
+ * once (ReportGenerator). Scores are shown as stored.
  */
 
 import { notFound } from "next/navigation";
 
-import { LocalDate } from "@/components/common/LocalDate";
 import { ReportsFolder } from "@/components/desk/ReportsFolder";
-import { HighlightedTranscript } from "@/components/report/HighlightedTranscript";
-import { ReportGenerator } from "@/components/report/ReportGenerator";
-import { RewriteCard } from "@/components/report/RewriteCard";
-import { ScoreSummary } from "@/components/report/ScoreSummary";
-import { ScoreTable } from "@/components/report/ScoreTable";
-import { SpeakingStats } from "@/components/report/SpeakingStats";
-import type { ReportStats } from "@/lib/ai/report";
 import { requireUser } from "@/lib/auth";
-import { pickScores, reportTurnFromRow, type TurnRow } from "@/lib/frontend/adapters";
-import { MODE_LABELS } from "@/lib/frontend/labels";
+import { loadReportDocument, loadReportIndex, type ReportTab } from "@/lib/frontend/report-document";
 import { SessionId } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
-
-const TURN_COLUMNS =
-  "id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text, wpm, filler_count";
 
 export default async function ReportPage({ params }: PageProps<"/interview/[id]/report">) {
   const { id } = await params;
@@ -29,78 +18,12 @@ export default async function ReportPage({ params }: PageProps<"/interview/[id]/
   if (!SessionId.safeParse(id).success) notFound();
 
   const supabase = await createClient();
-  const [sessionRes, turnsRes, reportRes, stackRes] = await Promise.all([
-    supabase
-      .from("interview_sessions")
-      .select("id, status, overall_scores, started_at, mode:engine_state->>mode")
-      .eq("id", id)
-      .maybeSingle(),
-    supabase.from("turns").select(TURN_COLUMNS).eq("session_id", id).order("seq", { ascending: true }),
-    supabase
-      .from("reports")
-      .select("summary, weakest_turn_id, rewrite_text, stats")
-      .eq("session_id", id)
-      .maybeSingle(),
-    // The folder's stack, newest on top. Ids only; not essential.
-    supabase.from("interview_sessions").select("id").eq("status", "completed").order("started_at", { ascending: false }),
+  const [doc, index] = await Promise.all([
+    loadReportDocument(supabase, id),
+    // Not essential: without it the folder shows just this report's tab.
+    loadReportIndex(supabase).catch((): ReportTab[] => []),
   ]);
+  if (!doc) notFound();
 
-  if (sessionRes.error) throw new Error(`report session: ${sessionRes.error.message}`);
-  if (turnsRes.error) throw new Error(`report turns: ${turnsRes.error.message}`);
-  if (reportRes.error) throw new Error(`report row: ${reportRes.error.message}`);
-
-  const session = sessionRes.data as
-    | { id: string; status: string; overall_scores: unknown; started_at: string; mode: string | null }
-    | null;
-  if (!session) notFound();
-
-  const turns = ((turnsRes.data ?? []) as unknown as (TurnRow & { id: string })[]).map(reportTurnFromRow);
-  const report = reportRes.data as
-    | { summary: string | null; weakest_turn_id: string | null; rewrite_text: string | null; stats: ReportStats | null }
-    | null;
-
-  const mode = session.mode === "quick" || session.mode === "full" ? MODE_LABELS[session.mode] : null;
-
-  const stack = stackRes.error ? [] : ((stackRes.data ?? []) as { id: string }[]).map((r) => r.id);
-  const at = stack.indexOf(id);
-  const neighbours =
-    at === -1
-      ? undefined
-      : { newer: stack[at - 1] ?? null, older: stack[at + 1] ?? null, position: at + 1, total: stack.length };
-
-  return (
-    <ReportsFolder
-      sessionId={id}
-      title="Interview report"
-      kicker={
-        <>
-          {mode && `${mode} · `}
-          <LocalDate iso={session.started_at} format="dateTime" />
-        </>
-      }
-      neighbours={neighbours}
-    >
-
-      {/* A report on an in-progress session means a crash mid-way; the POST heals it. */}
-      {!report || session.status !== "completed" ? (
-        <ReportGenerator sessionId={id} />
-      ) : (
-        <div className="flex flex-col gap-8">
-          <ScoreSummary
-            summary={report.summary ?? ""}
-            overallScores={pickScores(session.overall_scores)}
-            answered={report.stats?.answered ?? turns.length}
-            scored={report.stats?.scored ?? turns.filter((t) => t.scores).length}
-          />
-          <RewriteCard
-            weakest={turns.find((t) => t.id === report.weakest_turn_id) ?? null}
-            rewrite={report.rewrite_text}
-          />
-          <ScoreTable turns={turns} />
-          <SpeakingStats wpm={report.stats?.wpm ?? null} fillers={report.stats?.fillers ?? null} turns={turns} />
-          <HighlightedTranscript turns={turns} />
-        </div>
-      )}
-    </ReportsFolder>
-  );
+  return <ReportsFolder initial={doc} index={index} />;
 }

@@ -59,17 +59,20 @@ export function StationLayer({ children }: { children: ReactNode }) {
   const routeHeld = heldFor(pathname, search.get("open"));
   const walking = building !== null && building.state.target !== null && !building.state.returning;
 
-  // Focus the page heading on route changes (not on first load).
-  const shown = useRef(pathname);
+  // Focus the page heading on route changes (not on first load), but not
+  // when a held document only moved its URL along (the folder's tabs).
+  const shown = useRef({ pathname, held: routeHeld });
   useEffect(() => {
-    if (shown.current === pathname) return;
-    shown.current = pathname;
+    const before = shown.current;
+    if (before.pathname === pathname) return;
+    shown.current = { pathname, held: routeHeld };
+    if (routeHeld !== null && before.held === routeHeld) return;
     const heading = main.current?.querySelector("h1");
     if (heading instanceof HTMLElement) {
       heading.tabIndex = -1;
       heading.focus({ preventScroll: true });
     }
-  }, [pathname]);
+  }, [pathname, routeHeld]);
 
   // The URL says what is held. In the room only the notepad can be.
   const dispatchHeld = building?.dispatchHeld;

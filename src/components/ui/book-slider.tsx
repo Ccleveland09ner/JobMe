@@ -299,7 +299,7 @@ function settingsFor(mode: BookMode, size: PageSize, minPageWidth: number, maxPa
   };
 }
 
-/** The book's boards stand this far out from its pages, each side. */
+/** A book's boards (a folder's card) stand this far out from its pages, each side. */
 const FRAME_INSET = 14;
 
 /** The book's fit to the space it is given, kept up to date with the window. */
@@ -367,7 +367,7 @@ export function BookSlider({
   const [state, setState] = useState<BookState | null>(null);
   const covers = mode === "book";
   const clipboard = mode === "clipboard";
-  const fit = useFit(root, !clipboard, pageSize, minPageWidth, maxPageWidth, reserveHeight, covers ? FRAME_INSET : 0);
+  const fit = useFit(root, !clipboard, pageSize, minPageWidth, maxPageWidth, reserveHeight, clipboard ? 0 : FRAME_INSET);
 
   // The engine binds its handlers once: hand it stable ones that read the latest props.
   const latest = useRef({ onPageChange, onReady, covers });
@@ -498,7 +498,7 @@ export function BookSlider({
             : ({ width: fit?.blockWidth, "--page-scale": fit?.scale ?? 1 } as CSSProperties)
         }
       >
-        {covers && <div aria-hidden="true" className="book-frame" />}
+        {!clipboard && <div aria-hidden="true" className={covers ? "book-frame" : "folder-frame"} />}
         {clipboard ? (
           <div
             className="absolute"
@@ -519,8 +519,8 @@ export function BookSlider({
       </div>
 
       {controls && state && (
-        // Clear of the book's boards, which stand out below the pages.
-        <div className={`${covers ? "mt-8" : "mt-3"} flex items-center justify-center gap-3 pb-1`}>
+        // Clear of the boards, which stand out below the pages.
+        <div className="mt-8 flex items-center justify-center gap-3 pb-1">
           <button type="button" className="book-turn" onClick={prev} disabled={atStart} aria-label="Previous page">
             <span aria-hidden="true">‹</span>
           </button>

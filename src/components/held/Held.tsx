@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Held objects, drawn like the building: HeldFolder (reports) and HeldPad
- * (the notepad), and the shell every held document shares: a focused title,
- * a way to put it down, and Escape.
+ * What every held document shares (a focused title, a tag that puts it down,
+ * Escape), HeldPad (the room's notepad), and Pages, turned one at a time.
  */
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -60,58 +59,7 @@ export function CloseTag({
   );
 }
 
-/** The cover or flap that swings open once, then gets out of the way. */
-function Opener({ className, children }: { className: string; children?: ReactNode }) {
-  const [done, setDone] = useState(false);
-  if (done) return null;
-  return (
-    <div aria-hidden="true" className={`held-cover absolute inset-0 z-20 ${className}`} onAnimationEnd={() => setDone(true)}>
-      {children}
-    </div>
-  );
-}
-
 const SHADOW = "absolute -bottom-5 inset-x-10 h-8 rounded-[50%] bg-ink/25";
-
-export function HeldFolder({ title, kicker, onClose, closeLabel = "Close the folder", children, headingLevel = "h1" }: ShellProps) {
-  const { closing, heading } = useHeldShell("reports", onClose);
-  const id = useId();
-  const H = headingLevel;
-  return (
-    <section aria-labelledby={id} className={`relative w-full max-w-4xl pb-6 pt-7 ${closing ? "held-out" : "held-in"}`}>
-      <div aria-hidden="true" className={SHADOW} />
-      {/* The folder's back and its tab. */}
-      <div aria-hidden="true" className="absolute left-8 top-0 h-9 w-44 rounded-t-xl border-[3px] border-b-0 border-ink bg-manila px-4 pt-1.5 text-sm font-semibold uppercase tracking-widest text-ink">
-        Reports
-      </div>
-      <div className="relative rounded-2xl rounded-tl-md border-[3px] border-ink bg-manila p-2.5 shadow-[inset_4px_4px_0_0_var(--color-manila-light),inset_-4px_-4px_0_0_var(--color-manila-dark),0_9px_0_-2px_var(--color-manila-dark),0_9px_0_1px_var(--color-ink)] sm:p-4">
-        {/* A stack of sheets, the top one readable. */}
-        <div className="relative">
-          <div aria-hidden="true" className="absolute inset-0 translate-x-2 translate-y-2.5 rotate-[0.7deg] rounded-md border-2 border-ink/70 bg-paper-shade" />
-          <div aria-hidden="true" className="absolute inset-0 -translate-x-1 translate-y-1 -rotate-[0.5deg] rounded-md border-2 border-ink/70 bg-paper" />
-          <div className="grain relative rounded-md border-2 border-ink bg-paper">
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-ink/80 px-5 pb-4 pt-5 sm:px-8">
-              <div className="flex flex-col gap-0.5">
-                {kicker && <p className="text-xs font-semibold uppercase tracking-widest text-muted">{kicker}</p>}
-                <H id={id} ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink outline-none focus-visible:outline-none">
-                  {title}
-                </H>
-              </div>
-              <Button variant="secondary" size="sm" onClick={onClose}>
-                {closeLabel}
-              </Button>
-            </header>
-            <div className="px-5 pb-6 pt-5 sm:px-8">{children}</div>
-          </div>
-        </div>
-        {/* The front flap, lifting open on its top edge. */}
-        {!closing && (
-          <Opener className="flap-open rounded-2xl border-[3px] border-ink bg-manila shadow-[inset_4px_4px_0_0_var(--color-manila-light),inset_-4px_-4px_0_0_var(--color-manila-dark)]" />
-        )}
-      </div>
-    </section>
-  );
-}
 
 export function HeldPad({ title, kicker, onClose, closeLabel = "Put the notepad down", children, headingLevel = "h2" }: ShellProps) {
   const { closing, heading } = useHeldShell("notepad", onClose);

@@ -149,38 +149,6 @@ dialog::backdrop {
     transform: perspective(1800px) translateY(36px) scale(0.86) rotateX(14deg);
   }
 }
-@keyframes cover-open {
-  from {
-    transform: perspective(2200px) rotateY(0deg);
-  }
-  to {
-    transform: perspective(2200px) rotateY(-172deg);
-  }
-}
-@keyframes cover-shut {
-  from {
-    transform: perspective(2200px) rotateY(-172deg);
-  }
-  to {
-    transform: perspective(2200px) rotateY(0deg);
-  }
-}
-@keyframes flap-open {
-  from {
-    transform: perspective(2200px) rotateX(0deg);
-  }
-  to {
-    transform: perspective(2200px) rotateX(172deg);
-  }
-}
-@keyframes flap-shut {
-  from {
-    transform: perspective(2200px) rotateX(172deg);
-  }
-  to {
-    transform: perspective(2200px) rotateX(0deg);
-  }
-}
 @keyframes page-next {
   from {
     opacity: 0.2;
@@ -228,33 +196,12 @@ dialog::backdrop {
   }
 }
 
-/* Covers and flaps are only ever seen moving; at rest they are out of the way. */
-.held-cover {
-  backface-visibility: hidden;
-  pointer-events: none;
-}
 @media (prefers-reduced-motion: no-preference) {
   .held-in {
     animation: held-in 420ms cubic-bezier(0.2, 0.8, 0.3, 1.1) both;
   }
   .held-out {
     animation: held-out 420ms ease-in both;
-  }
-  .cover-open {
-    transform-origin: left center;
-    animation: cover-open 650ms cubic-bezier(0.45, 0, 0.2, 1) 120ms both;
-  }
-  .cover-shut {
-    transform-origin: left center;
-    animation: cover-shut 300ms ease-in both;
-  }
-  .flap-open {
-    transform-origin: center top;
-    animation: flap-open 600ms cubic-bezier(0.45, 0, 0.2, 1) 120ms both;
-  }
-  .flap-shut {
-    transform-origin: center top;
-    animation: flap-shut 300ms ease-in both;
   }
   .page-next {
     transform-origin: left center;
@@ -267,13 +214,6 @@ dialog::backdrop {
   .page-up {
     transform-origin: center top;
     animation: page-up 420ms cubic-bezier(0.3, 0.7, 0.3, 1) both;
-  }
-}
-/* Reduced motion: covers and flaps are simply open or shut. */
-@media (prefers-reduced-motion: reduce) {
-  .cover-open,
-  .flap-open {
-    display: none;
   }
 }
 
@@ -454,6 +394,87 @@ dialog::backdrop {
 }
 .book-slider[data-open] .book-frame {
   opacity: 1;
+}
+
+/* The reports folder's card behind its sheets, and a file rising into it. */
+.folder-frame {
+  position: absolute;
+  inset: -10px -14px -14px;
+  border: 3px solid var(--color-ink);
+  border-radius: 10px 14px 14px 14px;
+  background: var(--color-manila);
+  box-shadow:
+    inset 4px 4px 0 0 var(--color-manila-light),
+    inset -4px -4px 0 0 var(--color-manila-dark),
+    0 9px 0 -2px var(--color-manila-dark),
+    0 9px 0 1px var(--color-ink);
+  pointer-events: none;
+}
+@keyframes folder-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .book-slider--folder .book-engine {
+    animation: folder-rise 280ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  }
+}
+
+/* File tabs on the folder's top edge (components/ui/DocumentTabs.tsx): the
+   open file's tab stands taller and joins the card. */
+.folder-tab {
+  position: relative;
+  display: flex;
+  width: 8rem;
+  height: 2.5rem;
+  flex: none;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.25rem 0.7rem 0.3rem;
+  border: 3px solid var(--color-ink);
+  border-bottom: 0;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: var(--color-manila-dark);
+  color: var(--color-ink);
+  text-align: left;
+  box-shadow: inset 3px 3px 0 0 rgb(255 255 255 / 0.2);
+  transition:
+    height 150ms ease,
+    background-color 150ms ease;
+}
+.folder-tab:hover {
+  height: 2.75rem;
+}
+.folder-tab--active,
+.folder-tab--active:hover {
+  height: 3.1rem;
+  margin-bottom: -3px;
+  padding-bottom: 0.55rem;
+  background: var(--color-manila);
+  box-shadow: inset 3px 3px 0 0 var(--color-manila-light);
+}
+.folder-tab-pager {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.4rem;
+  border: 2px solid var(--color-ink);
+  border-radius: 9999px;
+  background: var(--color-paper);
+  font-size: 1.1rem;
+  color: var(--color-ink);
+}
+.folder-tab-pager:disabled {
+  opacity: 0.35;
 }
 
 /* A paper tag tied to a held object: what puts it down. A component, so

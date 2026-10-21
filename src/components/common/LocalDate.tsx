@@ -3,6 +3,8 @@
 const FORMATS = {
   date: { dateStyle: "medium" },
   dateTime: { dateStyle: "medium", timeStyle: "short" },
+  /** Month and day, for a folder tab. */
+  short: { month: "short", day: "numeric" },
 } as const satisfies Record<string, Intl.DateTimeFormatOptions>;
 
 export function LocalDate({
