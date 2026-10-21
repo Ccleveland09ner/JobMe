@@ -3,12 +3,12 @@
 /**
  * Score trend across completed interviews, one series at a time, as plain SVG
  * with a hidden data table for screen readers. Needs 2+ completed sessions.
+ * Printed on a ledger page, so it has no card of its own.
  */
 
 import { useId, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
-import { Card } from "@/components/ui/Card";
 import { DIMENSIONS, type Dimension, type Scores } from "@/lib/engine/types";
 import { displayAverage } from "@/lib/frontend/adapters";
 import { DIMENSION_LABELS } from "@/lib/frontend/labels";
@@ -32,7 +32,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
   const groupName = useId();
 
   return (
-    <Card as="section" aria-labelledby="trend-title" className="flex flex-col gap-4">
+    <section aria-labelledby="trend-title" className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h2 id="trend-title" className="text-base font-semibold text-ink">
           Score trends
@@ -69,7 +69,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
           <DataTable points={points} />
         </>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -139,34 +139,37 @@ function Chart({ points, series }: { points: TrendPoint[]; series: Series }) {
   );
 }
 
+/** In a clipping box: a table ignores overflow, so sr-only alone would spill sideways. */
 function DataTable({ points }: { points: TrendPoint[] }) {
   return (
-    <table className="sr-only">
-      <caption>Scores per completed interview, oldest first</caption>
-      <thead>
-        <tr>
-          <th scope="col">Interview</th>
-          <th scope="col">Average</th>
-          {DIMENSIONS.map((d) => (
-            <th key={d} scope="col">
-              {DIMENSION_LABELS[d]}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {points.map((p, i) => (
-          <tr key={p.id}>
-            <th scope="row">
-              #{i + 1}, <LocalDate iso={p.startedAt} />
-            </th>
-            <td>{valueOf(p.scores, "average") ?? "—"}</td>
+    <div className="sr-only">
+      <table>
+        <caption>Scores per completed interview, oldest first</caption>
+        <thead>
+          <tr>
+            <th scope="col">Interview</th>
+            <th scope="col">Average</th>
             {DIMENSIONS.map((d) => (
-              <td key={d}>{p.scores?.[d] ?? "—"}</td>
+              <th key={d} scope="col">
+                {DIMENSION_LABELS[d]}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {points.map((p, i) => (
+            <tr key={p.id}>
+              <th scope="row">
+                #{i + 1}, <LocalDate iso={p.startedAt} />
+              </th>
+              <td>{valueOf(p.scores, "average") ?? "—"}</td>
+              {DIMENSIONS.map((d) => (
+                <td key={d}>{p.scores?.[d] ?? "—"}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

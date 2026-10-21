@@ -294,6 +294,207 @@ dialog::backdrop {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
+/*
+ * Pages turned by BookSlider (components/ui/book-slider.tsx). The engine sizes
+ * and places each page and marks it --left/--right and --hard/--soft.
+ */
+.book-page {
+  overflow: hidden;
+  background: var(--color-paper);
+}
+/* A turning page swings past the book's edges: never scroll (or re-fit) for it. */
+.book-slider {
+  overflow: clip;
+}
+
+/* Page faces (components/ui/DocumentPage.tsx). */
+.doc-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 2px var(--color-ink);
+}
+.doc-page__head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.doc-page__body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.doc-page__foot {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+}
+/* Ruled paper, and the ledger's: ruled, with a red double rule down the margin. */
+.doc-page--ruled,
+.doc-page--ledger {
+  background-image: repeating-linear-gradient(transparent 0 27px, var(--color-rule) 27px 28px);
+  background-position: 0 47px;
+}
+.doc-page--ledger {
+  background-image:
+    linear-gradient(90deg, transparent 21px, rgb(214 75 60 / 0.45) 21px 22px, transparent 22px 25px, rgb(214 75 60 / 0.45) 25px 26px, transparent 26px),
+    repeating-linear-gradient(transparent 0 27px, var(--color-rule) 27px 28px);
+}
+.doc-page--endpaper {
+  background-color: var(--color-paper-shade);
+  background-image:
+    radial-gradient(circle at 20% 30%, rgb(107 47 42 / 0.12) 0 18%, transparent 19%),
+    radial-gradient(circle at 75% 65%, rgb(107 47 42 / 0.1) 0 22%, transparent 23%),
+    radial-gradient(circle at 60% 15%, rgb(201 162 74 / 0.18) 0 12%, transparent 13%);
+  background-size: 120px 120px;
+}
+.doc-page--cover {
+  background: var(--color-leather);
+  box-shadow:
+    inset 0 0 0 3px var(--color-ink),
+    inset 7px 7px 0 0 var(--color-leather-light),
+    inset -7px -7px 0 0 var(--color-leather-dark);
+}
+.doc-page--flap {
+  background: var(--color-manila);
+  box-shadow:
+    inset 0 0 0 2px var(--color-ink),
+    inset 5px 5px 0 0 var(--color-manila-light),
+    inset -5px -5px 0 0 var(--color-manila-dark);
+}
+/* Spine shading, on the edge each page is bound at. */
+.stf__item.--left .doc-page:not(.doc-page--cover)::before,
+.stf__item.--right .doc-page:not(.doc-page--cover)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.stf__item.--left .doc-page:not(.doc-page--cover)::before {
+  background: linear-gradient(to left, rgb(28 27 26 / 0.16), transparent 34px);
+}
+.stf__item.--right .doc-page:not(.doc-page--cover)::before {
+  background: linear-gradient(to right, rgb(28 27 26 / 0.16), transparent 34px);
+}
+/* A clipboard's sheets are held at the top, under the clip. */
+.book-slider--clipboard .stf__item .doc-page::before {
+  background: linear-gradient(to bottom, rgb(28 27 26 / 0.12), transparent 26px);
+}
+
+/* The quiet previous/next buttons under a book or folder. */
+.book-turn {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-ink);
+  border-radius: 9999px;
+  background: var(--color-paper);
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--color-ink);
+  box-shadow: 0 3px 0 0 var(--color-ink);
+  transition: transform 120ms ease;
+}
+.book-turn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.book-turn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 var(--color-ink);
+}
+.book-turn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Running heads and page numbers sit on the outer edge, as in a printed book. */
+.book-slider:not(.book-slider--clipboard) .stf__item.--left :is(.doc-page__head, .doc-page__foot) {
+  justify-content: flex-start;
+}
+.book-slider:not(.book-slider--clipboard) .stf__item.--right :is(.doc-page__head, .doc-page__foot) {
+  justify-content: flex-end;
+}
+
+/* The ledger's boards, round its pages while it lies open. */
+.book-frame {
+  position: absolute;
+  inset: -10px -14px -14px;
+  border: 3px solid var(--color-ink);
+  border-radius: 14px;
+  background: var(--color-leather);
+  box-shadow:
+    inset 4px 4px 0 0 var(--color-leather-light),
+    inset -4px -4px 0 0 var(--color-leather-dark),
+    0 9px 0 -2px var(--color-leather-dark),
+    0 9px 0 1px var(--color-ink);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+.book-slider[data-open] .book-frame {
+  opacity: 1;
+}
+
+/* A paper tag tied to a held object: what puts it down. A component, so
+   utilities (its placement) win over it. */
+@layer components {
+  .held-tag {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.8rem 0.3rem 1.55rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 0.45rem 0.85rem 0.85rem 0.45rem;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    white-space: nowrap;
+    box-shadow: 0 3px 0 0 var(--color-ink);
+    transform: rotate(-2deg);
+    transition: transform 120ms ease;
+  }
+  .held-tag::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0.5rem;
+    width: 0.55rem;
+    height: 0.55rem;
+    margin-top: -0.275rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 9999px;
+    background: var(--color-brass);
+  }
+  .held-tag:hover {
+    transform: rotate(0deg) translateY(-1px);
+  }
+  .held-tag:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 0 var(--color-ink);
+  }
+}
+
 /* Reduced motion: transitions collapse to instant. */
 @media (prefers-reduced-motion: reduce) {
   *,

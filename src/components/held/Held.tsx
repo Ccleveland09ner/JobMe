@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Held objects as pages, drawn like the building: HeldBook (the ledger),
- * HeldFolder (reports) and HeldPad (the notepad). Each has a focused title,
- * a Close action and pages; Escape closes.
+ * Held objects, drawn like the building: HeldFolder (reports) and HeldPad
+ * (the notepad), and the shell every held document shares: a focused title,
+ * a way to put it down, and Escape.
  */
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -24,7 +24,7 @@ interface ShellProps {
 }
 
 /** Focus the heading on open; Escape closes. */
-function useShell(name: Held, onClose: () => void) {
+export function useHeldShell(name: Held, onClose: () => void) {
   const { closing } = useHeld(name);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -41,6 +41,15 @@ function useShell(name: Held, onClose: () => void) {
   return { closing, heading };
 }
 
+/** The paper tag tied to a held document that puts it down. */
+export function CloseTag({ onClick, className = "", children }: { onClick: () => void; className?: string; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className={`held-tag ${className}`.trim()}>
+      {children}
+    </button>
+  );
+}
+
 /** The cover or flap that swings open once, then gets out of the way. */
 function Opener({ className, children }: { className: string; children?: ReactNode }) {
   const [done, setDone] = useState(false);
@@ -54,48 +63,8 @@ function Opener({ className, children }: { className: string; children?: ReactNo
 
 const SHADOW = "absolute -bottom-5 inset-x-10 h-8 rounded-[50%] bg-ink/25";
 
-export function HeldBook({ title, kicker, onClose, closeLabel = "Close the ledger", children, headingLevel = "h1" }: ShellProps) {
-  const { closing, heading } = useShell("ledger", onClose);
-  const id = useId();
-  const H = headingLevel;
-  return (
-    <section aria-labelledby={id} className={`relative w-full max-w-5xl pb-6 ${closing ? "held-out" : "held-in"}`}>
-      <div aria-hidden="true" className={SHADOW} />
-      {/* Leather boards, extruded and bevelled like the clipboard. */}
-      <div className="relative rounded-2xl border-[3px] border-ink bg-leather p-2.5 shadow-[0_9px_0_-2px_var(--color-leather-dark),0_9px_0_1px_var(--color-ink)] sm:p-3.5">
-        <div className="rounded-xl shadow-[inset_4px_4px_0_0_var(--color-leather-light),inset_-4px_-4px_0_0_var(--color-leather-dark)] p-1.5 sm:p-2">
-          {/* The page block: paper, with a spine shadow down the middle on wide screens. */}
-          <div className="grain relative rounded-lg border-2 border-ink bg-paper">
-            <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-1/2 hidden w-6 -translate-x-1/2 bg-[linear-gradient(90deg,transparent,rgb(28_27_26/0.08),transparent)] lg:block" />
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-dashed border-ink/20 px-5 pb-4 pt-5 sm:px-8">
-              <div className="flex flex-col gap-0.5">
-                {kicker && <p className="text-xs font-semibold uppercase tracking-widest text-muted">{kicker}</p>}
-                <H id={id} ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink outline-none focus-visible:outline-none">
-                  {title}
-                </H>
-              </div>
-              <Button variant="secondary" size="sm" onClick={onClose}>
-                {closeLabel}
-              </Button>
-            </header>
-            <div className="px-5 pb-6 pt-5 sm:px-8">{children}</div>
-          </div>
-        </div>
-        {/* The front cover, swinging open to the left. */}
-        {!closing && (
-          <Opener className="cover-open rounded-2xl border-[3px] border-ink bg-leather shadow-[inset_4px_4px_0_0_var(--color-leather-light),inset_-4px_-4px_0_0_var(--color-leather-dark)]">
-            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 rounded-md border-2 border-ink bg-brass px-6 py-3 text-center font-semibold uppercase tracking-widest text-ink">
-              {title}
-            </div>
-          </Opener>
-        )}
-      </div>
-    </section>
-  );
-}
-
 export function HeldFolder({ title, kicker, onClose, closeLabel = "Close the folder", children, headingLevel = "h1" }: ShellProps) {
-  const { closing, heading } = useShell("reports", onClose);
+  const { closing, heading } = useHeldShell("reports", onClose);
   const id = useId();
   const H = headingLevel;
   return (
@@ -135,7 +104,7 @@ export function HeldFolder({ title, kicker, onClose, closeLabel = "Close the fol
 }
 
 export function HeldPad({ title, kicker, onClose, closeLabel = "Put the notepad down", children, headingLevel = "h2" }: ShellProps) {
-  const { closing, heading } = useShell("notepad", onClose);
+  const { closing, heading } = useHeldShell("notepad", onClose);
   const id = useId();
   const H = headingLevel;
   return (
