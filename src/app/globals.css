@@ -302,7 +302,8 @@ dialog::backdrop {
   overflow: hidden;
   background: var(--color-paper);
 }
-/* A turning page swings past the book's edges: never scroll (or re-fit) for it. */
+/* A turning page swings past the book's edges: never scroll (or re-fit) for
+   it. A clipboard's sheet curls away under the clip. */
 .book-slider {
   overflow: clip;
 }
@@ -395,7 +396,7 @@ dialog::backdrop {
   background: linear-gradient(to right, rgb(28 27 26 / 0.16), transparent 34px);
 }
 /* A clipboard's sheets are held at the top, under the clip. */
-.book-slider--clipboard .stf__item .doc-page::before {
+.book-slider--clipboard .stf__item .doc-page:not(.doc-page--cover)::before {
   background: linear-gradient(to bottom, rgb(28 27 26 / 0.12), transparent 26px);
 }
 

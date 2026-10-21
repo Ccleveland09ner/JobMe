@@ -32,11 +32,11 @@ export function ModeSelector({
   return (
     <fieldset className="flex flex-col gap-3">
       <legend className="mb-2 text-sm font-medium text-ink">Interview type</legend>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         {OPTIONS.map((o) => (
           <label
             key={o.value}
-            className="flex cursor-pointer flex-col gap-1 rounded-xl border border-line bg-surface p-4 has-checked:border-accent has-checked:bg-accent-soft has-focus-visible:outline-2 has-focus-visible:outline-accent"
+            className="flex cursor-pointer flex-col gap-1 rounded-xl border border-line bg-surface px-4 py-3 has-checked:border-accent has-checked:bg-accent-soft has-focus-visible:outline-2 has-focus-visible:outline-accent"
           >
             <span className="flex items-center gap-2">
               <input

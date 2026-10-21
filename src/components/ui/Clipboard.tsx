@@ -4,7 +4,7 @@
  * paperArea for fields written on the paper.
  */
 
-import type { HTMLAttributes } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 /** A one-line field: a ruled line to write on. */
 export const paperField =
@@ -22,6 +22,10 @@ export interface ClipboardProps extends HTMLAttributes<HTMLDivElement> {
   paperClassName?: string;
   /** Being put down (a held clipboard closing): it leaves as it came. */
   closing?: boolean;
+  /** Sheets of its own (BookSlider's clipboard mode) in place of the top sheet. */
+  loose?: boolean;
+  /** Placed against the board: a tag, say. */
+  decoration?: ReactNode;
 }
 
 /** Hard-edged toon bevel: a lit rim top-left, a shaded rim bottom-right. */
@@ -31,7 +35,15 @@ const BOARD_BEVEL =
 /** The board's thickness: an extruded edge, ink-outlined, below the face. */
 const BOARD_EDGE = "shadow-[0_9px_0_-2px_var(--color-board-dark),0_9px_0_1px_var(--color-ink)]";
 
-export function Clipboard({ className = "", paperClassName = "", closing = false, children, ...rest }: ClipboardProps) {
+export function Clipboard({
+  className = "",
+  paperClassName = "",
+  closing = false,
+  loose = false,
+  decoration,
+  children,
+  ...rest
+}: ClipboardProps) {
   return (
     <div className={`${closing ? "held-out" : "clipboard-in"} relative pb-6 pt-10 ${className}`.trim()} {...rest}>
       {/* Flat contact shadow on whatever it rests against. */}
@@ -59,14 +71,19 @@ export function Clipboard({ className = "", paperClassName = "", closing = false
           <div className="relative">
             <div aria-hidden="true" className="absolute inset-0 translate-x-1.5 translate-y-2 rotate-[0.8deg] rounded-md border-2 border-ink/70 bg-paper-shade" />
             <div aria-hidden="true" className="absolute inset-0 -translate-x-1 translate-y-1 -rotate-[0.6deg] rounded-md border-2 border-ink/70 bg-paper" />
-            <div
-              className={`grain relative rounded-md border-2 border-ink bg-paper px-5 pb-6 pt-9 shadow-[inset_-3px_-3px_0_0_var(--color-paper-shade)] sm:px-6 ${paperClassName}`.trim()}
-            >
-              {children}
-            </div>
+            {loose ? (
+              <div className="relative">{children}</div>
+            ) : (
+              <div
+                className={`grain relative rounded-md border-2 border-ink bg-paper px-5 pb-6 pt-9 shadow-[inset_-3px_-3px_0_0_var(--color-paper-shade)] sm:px-6 ${paperClassName}`.trim()}
+              >
+                {children}
+              </div>
+            )}
           </div>
         </div>
       </div>
+      {decoration}
     </div>
   );
 }

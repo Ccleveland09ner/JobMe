@@ -42,9 +42,19 @@ export function useHeldShell(name: Held, onClose: () => void) {
 }
 
 /** The paper tag tied to a held document that puts it down. */
-export function CloseTag({ onClick, className = "", children }: { onClick: () => void; className?: string; children: ReactNode }) {
+export function CloseTag({
+  onClick,
+  disabled,
+  className = "",
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <button type="button" onClick={onClick} className={`held-tag ${className}`.trim()}>
+    <button type="button" onClick={onClick} disabled={disabled} className={`held-tag disabled:opacity-60 ${className}`.trim()}>
       {children}
     </button>
   );

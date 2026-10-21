@@ -445,6 +445,9 @@ export function BookSlider({
         left: (pageSize.height - pageSize.width) / 2,
         top: (pageSize.width - pageSize.height) / 2,
         transform: "rotate(-90deg)",
+        // Its own layer, rasterised upright: drawn into the engine's rotated
+        // layer, scaled text loses its letter spacing.
+        willChange: "transform",
       }
     : {
         position: "absolute",
