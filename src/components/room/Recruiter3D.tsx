@@ -92,6 +92,11 @@ export interface Speaker {
   readVisemes?: () => VisemeWeights | null;
   /** The candidate's mic, for the desk mic in the building's interview room. */
   mic?: MicControl;
+  /**
+   * A point in the world to look at instead of the camera — the thing the
+   * user is pointing at (TalkingHead's lookAt). Null: eye contact.
+   */
+  lookAt?: readonly [number, number, number] | null;
 }
 
 /**
@@ -108,6 +113,12 @@ export interface Look {
    * "toon": three flat tones and an ink outline, like the scenery.
    */
   style?: "rendered" | "toon";
+  /**
+   * Now and then, glance away for a moment instead of holding eye contact
+   * the whole time — TalkingHead's avatarIdleEyeContact, for a character who
+   * is waiting rather than in conversation (the secretary).
+   */
+  idleGlances?: boolean;
 }
 
 /** How strongly the studio lighting (environment) lights a rendered character. */
@@ -148,6 +159,19 @@ const THINKING_GAZE = new THREE.Vector3(0.3, 0.3, 0);
 const NO_OFFSET = new THREE.Vector3();
 /** The furthest the head turns toward a target (~20°). */
 const MAX_HEAD_TURN = 0.35;
+/** How quickly the head turns to a new target, per second (eased, never snapped). */
+const HEAD_TURN_RATE = 6;
+/**
+ * Character frames per second while animating: TalkingHead's modelFPS (its
+ * default, 30). The canvas renders on demand, so this caps how often an idle
+ * character asks for a frame; the camera and doors still ask at full rate.
+ */
+const MODEL_FPS = 30;
+/** Idle glances: how long one lasts, and the range of gaps between them, in seconds. */
+const GLANCE_SECONDS = 1.1;
+const GLANCE_GAP: [number, number] = [2.5, 6];
+/** Where idle glances go, in metres at the camera: down at the desk, or to either side. */
+const GLANCES = [new THREE.Vector3(0.9, -0.9, 0), new THREE.Vector3(-1.1, -0.4, 0), new THREE.Vector3(1.3, 0.1, 0)];
 
 /** Reused every frame, so aiming the head allocates nothing. */
 const scratch = {
@@ -177,6 +201,12 @@ class RecruiterRig {
   /** Where the gaze sits relative to the camera, eased (thinking glance). */
   private readonly gazeOffset = new THREE.Vector3();
   private lastState: RecruiterState | null = null;
+  /** The head's turn as last applied, eased toward each frame's target. */
+  private headLocal: THREE.Quaternion | null = null;
+  private readonly idleGlances: boolean;
+  private nextGlance = 0;
+  private glanceUntil = 0;
+  private glance = NO_OFFSET;
 
   constructor(
     private readonly scene: THREE.Object3D,
@@ -185,6 +215,7 @@ class RecruiterRig {
     look: Look = {},
     environment: THREE.Texture | null = null,
   ) {
+    this.idleGlances = Boolean(look.idleGlances) && !reduced;
     this.restyle(look, environment);
 
     // Read the bind pose before the clip moves anything: it is the one pose
@@ -278,7 +309,7 @@ class RecruiterRig {
     /** Viewport size when this rig frames the camera itself; null when the scene owns it. */
     framing: { width: number; height: number } | null,
     delta: number,
-    { state, readMouth, readVisemes }: Speaker,
+    { state, readMouth, readVisemes, lookAt }: Speaker,
   ) {
     const now = performance.now() / 1000;
     const v = this.values;
@@ -343,7 +374,7 @@ class RecruiterRig {
 
     const t = now - this.nodStart;
     const nod = this.nodStart >= 0 && t < NOD_SECONDS ? Math.sin((Math.PI * t) / NOD_SECONDS) : 0;
-    this.aimHead(camera, nod);
+    this.aimHead(camera, nod, delta, now, lookAt ?? null);
   }
 
   /**
@@ -354,7 +385,7 @@ class RecruiterRig {
    * candidate. The nod and the thinking glance move WHERE she looks rather
    * than adding raw bone rotations, so they cannot fight the clip.
    */
-  private aimHead(camera: THREE.Camera, nod: number) {
+  private aimHead(camera: THREE.Camera, nod: number, delta: number, now: number, lookAt: readonly [number, number, number] | null) {
     const head = this.head;
     if (!head?.parent) return;
     if (this.neck) this.neck.quaternion.copy(this.neckRestLocal);
@@ -369,7 +400,20 @@ class RecruiterRig {
     } else {
       head.getWorldPosition(from);
     }
-    const target = scratch.target.copy(camera.position).add(this.gazeOffset);
+    // Idle glances: a short look away now and then, unless something holds
+    // the attention (a point to look at) — then eye contact resumes.
+    if (this.idleGlances && !lookAt) {
+      if (this.nextGlance === 0) this.nextGlance = now + GLANCE_GAP[0];
+      if (now >= this.nextGlance) {
+        this.glance = GLANCES[Math.floor(Math.random() * GLANCES.length)];
+        this.glanceUntil = now + GLANCE_SECONDS;
+        this.nextGlance = now + GLANCE_SECONDS + GLANCE_GAP[0] + Math.random() * (GLANCE_GAP[1] - GLANCE_GAP[0]);
+      }
+    }
+    const glancing = !lookAt && now < this.glanceUntil;
+    const target = lookAt
+      ? scratch.target.set(lookAt[0], lookAt[1], lookAt[2])
+      : scratch.target.copy(camera.position).add(this.gazeOffset).add(glancing ? this.glance : NO_OFFSET);
     target.y -= nod * NOD_DROP;
     const dir = target.sub(from).normalize();
 
@@ -381,7 +425,11 @@ class RecruiterRig {
 
     const desired = scratch.desired.copy(look).multiply(this.headRestWorld);
     const parentWorld = head.parent.getWorldQuaternion(scratch.parent);
-    head.quaternion.copy(parentWorld.invert().multiply(desired));
+    const local = parentWorld.invert().multiply(desired);
+    // Ease toward the new aim (a glance, a look back) rather than snapping.
+    if (!this.headLocal || this.reduced) this.headLocal = local.clone();
+    else this.headLocal.slerp(local, 1 - Math.exp(-delta * HEAD_TURN_RATE));
+    head.quaternion.copy(this.headLocal);
   }
 
 }
@@ -410,11 +458,24 @@ export function RecruiterModel({ speaker, framesCamera = false, animate = true, 
   useEffect(() => {
     latest.current = { look, onReady };
   });
+  // The next requested frame, at most MODEL_FPS a second (TalkingHead's modelFPS).
+  const nextFrame = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (nextFrame.current) clearTimeout(nextFrame.current);
+    },
+    [],
+  );
 
   useFrame(({ gl, camera, size, invalidate }, delta) => {
     rig.current ??= new RecruiterRig(scene, animations, prefersReducedMotion(), latest.current.look, studioEnvironment(gl));
     rig.current.update(camera as THREE.PerspectiveCamera, framesCamera ? size : null, delta, speaker.current);
-    if (animate) invalidate();
+    if (animate && nextFrame.current === null) {
+      nextFrame.current = setTimeout(() => {
+        nextFrame.current = null;
+        invalidate();
+      }, 1000 / MODEL_FPS);
+    }
     if (!reported.current) {
       reported.current = true;
       latest.current.onReady?.();

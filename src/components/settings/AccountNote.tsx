@@ -1,20 +1,25 @@
 "use client";
 
 /**
- * "Account": who the user is here. Username and member code are read-only
- * (the database refuses changes to them); the display name — what the
- * recruiter calls you — can be edited, through the profiles row the user is
- * allowed to update. Sign out walks out through the front door.
+ * "Account", written on its note on the settings board: who the user is
+ * here. Username and member code are read-only (the database refuses
+ * changes to them); the display name — what the recruiter calls you — can be
+ * edited, through the profiles row the user is allowed to update. Sign out
+ * walks out through the front door.
+ *
+ * Compact: it has to fit a note.
  */
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 
-import { SignOutButton } from "@/components/building/FixtureBar";
+import { SignOutButton } from "@/components/building/SignOutButton";
 import { Button } from "@/components/ui/Button";
 import { paperField } from "@/components/ui/Clipboard";
 import { LIMITS } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/client";
+
+const term = "text-xs font-semibold uppercase tracking-wider text-muted";
 
 export function AccountNote({
   userId,
@@ -51,41 +56,39 @@ export function AccountNote({
       setStatus({ ok: false, text: "We couldn't save that. Try again in a moment." });
       return;
     }
-    setStatus({ ok: true, text: "Saved. The recruiter will use this name from your next interview." });
+    setStatus({ ok: true, text: "Saved. The recruiter uses it from your next interview." });
     router.refresh();
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <dl className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Username</dt>
-          <dd className="text-lg text-ink">{username ? `@${username}` : "—"}</dd>
+    <div className="flex flex-col gap-3">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <dt className={term}>Username</dt>
+          <dd className="truncate text-base font-semibold text-ink">{username ? `@${username}` : "—"}</dd>
         </div>
-        <div className="flex flex-col gap-1">
-          <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Member code</dt>
-          <dd>
-            <span className="rounded-md border-2 border-ink/50 bg-sunken px-2 py-0.5 font-mono text-sm tracking-wider text-ink">
-              {memberCode ?? "—"}
-            </span>
+        <div className="flex flex-col items-start gap-0.5">
+          <dt className={term}>Member code</dt>
+          <dd className="rounded-md border-2 border-ink/50 bg-sunken px-1.5 font-mono text-xs leading-5 tracking-wider text-ink">
+            {memberCode ?? "—"}
           </dd>
         </div>
         {email && (
-          <div className="flex flex-col gap-1 sm:col-span-2">
-            <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Email</dt>
-            <dd className="text-ink">{email}</dd>
+          <div className="col-span-2 flex min-w-0 flex-col gap-0.5">
+            <dt className={term}>Email</dt>
+            <dd className="truncate text-ink">{email}</dd>
           </div>
         )}
       </dl>
 
-      <form onSubmit={save} className="flex flex-col gap-2 border-t-2 border-dashed border-ink/20 pt-5">
-        <label htmlFor={`${id}-name`} className="text-sm font-medium text-ink">
-          What should the recruiter call you?
+      <form onSubmit={save} className="flex flex-col gap-1 border-t-2 border-dashed border-ink/20 pt-2.5">
+        <label htmlFor={`${id}-name`} className={term}>
+          What the recruiter calls you
         </label>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex items-end gap-2">
           <input
             id={`${id}-name`}
-            className={`${paperField} min-w-48 flex-1`}
+            className={`${paperField} min-w-0 flex-1`}
             maxLength={LIMITS.displayName}
             autoComplete="given-name"
             value={name}
@@ -95,16 +98,16 @@ export function AccountNote({
             }}
           />
           <Button type="submit" size="sm" disabled={saving || !changed}>
-            {saving ? "Saving…" : "Save name"}
+            {saving ? "Saving…" : "Save"}
           </Button>
         </div>
-        <p role="status" className={`text-sm ${status && !status.ok ? "text-danger" : "text-muted"}`}>
+        <p role="status" className={`min-h-4 text-xs ${status && !status.ok ? "text-danger" : "text-muted"}`}>
           {status?.text ?? ""}
         </p>
       </form>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-dashed border-ink/20 pt-5">
-        <p className="text-sm text-muted">Done for today?</p>
+      <div className="flex items-center justify-between gap-3 border-t-2 border-dashed border-ink/20 pt-2.5">
+        <p className="text-xs text-muted">Done for today?</p>
         <SignOutButton label="Sign out" variant="secondary" />
       </div>
     </div>

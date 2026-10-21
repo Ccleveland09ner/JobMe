@@ -27,8 +27,37 @@ export const LOBBY = {
   height: 3.6,
 } as const;
 
-/** The settings notice board on the lobby's back wall, right of the desk. */
-export const NOTEBOARD = { left: 1.7, right: 4.9, bottom: 0.85, top: 2.55, z: LOBBY.back } as const;
+/**
+ * The settings notice board on the lobby's back wall, just right of the
+ * secretary: in full view from the front desk, header and all.
+ */
+export const NOTEBOARD = { left: 0.55, right: 2.95, bottom: 0.75, top: 2.35, z: LOBBY.back } as const;
+/** Its wooden frame's width, and the header plank across its top. */
+export const BOARD_FRAME = 0.08;
+export const BOARD_PLANK = 0.24;
+
+/** The two notes pinned on the board, side by side under the plank. */
+const NOTE_W = 1.0;
+const NOTE_GAP = (NOTEBOARD.right - NOTEBOARD.left - 2 * BOARD_FRAME - 2 * NOTE_W) / 3;
+const NOTE_TOP = NOTEBOARD.top - BOARD_FRAME - BOARD_PLANK - 0.06;
+const NOTE_BOTTOM = NOTEBOARD.bottom + BOARD_FRAME + 0.06;
+export const BOARD_NOTES = {
+  defaults: {
+    x: NOTEBOARD.left + BOARD_FRAME + NOTE_GAP + NOTE_W / 2,
+    y: (NOTE_TOP + NOTE_BOTTOM) / 2,
+    w: NOTE_W,
+    h: NOTE_TOP - NOTE_BOTTOM,
+    tilt: 0.02,
+  },
+  account: {
+    x: NOTEBOARD.left + BOARD_FRAME + 2 * NOTE_GAP + 1.5 * NOTE_W,
+    y: (NOTE_TOP + NOTE_BOTTOM) / 2,
+    w: NOTE_W,
+    h: NOTE_TOP - NOTE_BOTTOM,
+    tilt: -0.016,
+  },
+} as const;
+export type BoardNote = keyof typeof BOARD_NOTES;
 
 /** The front desk's front edge, and where the secretary sits behind it. */
 export const DESK = { z: -6, width: 3.4, depth: 0.7, height: 0.78 } as const;

@@ -15,10 +15,12 @@
  */
 
 import { useGLTF } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
-import { Suspense, useRef } from "react";
+import { Canvas, useLoader } from "@react-three/fiber";
+import { Suspense, useEffect, useRef } from "react";
+import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 
 import { RECRUITER_MODEL, RecruiterModel, type Look, type Speaker } from "@/components/room/Recruiter3D";
+import { LETTERING_FONT } from "@/components/three/lettering";
 import { OutlineRenderer } from "@/components/three/OutlineRenderer";
 import { PALETTE } from "@/components/three/toon";
 
@@ -27,6 +29,7 @@ import { CameraRig } from "./CameraRig";
 import { Corridor } from "./scene/Corridor";
 import { InterviewRoomScene } from "./scene/InterviewRoom";
 import { Lobby } from "./scene/Lobby";
+import { LOOK_POINTS } from "./scene/Objects";
 import { Street } from "./scene/Street";
 import type { Station } from "./stations";
 import { RECRUITER, SECRETARY } from "./world";
@@ -41,12 +44,30 @@ const INSIDE: ReadonlySet<Station> = new Set(["desk", "corridor", "room"]);
 const SECRETARY_LOOK: Look = {
   colors: { avaturn_look_0_material: "#b4553a", Wolf3D_Hair: "#5a3825" },
   glasses: false,
+  // Waiting at her desk, she does not stare the whole time (TalkingHead's
+  // avatarIdleEyeContact).
+  idleGlances: true,
 };
 
 export default function BuildingCanvas() {
   const building = useBuilding();
-  // The secretary only ever smiles and watches the user.
+  // The secretary smiles and watches the user — and glances at whatever
+  // they point at on her desk or wall (TalkingHead's lookAt), then back.
   const secretary = useRef<Speaker>({ state: "idle" });
+  const hovered = building?.hovered ?? null;
+  useEffect(() => {
+    secretary.current = { state: "idle", lookAt: hovered ? (LOOK_POINTS[hovered] ?? null) : null };
+  }, [hovered]);
+
+  // A pointer over anything the user can use.
+  const pointed = useRef(false);
+  useEffect(() => {
+    if (hovered) document.body.style.cursor = "pointer";
+    else if (pointed.current) document.body.style.cursor = "";
+    pointed.current = hovered !== null;
+  }, [hovered]);
+  useEffect(() => () => void (document.body.style.cursor = ""), []);
+
   if (!building) return null;
   const { state, dispatch, speaker } = building;
   const { station, target, holding } = state;
@@ -102,3 +123,4 @@ export default function BuildingCanvas() {
 }
 
 useGLTF.preload(RECRUITER_MODEL);
+useLoader.preload(FontLoader, LETTERING_FONT);

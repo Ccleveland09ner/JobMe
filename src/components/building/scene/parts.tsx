@@ -20,8 +20,8 @@ type Vec3 = [number, number, number];
  * Ink along every hard corner of the mesh it sits in — the crease lines the
  * silhouette outline cannot draw. Put it inside any scenery <mesh>.
  */
-export function InkEdges() {
-  return <Edges lineWidth={EDGE_WIDTH} threshold={EDGE_THRESHOLD} color={PALETTE.ink} />;
+export function InkEdges({ threshold = EDGE_THRESHOLD }: { threshold?: number }) {
+  return <Edges lineWidth={EDGE_WIDTH} threshold={threshold} color={PALETTE.ink} />;
 }
 
 export const unitBox = new THREE.BoxGeometry(1, 1, 1);

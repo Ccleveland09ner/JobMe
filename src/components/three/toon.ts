@@ -43,6 +43,10 @@ export const PALETTE = {
   pin: "#d64b3c",
   paper: "#fffdf7",
   noteYellow: "#fff4c2",
+  // The clipboard on the desk: --color-board, --color-clipmetal, --color-rule.
+  board: "#a9774c",
+  clipmetal: "#c5ccd0",
+  rule: "#c8d5e2",
 } as const;
 
 export type PaletteColor = keyof typeof PALETTE;

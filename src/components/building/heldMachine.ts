@@ -1,6 +1,6 @@
 /**
- * What the user is holding: the ledger, the reports folder, or the notepad
- * in the interview room. A pure reducer (heldMachine.test.ts), like
+ * What the user is holding: the ledger, the reports folder or the clipboard
+ * from the front desk, or the notepad in the interview room. A pure reducer (heldMachine.test.ts), like
  * buildingMachine.ts and room/roomMachine.ts.
  *
  *   resting ─REQUEST(x)─▶ lifting ─LIFTED─▶ open ─REQUEST(≠x)─▶ closing
@@ -24,7 +24,7 @@
  *   RETURNED    the 3D object, when it is back where it rests
  */
 
-export type Held = "ledger" | "reports" | "notepad";
+export type Held = "ledger" | "reports" | "clipboard" | "notepad";
 export type HeldPhase = "resting" | "lifting" | "open" | "closing" | "returning";
 
 export interface HeldState {

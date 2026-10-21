@@ -260,39 +260,6 @@ dialog::backdrop {
     transform: none;
   }
 }
-/*
- * The settings board (components/settings/NoticeBoard.tsx) appears once the
- * camera has turned to it; a note picked off it straightens and comes forward.
- */
-@keyframes board-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes note-unpin {
-  from {
-    opacity: 0.4;
-    transform: perspective(1600px) translateY(-12px) rotate(-3deg) scale(0.7) rotateX(18deg);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .board-in {
-    animation: board-in 350ms ease-out 650ms both;
-  }
-  .note-unpin {
-    animation: note-unpin 380ms cubic-bezier(0.2, 0.8, 0.3, 1.1) both;
-  }
-}
-
 /* A speech bubble pops out from its tail (components/room/SpeechBubble.tsx). */
 @keyframes bubble-in {
   from {

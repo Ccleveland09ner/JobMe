@@ -27,7 +27,8 @@ import * as THREE from "three";
 import { prefersReducedMotion } from "@/lib/voice/audio-graph";
 
 import { useBuilding } from "./BuildingProvider";
-import { fovFor, pathBetween, POSES, type Pose, type Station } from "./stations";
+import { fovFor, NOTE_CLOSE_UPS, pathBetween, POSES, type Pose, type Station } from "./stations";
+import type { BoardNote } from "./world";
 
 /** Walking pace, metres per second, and the bounds on one leg's duration. */
 const PACE = 2.6;
@@ -37,7 +38,8 @@ const MAX_LEG = 2.2;
 /** How far the user can look around, radians: ±35° yaw, ±12° pitch. */
 const MAX_YAW = 0.61;
 const MAX_PITCH = 0.21;
-const LOOKABLE: ReadonlySet<Station> = new Set(["street", "desk", "noteboard"]);
+// Not the notice board: its notes carry controls laid exactly onto them.
+const LOOKABLE: ReadonlySet<Station> = new Set(["street", "desk"]);
 
 interface CameraValues {
   px: number;
@@ -47,6 +49,8 @@ interface CameraValues {
   ty: number;
   tz: number;
   fov: number;
+  /** Pose.fit, or 0. */
+  fit: number;
 }
 
 const valuesOf = (pose: Pose): CameraValues => ({
@@ -57,6 +61,7 @@ const valuesOf = (pose: Pose): CameraValues => ({
   ty: pose.target[1],
   tz: pose.target[2],
   fov: pose.fov,
+  fit: pose.fit ?? 0,
 });
 
 const scratch = new THREE.Vector3();
@@ -64,7 +69,7 @@ const scratch = new THREE.Vector3();
 export function CameraRig() {
   const building = useBuilding();
   if (!building) throw new Error("CameraRig must be inside <BuildingProvider>");
-  const { state, dispatch, inset, setRedraw, setCameraMoving } = building;
+  const { state, dispatch, inset, setRedraw, setCameraAt, focus } = building;
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
 
@@ -83,14 +88,17 @@ export function CameraRig() {
     latest.current = state;
   });
 
-  /** Tween through `poses` in order; `done` runs after the last. */
-  const travel = (poses: Pose[], done: () => void) => {
+  /**
+   * Tween through `poses` in order, to rest at `arrivesAt` (null: a
+   * waypoint, not a station); `done` runs after the last.
+   */
+  const travel = (poses: Pose[], arrivesAt: Station | null, done: () => void) => {
     timeline.current?.kill();
     const reduced = prefersReducedMotion();
-    setCameraMoving(true);
+    setCameraAt(null);
     const tl = gsap.timeline({
       onComplete: () => {
-        setCameraMoving(false);
+        setCameraAt(arrivesAt);
         done();
       },
       onUpdate: invalidate,
@@ -116,7 +124,7 @@ export function CameraRig() {
       pending.current = null;
       const back = [...trail.current].reverse();
       trail.current = [];
-      travel(back.length ? back : [POSES[destination]], () => {
+      travel(back.length ? back : [POSES[destination]], destination, () => {
         settled.current = destination;
         dispatch({ type: "ARRIVE" });
       });
@@ -132,12 +140,12 @@ export function CameraRig() {
     };
     pending.current = null;
     if (!s.holding || path.length < 2) {
-      travel(path, finish);
+      travel(path, destination, finish);
       return;
     }
-    travel(path.slice(0, -1), () => {
+    travel(path.slice(0, -1), null, () => {
       // Released while still walking: carry straight on.
-      if (!latest.current.holding) travel([last], finish);
+      if (!latest.current.holding) travel([last], destination, finish);
       else pending.current = last;
     });
     // walkId is the trigger; everything else is read from `latest`.
@@ -150,7 +158,7 @@ export function CameraRig() {
     const last = pending.current;
     const destination = state.target;
     pending.current = null;
-    travel([last], () => {
+    travel([last], destination, () => {
       settled.current = destination;
       dispatch({ type: "ARRIVE" });
     });
@@ -162,9 +170,21 @@ export function CameraRig() {
     if (state.target !== null || state.station === settled.current) return;
     const from = settled.current;
     settled.current = state.station;
-    travel(pathBetween(from, state.station), () => {});
+    travel(pathBetween(from, state.station), state.station, () => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.station, state.target]);
+
+  // A close-up at the notice board (a note, on a narrow screen), and back
+  // out to the whole board. Only on a change: a route's own glide is above.
+  const lastFocus = useRef(focus);
+  useEffect(() => {
+    if (lastFocus.current === focus) return;
+    lastFocus.current = focus;
+    if (state.station !== "noteboard" || state.target !== null) return;
+    const closeUp = focus && focus in NOTE_CLOSE_UPS ? NOTE_CLOSE_UPS[focus as BoardNote] : null;
+    travel([closeUp ?? POSES.noteboard], "noteboard", () => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
 
   useEffect(() => () => void timeline.current?.kill(), []);
 
@@ -209,6 +229,9 @@ export function CameraRig() {
     };
   }, [gl, invalidate]);
 
+  // Priority -1: the camera moves first, before anything in the frame that
+  // reads it (names turning to face it, controls pinned onto the board).
+  // A negative priority runs early without taking over rendering.
   useFrame(({ camera, size }, delta) => {
     const c = cam.current;
     const l = look.current;
@@ -221,19 +244,29 @@ export function CameraRig() {
       invalidate();
     }
 
-    persp.position.set(c.px, c.py, c.pz);
+    const aspect = size.width / size.height;
+    const fov = fovFor({ position: [0, 0, 0], target: [0, 0, 0], fov: c.fov }, aspect);
+    // Too narrow to keep the pose's width in view: step back to fit it.
+    let back = 1;
+    if (c.fit > 0) {
+      const distance = Math.hypot(c.px - c.tx, c.py - c.ty, c.pz - c.tz);
+      const needed = c.fit / (Math.tan((fov * Math.PI) / 360) * aspect);
+      if (distance > 0 && needed > distance) back = needed / distance;
+    }
+    persp.position.set(c.tx + (c.px - c.tx) * back, c.ty + (c.py - c.ty) * back, c.tz + (c.pz - c.tz) * back);
     persp.lookAt(scratch.set(c.tx, c.ty, c.tz));
     if (l.yaw || l.pitch) {
       persp.rotateY(-l.yaw);
       persp.rotateX(-l.pitch);
     }
 
-    persp.fov = fovFor({ position: [0, 0, 0], target: [0, 0, 0], fov: c.fov }, size.width / size.height);
+    persp.fov = fov;
     const { right, bottom } = inset.current;
     if (right || bottom) persp.setViewOffset(size.width, size.height, right / 2, bottom / 2, size.width, size.height);
     else persp.clearViewOffset();
     persp.updateProjectionMatrix();
-  });
+    persp.updateMatrixWorld();
+  }, -1);
 
   return null;
 }

@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useId, useState } from "react";
 
 import { useBuilding } from "@/components/building/BuildingProvider";
+import { useHeld } from "@/components/held/useHeld";
 import { Button } from "@/components/ui/Button";
 import { Clipboard, paperField } from "@/components/ui/Clipboard";
 import type { InterviewMode } from "@/lib/engine/types";
@@ -47,6 +48,9 @@ export function SetupForm({
 }) {
   const router = useRouter();
   const building = useBuilding();
+  // Picked up off the front desk (heldMachine.ts): put down, it plays its
+  // closing before the 3D clipboard goes back to the desk.
+  const { closing } = useHeld("clipboard");
   const id = useId();
 
   const [displayName, setDisplayName] = useState(defaultName);
@@ -115,11 +119,16 @@ export function SetupForm({
   }
 
   return (
-    <form onSubmit={begin} aria-describedby={error ? `${id}-error` : undefined}>
-      <Clipboard paperClassName="flex flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
-          {description && <p className="text-sm text-muted">{description}</p>}
+    <form onSubmit={begin} aria-describedby={error ? `${id}-error` : undefined} className="w-full max-w-2xl">
+      <Clipboard paperClassName="flex flex-col gap-6" closing={closing}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+            {description && <p className="text-sm text-muted">{description}</p>}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => router.push("/dashboard")} disabled={submitting}>
+            Put the clipboard down
+          </Button>
         </div>
 
         <div className="flex flex-col gap-1.5">

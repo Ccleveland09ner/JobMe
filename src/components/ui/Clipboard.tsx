@@ -37,6 +37,8 @@ export const paperArea =
 export interface ClipboardProps extends HTMLAttributes<HTMLDivElement> {
   /** Classes for the top sheet (layout of what is written on it). */
   paperClassName?: string;
+  /** Being put down (a held clipboard closing): it leaves as it came. */
+  closing?: boolean;
 }
 
 /** Hard-edged toon bevel: a lit rim top-left, a shaded rim bottom-right. */
@@ -46,9 +48,9 @@ const BOARD_BEVEL =
 /** The board's thickness: an extruded edge, ink-outlined, below the face. */
 const BOARD_EDGE = "shadow-[0_9px_0_-2px_var(--color-board-dark),0_9px_0_1px_var(--color-ink)]";
 
-export function Clipboard({ className = "", paperClassName = "", children, ...rest }: ClipboardProps) {
+export function Clipboard({ className = "", paperClassName = "", closing = false, children, ...rest }: ClipboardProps) {
   return (
-    <div className={`clipboard-in relative pb-6 pt-10 ${className}`.trim()} {...rest}>
+    <div className={`${closing ? "held-out" : "clipboard-in"} relative pb-6 pt-10 ${className}`.trim()} {...rest}>
       {/* Flat contact shadow on whatever it rests against. */}
       <div aria-hidden="true" className="absolute inset-x-6 bottom-0 h-7 rounded-[50%] bg-ink/25" />
 
