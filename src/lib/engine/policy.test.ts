@@ -37,14 +37,12 @@ import {
 // ---------------------------------------------------------------------------
 
 const flat = (n: number): Scores => ({
-  situation: n,
-  task: n,
-  action: n,
-  result: n,
-  specificity: n,
-  impact: n,
-  ownership: n,
   relevance: n,
+  specificity: n,
+  ownership: n,
+  reasoning: n,
+  outcome: n,
+  communication: n,
 });
 
 const WEAK = flat(1);
@@ -90,7 +88,7 @@ const input = (
 ): StepInput => ({
   scores,
   band,
-  primaryGap: computePrimaryGap(scores),
+  primaryGap: computePrimaryGap(scores, "behavioral"),
   ...over,
 });
 
@@ -100,31 +98,30 @@ const input = (
 
 describe("classifyBand", () => {
   it("is weak at exactly the ceiling boundary", () => {
-    expect(classifyBand(flat(1.9), false)).toBe("weak");
-    expect(classifyBand(flat(2), false)).toBe("mediocre");
+    expect(classifyBand(flat(1.9), "behavioral", false)).toBe("weak");
+    expect(classifyBand(flat(2), "behavioral", false)).toBe("mediocre");
   });
 
   it("is great at exactly the floor with no low dimension", () => {
-    expect(classifyBand(flat(3.5), false)).toBe("great");
+    expect(classifyBand(flat(3.5), "behavioral", false)).toBe("great");
   });
 
   /**
-   * The reason banding uses the STAR roll-up rather than all eight dimensions:
-   * a genuinely strong answer that folds Task into Situation must still reach
-   * `great`, or the weak-vs-strong demo contrast dies.
+   * Communication never gates `great`: a transcript is too noisy a signal of
+   * delivery, and must never stand in for accent or grammar.
    */
-  it("still reaches great when one STAR component is soft", () => {
-    const scores: Scores = { ...GREAT, task: 2 };
-    expect(classifyBand(scores, false)).toBe("great");
+  it("still reaches great when only communication is soft", () => {
+    const scores: Scores = { ...GREAT, communication: 2 };
+    expect(classifyBand(scores, "behavioral", false)).toBe("great");
   });
 
-  it("does not reach great when a non-STAR dimension is low", () => {
-    expect(classifyBand({ ...GREAT, ownership: 2 }, false)).toBe("mediocre");
+  it("does not reach great when a scored dimension is low", () => {
+    expect(classifyBand({ ...GREAT, ownership: 2 }, "behavioral", false)).toBe("mediocre");
   });
 
   describe("off-topic gating", () => {
     it("forces weak when relevance corroborates the model", () => {
-      expect(classifyBand({ ...GREAT, relevance: 1 }, true)).toBe("weak");
+      expect(classifyBand({ ...GREAT, relevance: 1 }, "behavioral", true)).toBe("weak");
     });
 
     /**
@@ -132,7 +129,7 @@ describe("classifyBand", () => {
      * banded weak. One model boolean must not outrank eight scores.
      */
     it("ignores an off-topic claim that relevance contradicts", () => {
-      expect(classifyBand({ ...GREAT, relevance: 4 }, true)).toBe("great");
+      expect(classifyBand({ ...GREAT, relevance: 4 }, "behavioral", true)).toBe("great");
       expect(isOffTopic({ ...GREAT, relevance: 4 }, true)).toBe(false);
     });
   });
@@ -140,37 +137,37 @@ describe("classifyBand", () => {
   describe("hysteresis", () => {
     it("holds mediocre when the average dips just below the ceiling", () => {
       const borderline = flat(2 - HYSTERESIS / 2);
-      expect(classifyBand(borderline, false)).toBe("weak");
-      expect(classifyBand(borderline, false, { previousBand: "mediocre" })).toBe(
+      expect(classifyBand(borderline, "behavioral", false)).toBe("weak");
+      expect(classifyBand(borderline, "behavioral", false, { previousBand: "mediocre" })).toBe(
         "mediocre",
       );
     });
 
     it("lets a decisive drop through", () => {
-      expect(classifyBand(flat(1.5), false, { previousBand: "mediocre" })).toBe(
+      expect(classifyBand(flat(1.5), "behavioral", false, { previousBand: "mediocre" })).toBe(
         "weak",
       );
     });
 
     it("holds great when the average dips just below the floor", () => {
       const borderline = { ...flat(3.5 - HYSTERESIS / 2) };
-      expect(classifyBand(borderline, false, { previousBand: "great" })).toBe(
+      expect(classifyBand(borderline, "behavioral", false, { previousBand: "great" })).toBe(
         "great",
       );
     });
 
     it("requires a real improvement to leave weak", () => {
-      expect(classifyBand(flat(2.05), false, { previousBand: "weak" })).toBe(
+      expect(classifyBand(flat(2.05), "behavioral", false, { previousBand: "weak" })).toBe(
         "weak",
       );
-      expect(classifyBand(flat(2.5), false, { previousBand: "weak" })).toBe(
+      expect(classifyBand(flat(2.5), "behavioral", false, { previousBand: "weak" })).toBe(
         "mediocre",
       );
     });
 
     it("never smooths away an off-topic answer", () => {
       expect(
-        classifyBand({ ...flat(3), relevance: 1 }, true, {
+        classifyBand({ ...flat(3), relevance: 1 }, "behavioral", true, {
           previousBand: "great",
         }),
       ).toBe("weak");
@@ -181,12 +178,12 @@ describe("classifyBand", () => {
     const anchor = { simWeak: 0.9, simStrong: 0.7 };
 
     it("is inert by default — the demo must not depend on a threshold", () => {
-      expect(classifyBand(GREAT, false, { anchor })).toBe("great");
+      expect(classifyBand(GREAT, "behavioral", false, { anchor })).toBe("great");
     });
 
     it("downgrades when explicitly enabled", () => {
       expect(
-        classifyBand(GREAT, false, { anchor, anchorDowngradeEnabled: true }),
+        classifyBand(GREAT, "behavioral", false, { anchor, anchorDowngradeEnabled: true }),
       ).toBe("mediocre");
     });
   });
@@ -194,11 +191,11 @@ describe("classifyBand", () => {
 
 describe("computePrimaryGap", () => {
   it("picks the lowest dimension", () => {
-    expect(computePrimaryGap({ ...flat(3), result: 1 })).toBe("result");
+    expect(computePrimaryGap({ ...flat(3), outcome: 1 }, "behavioral")).toBe("outcome");
   });
 
   it("breaks ties by priority, not by key order", () => {
-    expect(computePrimaryGap({ ...flat(3), situation: 1, ownership: 1 })).toBe(
+    expect(computePrimaryGap({ ...flat(3), specificity: 1, ownership: 1 }, "behavioral")).toBe(
       "ownership",
     );
   });
@@ -210,11 +207,11 @@ describe("noDimensionRose", () => {
   });
 
   it("is false when one dimension gained a full point", () => {
-    expect(noDimensionRose(flat(2), { ...flat(2), result: 3 })).toBe(false);
+    expect(noDimensionRose(flat(2), { ...flat(2), outcome: 3 })).toBe(false);
   });
 
   it("ignores gains smaller than a whole point", () => {
-    expect(noDimensionRose(flat(2), { ...flat(2), result: 2.5 })).toBe(true);
+    expect(noDimensionRose(flat(2), { ...flat(2), outcome: 2.5 })).toBe(true);
   });
 });
 
@@ -243,7 +240,7 @@ describe("shouldResolveTopic", () => {
       lastMove: "clarify",
       threadScores: [MEDIOCRE],
     });
-    const improved = { ...MEDIOCRE, result: 4 };
+    const improved = { ...MEDIOCRE, outcome: 4 };
     expect(shouldResolveTopic(state, input(improved, "mediocre"))).toBe(false);
   });
 
@@ -253,7 +250,7 @@ describe("shouldResolveTopic", () => {
       lastMove: "deepen",
       threadScores: [GREAT],
     });
-    const better = { ...GREAT, situation: 4 };
+    const better = { ...GREAT, specificity: 4 };
     expect(shouldResolveTopic(state, input(better, "great"))).toBe(true);
   });
 
@@ -264,7 +261,7 @@ describe("shouldResolveTopic", () => {
       lastBand: "weak",
       threadScores: [WEAK],
     });
-    const stillWeak = { ...WEAK, result: 2 };
+    const stillWeak = { ...WEAK, outcome: 2 };
     expect(shouldResolveTopic(state, input(stillWeak, "weak"))).toBe(true);
   });
 
@@ -277,7 +274,7 @@ describe("shouldResolveTopic", () => {
 describe("isPlateau", () => {
   it("treats a repeated answer as a plateau even if scores moved", () => {
     const state = makeState({ lastMove: "clarify", threadScores: [MEDIOCRE] });
-    const better = { ...MEDIOCRE, result: 4 };
+    const better = { ...MEDIOCRE, outcome: 4 };
     expect(
       isPlateau(state, input(better, "mediocre", { repeatsPrevious: true })),
     ).toBe(true);
@@ -637,7 +634,7 @@ describe("full-mode pacing", () => {
     });
     expect(maxFollowUpsFor(state)).toBe(1);
     // An improving answer would otherwise earn a second follow-up.
-    const better = { ...MEDIOCRE, result: 4 };
+    const better = { ...MEDIOCRE, outcome: 4 };
     expect(shouldResolveTopic(state, input(better, "mediocre"))).toBe(true);
   });
 
@@ -650,7 +647,7 @@ describe("full-mode pacing", () => {
       currentQuestion: question({ source: "bank" }),
     });
     expect(maxFollowUpsFor(state)).toBe(2);
-    const better = { ...MEDIOCRE, result: 4 };
+    const better = { ...MEDIOCRE, outcome: 4 };
     expect(shouldResolveTopic(state, input(better, "mediocre"))).toBe(false);
   });
 

@@ -10,7 +10,8 @@
 
 import { evaluateAndDraft, extractEvidence } from "../src/lib/ai/evaluate";
 import { checkDraft, preClassify } from "../src/lib/ai/questions";
-import { STAR_DIMENSIONS, bandingValues } from "../src/lib/engine/types";
+import { average, classifyBand, minimum } from "../src/lib/engine/classify";
+import { dimensionsFor } from "../src/lib/engine/types";
 import { loadEnv, requireEnv } from "./_env";
 
 loadEnv();
@@ -33,19 +34,8 @@ interface Result {
   min: number;
   ownership: number;
   offTopic: boolean;
-  star: string;
+  dims: string;
   band: "weak" | "mediocre" | "great";
-}
-
-/**
- * Over the STAR roll-up plus the other four, not all eight: eight gives three
- * extra chances to trip `min >= 3`, which would make `great` nearly
- * unreachable and collapse the contrast this probe exists to protect.
- */
-function band(avg: number, min: number, offTopic: boolean): Result["band"] {
-  if (offTopic || avg < 2.0) return "weak";
-  if (avg >= 3.5 && min >= 3) return "great";
-  return "mediocre";
 }
 
 const FIXTURES: Fixture[] = [
@@ -122,31 +112,31 @@ async function main() {
       if (calls++ > 0) await sleep(PACE_MS);
       try {
         const evaluation = await evaluateAndDraft({
-          topic: "teamwork",
+          kind: "behavioral",
+          topic: "Teamwork",
           questionText: QUESTION,
           questionType: "opening",
           answer: fixture.answer,
-          difficulty: 1,
         });
 
+        // The same functions the turn pipeline bands with.
         const s = evaluation.scores;
-        const values = bandingValues(s);
-        const avg = values.reduce((a, b) => a + b, 0) / values.length;
-        const min = Math.min(...values);
+        const avg = average(s, "behavioral");
+        const min = minimum(s, "behavioral");
         const result: Result = {
           avg,
           min,
-          ownership: s.ownership,
+          ownership: s.ownership ?? 1,
           offTopic: evaluation.off_topic,
-          star: STAR_DIMENSIONS.map((d) => `${d[0].toUpperCase()}${s[d]}`).join(" "),
-          band: pre ?? band(avg, min, evaluation.off_topic),
+          dims: dimensionsFor("behavioral").map((d) => `${d.slice(0, 4)}${s[d]}`).join(" "),
+          band: pre ?? classifyBand(s, "behavioral", evaluation.off_topic),
         };
         bands.push(result.band);
 
         const problem = fixture.expect(result);
         console.log(
           `  run ${i + 1}: ${result.band.padEnd(8)} avg=${avg.toFixed(2)} ` +
-            `min=${min} own=${result.ownership}  [${result.star}]` +
+            `min=${min} own=${result.ownership}  [${result.dims}]` +
             (problem ? `  <-- ${problem}` : ""),
         );
         if (problem) failures++;

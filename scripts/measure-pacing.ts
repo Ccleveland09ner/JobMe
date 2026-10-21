@@ -24,8 +24,8 @@ import type {
 import { computePrimaryGap } from "../src/lib/engine/classify";
 
 const flat = (n: number): Scores => ({
-  situation: n, task: n, action: n, result: n,
-  specificity: n, impact: n, ownership: n, relevance: n,
+  relevance: n, specificity: n, ownership: n, reasoning: n,
+  outcome: n, accuracy: n, communication: n,
 });
 
 const SCORES: Record<Band, Scores> = {
@@ -84,7 +84,7 @@ function measure(itemCount: number, bands: Band[]) {
     const scores = SCORES[band];
     const before = state.currentQuestion.source;
 
-    const r = step(state, { scores, band, primaryGap: computePrimaryGap(scores) });
+    const r = step(state, { scores, band, primaryGap: computePrimaryGap(scores, "behavioral") });
     turns++;
     if (before === "resume") resumeTurns++; else bankTurns++;
 

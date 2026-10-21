@@ -24,10 +24,11 @@
  * module the hot-path tests need to load.
  */
 
-import { classifyBand, computePrimaryGap } from "../engine/classify";
-import { clarifySeeds, deepenSeeds, questionFor } from "../engine/bank";
+import { classifyBand, resolveGap } from "../engine/classify";
+import { BANK, clarifySeeds, deepenSeeds, questionFor } from "../engine/bank";
 import { commitQuestion, step, type StepInput } from "../engine/policy";
 import {
+  NO_EXPERIENCE_LINE,
   NUDGE_LINE,
   REPEAT_LINE,
   SCORING_FAILED_LINE,
@@ -35,13 +36,15 @@ import {
   reasonLine,
   transitionLead,
 } from "../engine/notepad";
-import type {
-  Band,
-  Dimension,
-  EngineState,
-  Move,
-  Question,
-  Scores,
+import {
+  questionKind,
+  type Band,
+  type Dimension,
+  type EngineState,
+  type Move,
+  type Question,
+  type QuestionKind,
+  type Scores,
 } from "../engine/types";
 
 import { EvalError, evaluateAndDraft, extractEvidence } from "../ai/evaluate";
@@ -93,10 +96,13 @@ export interface TurnContext {
    * Falls back to the resume's distilled role title when absent.
    */
   roleText?: string | null;
+  /** The candidate's level ("intern", "senior"…), which "solid" is judged against. */
+  seniority?: string | null;
   /**
    * Earlier answers in THIS thread, oldest first (see `threadHistory`). A
-   * follow-up is scored against the story so far, which the evaluator cannot
-   * do without them — nor can its drafts build on what was already said.
+   * follow-up adds to the original question, so it is scored as the whole
+   * answer so far — impossible without these — and its drafts build on what
+   * was already said. `[0]` is the original question and first answer.
    */
   priorThreadTurns?: { question: string; answer: string }[];
   /**
@@ -124,6 +130,8 @@ export interface NotepadEntry {
   topic: string;
   questionType: string;
   source: string;
+  /** The rubric the answer was scored on. */
+  kind: QuestionKind;
   scores: Scores | null;
   band: Band | null;
   primaryGap: Dimension | null;
@@ -179,13 +187,27 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     return { kind: "nudge", line: NUDGE_LINE, state };
   }
 
-  const forcedBand = preClassify(transcript);
+  const current = state.currentQuestion;
+  const kind = questionKind(current);
+  const forcedBand = preClassify(transcript, current.type);
+
+  /**
+   * A follow-up adds to the ORIGINAL question. The evaluator scores the whole
+   * answer so far against that question, so a reply that fills a gap
+   * completes the answer rather than standing as a separate, narrower one.
+   * Without the thread (a failed history read) it falls back to scoring the
+   * reply on its own, against the follow-up.
+   */
+  const prior = ctx.priorThreadTurns ?? [];
+  const isFollowUp = current.type !== "opening" && prior.length > 0;
 
   // ---- 2. evaluate ------------------------------------------------------
   let scores: Scores;
   let observation: string;
   let modelOffTopic = false;
   let repeatsPrevious = false;
+  let noExperience = false;
+  let modelGap: string | null = null;
   let drafts: { deepen: string; clarify: string } | null = null;
   let degraded = false;
   let degradedReason: DegradedReason | null = null;
@@ -196,27 +218,32 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
 
   try {
     const evaluation = await evaluate({
-      topic: state.currentQuestion.topic,
-      questionText: state.currentQuestion.text,
-      questionType: state.currentQuestion.type,
+      kind,
+      topic: BANK[current.topic]?.label ?? current.topic,
+      questionText: isFollowUp ? prior[0].question : current.text,
+      questionType: current.type,
       answer: transcript,
+      followUpQuestion: isFollowUp ? current.text : null,
       resumeFacts: ctx.resumeFacts,
       roleText: ctx.roleText ?? ctx.role?.title ?? null,
-      difficulty: state.difficulty,
-      priorThreadTurns: ctx.priorThreadTurns ?? [],
+      seniority: ctx.seniority ?? ctx.role?.seniority ?? null,
+      priorThreadTurns: isFollowUp ? prior : [],
+      askedQuestions: state.askedQuestions,
       signal,
     });
     scores = evaluation.scores;
     observation = evaluation.observation;
     modelOffTopic = evaluation.off_topic;
     repeatsPrevious = evaluation.repeats_previous;
+    noExperience = evaluation.status === "no_experience";
+    modelGap = evaluation.clarify_gap;
     drafts = evaluation.drafts;
   } catch (err) {
     // The degraded path: latency fallback, quota fallback, and a live proof
     // that the engine runs an interview with the model unavailable.
     degraded = true;
     degradedReason = degradedReasonFor(err, signal);
-    scores = heuristicScores(transcript);
+    scores = heuristicScores(transcript, kind);
     observation = SCORING_FAILED_LINE;
     if (!(err instanceof EvalError)) {
       console.warn(`[turn] unexpected evaluator failure: ${String(err)}`);
@@ -227,18 +254,27 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   // ---- 3. band ----------------------------------------------------------
   const band =
     forcedBand ??
-    classifyBand(scores, modelOffTopic, {
+    classifyBand(scores, kind, modelOffTopic, {
       previousBand: state.threadScores.length ? state.lastBand : null,
     });
 
   // ---- 4/5. gap and evidence, both computed in code ----------------------
+  // The model's clarify draft targets the gap it named; resolveGap keeps that
+  // gap only when the scores agree it is one, so the reason line always
+  // describes the question actually asked.
   const primaryGap = degraded
-    ? heuristicGap(scores)
-    : computePrimaryGap(scores);
+    ? heuristicGap(scores, kind)
+    : resolveGap(scores, kind, modelGap).gap;
   const evidence = extractEvidence(transcript);
 
   // ---- 6. the engine decides -------------------------------------------
-  const stepInput: StepInput = { scores, band, primaryGap, repeatsPrevious };
+  const stepInput: StepInput = {
+    scores,
+    band,
+    primaryGap,
+    repeatsPrevious,
+    noExperience,
+  };
   const result = step(state, stepInput);
 
   // ---- 7. wording for the next question ---------------------------------
@@ -319,6 +355,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
       topic: state.currentQuestion.topic,
       questionType: state.currentQuestion.type,
       source: state.currentQuestion.source,
+      kind,
       scores: degraded ? null : scores,
       band: degraded ? null : band,
       primaryGap: degraded ? null : primaryGap,
@@ -326,7 +363,9 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
       observation,
       reason: repeatsPrevious
         ? REPEAT_LINE
-        : reasonLine(result.move, primaryGap, band),
+        : noExperience && result.move !== "wrap"
+          ? NO_EXPERIENCE_LINE
+          : reasonLine(result.move, primaryGap, band),
       degraded,
     },
   };

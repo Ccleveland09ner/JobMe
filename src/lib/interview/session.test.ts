@@ -16,7 +16,6 @@ import { questionFor } from "../engine/bank";
 import { initState } from "../engine/policy";
 import {
   QUICK_QUESTION_CAP,
-  type Dimension,
   type Question,
   type Scores,
   type TopicId,
@@ -46,19 +45,19 @@ const ANSWER =
   "340 ms within 2 days.";
 
 const flat = (n: number): Scores => ({
-  situation: n,
-  task: n,
-  action: n,
-  result: n,
-  specificity: n,
-  impact: n,
-  ownership: n,
   relevance: n,
+  specificity: n,
+  ownership: n,
+  reasoning: n,
+  outcome: n,
+  communication: n,
 });
 
 function raw(scores: Scores): RawEvaluation {
   return {
     scores,
+    status: "complete",
+    clarify_gap: null,
     observation: "Scripted",
     off_topic: false,
     repeats_previous: false,
@@ -110,10 +109,13 @@ async function interview(evaluate: NonNullable<TurnContext["evaluate"]>) {
     rows.push({
       id: `turn-${result.state.turnSeq}`,
       seq: result.state.turnSeq,
+      questionType: String(row.question_type),
+      topic: String(row.topic),
+      source: String(row.question_source),
       questionText: String(row.question_text),
       answerTranscript: String(row.answer_transcript),
       scores: row.scores as Scores | null,
-      primaryGap: row.primary_gap as Dimension | null,
+      primaryGap: (row.primary_gap as string | null) ?? null,
       captureMs: row.capture_ms as number | null,
     });
     moves.push(result.move);
@@ -172,7 +174,11 @@ describe("a whole interview through the pipeline", () => {
     // Nothing was scored, so there is nothing to rewrite — and no call to make.
     expect(generateText).not.toHaveBeenCalled();
     expect(outcome.body).toMatchObject({ rewrite: null, overallScores: null });
-    expect(outcome.body).toHaveProperty("stats.answered", rows.length);
+    // Counted per original question: a follow-up is part of the one it followed.
+    expect(outcome.body).toHaveProperty(
+      "stats.answered",
+      rows.filter((r) => r.questionType === "opening").length,
+    );
 
     // The failure never reaches the candidate, in any response.
     expect(JSON.stringify([responses, outcome.body])).not.toMatch(
@@ -201,10 +207,14 @@ describe("a whole interview through the pipeline", () => {
     expect(evaluate).toHaveBeenCalledTimes(first.rows.length);
     expect(fetchSpy).not.toHaveBeenCalled();
 
-    const generateText = vi.fn(async () => ({ summary: "Strong session.", rewrite: null }));
+    const generateText = vi.fn(async () => ({
+      summary: "Strong session.",
+      rewrite: null,
+      feedback: { strengths: [], improvements: [] },
+    }));
     const outcome = await runReport(reportStore(first.rows), { generateText });
     expect(generateText).toHaveBeenCalledTimes(1);
-    expect(outcome.body).toMatchObject({ overallScores: flat(4) });
+    expect(outcome.body).toMatchObject({ overallScores: { ...flat(4), overall: 4 } });
   });
 
   /**
@@ -213,10 +223,10 @@ describe("a whole interview through the pipeline", () => {
    */
   it("caps a long mediocre session at the question limit", async () => {
     let n = 0;
-    // Impact climbs 1 -> 2 -> 3 within each thread, so no follow-up plateaus;
+    // Outcome climbs 1 -> 2 -> 3 within each thread, so no follow-up plateaus;
     // everything else sits at 3, which keeps every answer mediocre.
     const evaluate = vi.fn(async () =>
-      raw({ ...flat(3), impact: 1 + (n++ % 3) }),
+      raw({ ...flat(3), outcome: 1 + (n++ % 3) }),
     );
 
     const { state, moves, maxFollowUps } = await interview(evaluate);

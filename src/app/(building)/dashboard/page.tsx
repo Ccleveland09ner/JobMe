@@ -30,6 +30,7 @@ import { Ledger, type LedgerSection } from "@/components/desk/Ledger";
 import { buttonClasses } from "@/components/ui/Button";
 import { requireUser } from "@/lib/auth";
 import {
+  pickOverall,
   pickScores,
   sessionSummaryFromRow,
   type SessionRowData,
@@ -96,7 +97,12 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 
   const trendRows = (trendRes.data ?? []) as { id: string; started_at: string; overall_scores: unknown }[];
   const trend: TrendPoint[] = trendRows
-    .map((r) => ({ id: r.id, startedAt: r.started_at, scores: pickScores(r.overall_scores) }))
+    .map((r) => ({
+      id: r.id,
+      startedAt: r.started_at,
+      scores: pickScores(r.overall_scores),
+      overall: pickOverall(r.overall_scores),
+    }))
     .reverse();
 
   const startCta = (
@@ -157,6 +163,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                 completed={completed}
                 inProgress={Math.max(0, total - completed)}
                 latestScores={trend.at(-1)?.scores ?? null}
+                latestOverall={trend.at(-1)?.overall ?? null}
               />
             ),
           },

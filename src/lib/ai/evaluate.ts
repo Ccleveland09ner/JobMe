@@ -4,14 +4,15 @@
  *
  * THE INVARIANT: this returns scores and wording, never a move. `RawEvaluation`
  * gaining `move`, `action` or `next_question` is the one change that breaks
- * the architecture — reviewable in five seconds.
+ * the architecture — reviewable in five seconds. `status` and `clarify_gap`
+ * are judgements the engine MAY act on; it still decides the move itself.
  *
  * `primary_gap` and `evidence` are computed in code instead of asked for:
- * the gap was already overridden by `computePrimaryGap()`, and models
+ * the gap is checked against the scores by `resolveGap()`, and models
  * paraphrase rather than quote, so extracting evidence locally guarantees the
  * scorecard highlight matches. Decode dominates latency, so both are speedups.
  *
- * Ref: TechDesign > Evaluator
+ * Ref: TechDesign > Evaluator; docs/Scoring-Rubric.md
  */
 
 import { Type } from "@google/genai";
@@ -19,8 +20,9 @@ import { Type } from "@google/genai";
 import { LlmError, generateJson } from "./llm";
 import { buildTurnPrompt, evaluatorSystemFor } from "./prompts";
 
-import { DIMENSIONS } from "../engine/types";
-import type { Scores } from "../engine/types";
+import { gapCandidates } from "../engine/classify";
+import { dimensionsFor } from "../engine/types";
+import type { QuestionKind, Scores } from "../engine/types";
 
 export class EvalError extends Error {
   constructor(
@@ -32,84 +34,125 @@ export class EvalError extends Error {
   }
 }
 
+/** What the evaluator concluded about the answer as a whole. */
+export type AnswerStatus =
+  | "complete"
+  | "incomplete"
+  | "incorrect"
+  | "off_topic"
+  | "no_experience";
+
+export const ANSWER_STATUSES: readonly AnswerStatus[] = [
+  "complete",
+  "incomplete",
+  "incorrect",
+  "off_topic",
+  "no_experience",
+] as const;
+
 /** Raw model output. Deliberately small — see above. */
 export interface RawEvaluation {
+  /** Exactly the dimensions the question's kind is scored on. */
   scores: Scores;
+  status: AnswerStatus;
   observation: string;
+  /** Derived from `status`, kept for the off-topic gate in classify.ts. */
   off_topic: boolean;
   /**
    * Follow-ups only: restated the earlier answer instead of expanding it. A
    * distinct failure from a weak answer, and it gets different copy.
    */
   repeats_previous: boolean;
+  /** The gap `drafts.clarify` was written against; checked by `resolveGap()`. */
+  clarify_gap: string | null;
   drafts: { deepen: string; clarify: string };
 }
 
 const SCORE = { type: Type.INTEGER, minimum: 1, maximum: 4 } as const;
 
-/** Flat: the supported JSON Schema subset rejects $ref/oneOf/allOf. */
-const EVAL_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    scores: {
-      type: Type.OBJECT,
-      properties: {
-        situation: SCORE,
-        task: SCORE,
-        action: SCORE,
-        result: SCORE,
-        specificity: SCORE,
-        impact: SCORE,
-        ownership: SCORE,
-        relevance: SCORE,
+/**
+ * Flat: the supported JSON Schema subset rejects $ref/oneOf/allOf. Built per
+ * kind, so the model is only ever asked for the dimensions that kind uses.
+ */
+export function evalSchemaFor(kind: QuestionKind) {
+  const dims = dimensionsFor(kind);
+  return {
+    type: Type.OBJECT,
+    properties: {
+      scores: {
+        type: Type.OBJECT,
+        properties: Object.fromEntries(dims.map((d) => [d, SCORE])),
+        required: [...dims],
       },
-      required: [...DIMENSIONS],
-    },
-    observation: { type: Type.STRING },
-    off_topic: { type: Type.BOOLEAN },
-    repeats_previous: { type: Type.BOOLEAN },
-    drafts: {
-      type: Type.OBJECT,
-      properties: {
-        deepen: { type: Type.STRING },
-        clarify: { type: Type.STRING },
+      status: { type: Type.STRING, enum: [...ANSWER_STATUSES] },
+      observation: { type: Type.STRING },
+      clarify_gap: { type: Type.STRING, enum: gapCandidates(kind) },
+      repeats_previous: { type: Type.BOOLEAN },
+      drafts: {
+        type: Type.OBJECT,
+        properties: {
+          deepen: { type: Type.STRING },
+          clarify: { type: Type.STRING },
+        },
+        required: ["deepen", "clarify"],
       },
-      required: ["deepen", "clarify"],
     },
-  },
-  required: [
-    "scores",
-    "observation",
-    "off_topic",
-    "repeats_previous",
-    "drafts",
-  ],
-} as const;
+    required: [
+      "scores",
+      "status",
+      "observation",
+      "clarify_gap",
+      "repeats_previous",
+      "drafts",
+    ],
+  } as const;
+}
 
 /** Rejects a malformed payload before it can reach the engine. */
-export function validateEvaluation(value: unknown): RawEvaluation {
-  const v = value as Partial<RawEvaluation> | null;
+export function validateEvaluation(
+  value: unknown,
+  kind: QuestionKind,
+): RawEvaluation {
+  const v = value as
+    | (Partial<RawEvaluation> & { status?: unknown; off_topic?: unknown })
+    | null;
   if (!v || typeof v !== "object") throw new EvalError("Not an object.");
 
-  const scores = v.scores as Record<string, unknown> | undefined;
-  if (!scores) throw new EvalError("Missing scores.");
+  const raw = v.scores as Record<string, unknown> | undefined;
+  if (!raw) throw new EvalError("Missing scores.");
 
-  for (const d of DIMENSIONS) {
-    const s = scores[d];
+  // Only the kind's dimensions are kept: a stray key the model added must not
+  // reach a weighted score or the notepad.
+  const scores: Scores = {};
+  for (const d of dimensionsFor(kind)) {
+    const s = raw[d];
     if (!Number.isInteger(s) || (s as number) < 1 || (s as number) > 4) {
       throw new EvalError(`Score ${d} is not an integer 1-4: ${String(s)}`);
     }
+    scores[d] = s as number;
   }
 
   if (!v.drafts?.deepen || !v.drafts?.clarify) {
     throw new EvalError("Missing one or both drafts.");
   }
 
+  // An unknown status degrades to "complete" rather than failing the turn:
+  // it is advisory, and the scores still stand on their own.
+  const status = ANSWER_STATUSES.includes(v.status as AnswerStatus)
+    ? (v.status as AnswerStatus)
+    : v.off_topic === true
+      ? "off_topic"
+      : "complete";
+
+  const gap = typeof v.clarify_gap === "string" ? v.clarify_gap : null;
+
   return {
-    scores: v.scores as Scores,
+    scores,
+    status,
     observation: String(v.observation ?? "").slice(0, 90),
-    off_topic: Boolean(v.off_topic),
+    off_topic: status === "off_topic",
     repeats_previous: Boolean(v.repeats_previous),
+    clarify_gap: gap && (gapCandidates(kind) as string[]).includes(gap) ? gap : null,
     drafts: {
       deepen: String(v.drafts.deepen),
       clarify: String(v.drafts.clarify),
@@ -119,8 +162,8 @@ export function validateEvaluation(value: unknown): RawEvaluation {
 
 /**
  * The most quotable sentence, scored by evidence density — numbers and
- * first-person language, which is what the rubric cares about. Guaranteed to
- * be a verbatim substring, which is what makes the scorecard highlight work.
+ * first-person language. Guaranteed to be a verbatim substring, which is what
+ * makes the scorecard highlight work.
  */
 export function extractEvidence(answer: string, maxWords = 20): string {
   const sentences = answer
@@ -150,23 +193,32 @@ export function extractEvidence(answer: string, maxWords = 20): string {
  * but never on a rate limit, where retrying burns the next of 15 per minute.
  */
 export async function evaluateAndDraft(args: {
+  kind: QuestionKind;
   topic: string;
+  /** The ORIGINAL question of the thread. */
   questionText: string;
   questionType: string;
   answer: string;
+  /** The follow-up `answer` replies to; null for an opening. */
+  followUpQuestion?: string | null;
   roleText?: string | null;
+  seniority?: string | null;
   resumeFacts?: string | null;
-  difficulty: number;
   priorThreadTurns?: { question: string; answer: string }[];
+  askedQuestions?: string[];
   signal?: AbortSignal;
 }): Promise<RawEvaluation> {
   const prompt = buildTurnPrompt({
+    kind: args.kind,
     topic: args.topic,
     questionText: args.questionText,
     answer: args.answer,
+    followUpQuestion: args.followUpQuestion,
     roleText: args.roleText,
+    seniority: args.seniority,
     resumeFacts: args.resumeFacts,
     priorThreadTurns: args.priorThreadTurns,
+    askedQuestions: args.askedQuestions,
   });
 
   let lastError: Error | null = null;
@@ -174,13 +226,15 @@ export async function evaluateAndDraft(args: {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { value } = await generateJson<unknown>({
-        systemInstruction: evaluatorSystemFor(args.questionType),
+        systemInstruction: evaluatorSystemFor(args.kind, args.questionType),
         prompt,
-        responseSchema: EVAL_SCHEMA,
-        temperature: 0.2,
+        responseSchema: evalSchemaFor(args.kind),
+        // Was 0.2. Calibration measured the same answer scoring 3.15 on one
+        // run and 3.80 on the next; a score must not depend on the draw.
+        temperature: 0,
         signal: args.signal,
       });
-      return validateEvaluation(value);
+      return validateEvaluation(value, args.kind);
     } catch (err) {
       lastError = err as Error;
       if (err instanceof LlmError && err.rateLimited) {

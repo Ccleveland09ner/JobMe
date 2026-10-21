@@ -12,7 +12,6 @@ import Link from "next/link";
 import { LocalDate } from "@/components/common/LocalDate";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { displayAverage } from "@/lib/frontend/adapters";
 import { MODE_LABELS } from "@/lib/frontend/labels";
 import type { SessionSummary } from "@/lib/frontend/types";
 import { unlockAudio } from "@/lib/frontend/voiceSession";
@@ -25,7 +24,7 @@ export function SessionRow({
   onDelete: (session: SessionSummary) => void;
 }) {
   const completed = session.status === "completed";
-  const average = displayAverage(session.overallScores);
+  const overall = session.overall;
   const n = session.questionCount;
 
   return (
@@ -39,7 +38,7 @@ export function SessionRow({
           {[
             session.mode ? MODE_LABELS[session.mode] : null,
             completed ? `${n} ${n === 1 ? "question" : "questions"}` : `On question ${n}`,
-            completed ? (average === null ? "Not scored" : `Average ${average} / 4`) : null,
+            completed ? (overall === null ? "Not scored" : `Overall ${overall} / 4`) : null,
           ]
             .filter(Boolean)
             .join(" · ")}
