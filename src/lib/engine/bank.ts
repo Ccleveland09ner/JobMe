@@ -461,21 +461,3 @@ export function questionFor(topicId: TopicId, difficulty: number): string {
   if (difficulty === 2) return entry.harder;
   return entry.opening;
 }
-
-/**
- * Picks `count` behavioural topics at random.
- *
- * Randomised once at session creation and captured into `EngineState.topics`,
- * never re-rolled — `step()` must stay pure, and a session that reshuffled its
- * own topics on reload would be unresumable.
- */
-export function pickTopics(count: number, exclude: TopicId[] = []): TopicId[] {
-  const pool = (Object.keys(BANK) as TopicId[]).filter(
-    (t) => BANK[t].kind === "behavioral" && !exclude.includes(t),
-  );
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, Math.min(count, pool.length));
-}

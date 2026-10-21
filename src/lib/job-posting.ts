@@ -24,6 +24,12 @@ export interface JobPosting {
   provider: JobProvider;
   title: string;
   company: string | null;
+  /**
+   * True when `company` was read from the link's board name (Lever, Ashby)
+   * rather than stated by the posting. Usually right, but a board slug is not
+   * always the trading name, so the setup screen shows it for confirmation.
+   */
+  companyInferred: boolean;
   /** Plain text, whitespace-normalised, capped at MAX_POSTING_CHARS. */
   text: string;
 }
@@ -55,6 +61,8 @@ interface Target {
   api: string;
   /** Ashby only lists whole boards: the posting to pick out of it. */
   postingId?: string;
+  /** The board name in the link, for providers whose API omits the company. */
+  board?: string;
   maxBytes: number;
 }
 
@@ -107,6 +115,7 @@ export function resolveJobLink(raw: string): Target {
       return {
         provider: "lever",
         api: `https://${api}/v0/postings/${site}/${id}`,
+        board: site,
         maxBytes: ONE_MB,
       };
     }
@@ -120,6 +129,7 @@ export function resolveJobLink(raw: string): Target {
         provider: "ashby",
         api: `https://api.ashbyhq.com/posting-api/job-board/${org}`,
         postingId: id,
+        board: org,
         // The only public endpoint returns the whole board (~30KB a job).
         maxBytes: 12 * ONE_MB,
       };
@@ -236,6 +246,7 @@ function extract(target: Target, json: unknown): JobPosting | null {
         provider: "greenhouse",
         title: str(j.title).trim(),
         company: str(j.company_name).trim() || null,
+        companyInferred: false,
         text: htmlToText(decodeEntities(str(j.content))),
       };
 
@@ -247,7 +258,8 @@ function extract(target: Target, json: unknown): JobPosting | null {
       return {
         provider: "lever",
         title: str(j.text).trim(),
-        company: null,
+        company: companyFromBoard(target.board),
+        companyInferred: Boolean(target.board),
         text: normalise(
           [
             body,
@@ -267,7 +279,8 @@ function extract(target: Target, json: unknown): JobPosting | null {
       return {
         provider: "ashby",
         title: str(job.title).trim(),
-        company: null,
+        company: companyFromBoard(target.board),
+        companyInferred: Boolean(target.board),
         text: normalise(
           str(job.descriptionPlain) || htmlToText(str(job.descriptionHtml)),
         ),
@@ -290,6 +303,7 @@ function extract(target: Target, json: unknown): JobPosting | null {
         provider: "smartrecruiters",
         title: str(j.name).trim(),
         company: str((j.company as Json | undefined)?.name).trim() || null,
+        companyInferred: false,
         text: normalise(
           order
             .map((k) => sections[k])
@@ -300,6 +314,19 @@ function extract(target: Target, json: unknown): JobPosting | null {
       };
     }
   }
+}
+
+/**
+ * A board name as a company name: "acme-robotics" -> "Acme Robotics". Only a
+ * guess (a board can be named anything), hence `companyInferred`; nothing
+ * about the company beyond its name is ever derived from it.
+ */
+export function companyFromBoard(board: string | undefined): string | null {
+  const words = board
+    ?.split(/[-_]+/)
+    .filter((w) => w && !/^\d+$/.test(w));
+  if (!words?.length) return null;
+  return words.map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }
 
 /** Posting HTML to plain text: block ends become line breaks, tags go. */

@@ -31,14 +31,14 @@ import { RewriteCard } from "@/components/report/RewriteCard";
 import { ScoreSummary } from "@/components/report/ScoreSummary";
 import { ScoreTable } from "@/components/report/ScoreTable";
 import { SpeakingStats } from "@/components/report/SpeakingStats";
-import { BANK } from "@/lib/engine/bank";
+import { purposeFor } from "@/lib/ai/question-plan";
 import type { ReportStats } from "@/lib/ai/report";
 import { requireUser } from "@/lib/auth";
 import type { TopicId } from "@/lib/engine/types";
 import { pickOverall, pickScores, reportTurnFromRow, type TurnRow } from "@/lib/frontend/adapters";
 import { MODE_LABELS, topicLabel } from "@/lib/frontend/labels";
 import type { ReportQuestionView } from "@/lib/frontend/types";
-import { SessionId } from "@/lib/schemas";
+import { QuestionPlan, SessionId } from "@/lib/schemas";
 import { groupIntoQuestions, rollupQuestions } from "@/lib/stats";
 import { createClient } from "@/lib/supabase/server";
 
@@ -89,11 +89,13 @@ export default async function ReportPage({ params }: PageProps<"/interview/[id]/
   // question it came from, and the question's score is its latest cumulative
   // evaluation. The same grouping the report pipeline used, so "Q2" in the
   // feedback is Q2 here.
+  const planParse = QuestionPlan.safeParse(session.question_plan);
+  const plan = planParse.success ? planParse.data : null;
   const questions: ReportQuestionView[] = groupIntoQuestions(turns).map((g, i) => ({
     ...g,
     ref: `Q${i + 1}`,
     label: topicLabel(g.opening.topic),
-    purpose: BANK[g.opening.topic as TopicId]?.purpose ?? "",
+    purpose: g.opening.topic ? purposeFor(plan, g.opening.topic as TopicId) : "",
   }));
   const rollup = rollupQuestions(questions);
   const report = reportRes.data as

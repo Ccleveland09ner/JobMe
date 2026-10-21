@@ -139,6 +139,17 @@ export async function POST(
     }
   }
 
+  // THIS session's job outranks the resume's. The plan's distilled summary
+  // is preferred to the raw posting: shorter prompt, same signal. Every plan
+  // written since 2026-10 carries the job, even when the model failed.
+  const company = plan?.job?.company;
+  const roleLines = [
+    plan?.role ? formatRoleForPrompt(plan.role) : (session.role_text ?? null),
+    company
+      ? `Company: ${company}${plan?.job?.companyInferred ? " (read from the posting link)" : ""}`
+      : null,
+  ].filter(Boolean);
+
   const turnCtx: TurnContext = {
     state,
     transcript: body.transcript,
@@ -146,11 +157,8 @@ export async function POST(
     captureMs: body.captureMs,
     resumeFacts,
     role,
-    // THIS session's job outranks the resume's. The plan's distilled summary
-    // is preferred to the raw posting: shorter prompt, same signal.
-    roleText: plan?.role
-      ? formatRoleForPrompt(plan.role)
-      : (session.role_text ?? null),
+    roleText: roleLines.length ? roleLines.join("\n") : null,
+    seniority: plan?.job?.seniority ?? (plan?.role?.seniority || null),
     priorThreadTurns: threadHistory(state, recentTurns ?? []),
     plan,
   };

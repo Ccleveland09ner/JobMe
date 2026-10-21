@@ -9,7 +9,8 @@
  * against a 15 requests/minute free tier. Everything downstream is identical.
  */
 
-import { pickTopics, questionFor } from "../src/lib/engine/bank";
+import { questionFor } from "../src/lib/engine/bank";
+import { defaultTopics } from "../src/lib/engine/roles";
 import { initState } from "../src/lib/engine/policy";
 import {
   FULL_QUESTION_CAP_MAX,
@@ -107,7 +108,7 @@ function makeItems(count: number): ResumeItem[] {
 }
 
 function startSession(mode: InterviewMode, items: ResumeItem[]): EngineState {
-  const topics = pickTopics(mode === "full" ? 6 : 4);
+  const topics = defaultTopics("general", mode === "full" ? 6 : 4);
   const first: Question = {
     text: questionFor(topics[0], 1),
     type: "opening",

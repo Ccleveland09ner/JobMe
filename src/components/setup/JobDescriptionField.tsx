@@ -17,6 +17,8 @@ export type JobSource = "paste" | "link";
 
 export interface JobValue {
   targetRole: string;
+  /** Optional. A posting link usually supplies it; a stated one wins. */
+  company: string;
   source: JobSource;
   roleText: string;
   jobUrl: string;
@@ -54,6 +56,25 @@ export function JobDescriptionField({
           placeholder="e.g. Software Engineering Intern"
           className={INPUT}
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-company`} className="text-sm text-ink">
+          Company <span className="text-muted">(optional)</span>
+        </label>
+        <input
+          id={`${id}-company`}
+          type="text"
+          maxLength={LIMITS.company}
+          autoComplete="organization"
+          value={value.company}
+          onChange={(e) => set({ company: e.target.value })}
+          aria-describedby={`${id}-company-help`}
+          className={INPUT}
+        />
+        <p id={`${id}-company-help`} className="text-xs text-muted">
+          Used by name only. Questions about the company draw on the job description, never on guesses.
+        </p>
       </div>
 
       <div role="radiogroup" aria-label="Job description source" className="flex gap-2">

@@ -7,7 +7,8 @@
  * Usage: npx tsx scripts/measure-pacing.ts
  */
 
-import { pickTopics, questionFor } from "../src/lib/engine/bank";
+import { questionFor } from "../src/lib/engine/bank";
+import { defaultTopics } from "../src/lib/engine/roles";
 import {
   commitQuestion,
   initState,
@@ -56,7 +57,7 @@ function items(n: number): ResumeItem[] {
 
 /** Runs one session to completion with an unbounded cap; returns the cost. */
 function measure(itemCount: number, bands: Band[]) {
-  const topics = pickTopics(6);
+  const topics = defaultTopics("general", 6);
   const first: Question = {
     text: questionFor(topics[0], 1),
     type: "opening", topic: topics[0], difficulty: 1, source: "bank",

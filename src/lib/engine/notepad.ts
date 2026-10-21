@@ -54,6 +54,27 @@ export const SCORING_FAILED_LINE = "Couldn't score that one. Let's keep going.";
 /** Shown for an answer under 5 words. Doesn't count toward the cap. */
 export const NUDGE_LINE = "Take your time. Could you say a bit more?";
 
+/**
+ * Spoken once, before the first question. Says up front that any real
+ * experience counts, so a student does not hear "tell me about a time" as a
+ * request for workplace stories they do not have.
+ */
+export function introLineFor(name: string, notTailored = false): string {
+  return [
+    `Thanks for making the time, ${name}.`,
+    // Said out loud rather than buried in a flag nothing reads: the candidate
+    // gave job details expecting a tailored interview and should know when
+    // the tailoring failed.
+    notTailored
+      ? "I couldn't tailor every question to the job details you gave this time, so some will be standard ones for this kind of role."
+      : null,
+    "When I ask about your experience, examples from school, work, clubs or personal projects all count.",
+    "Let's get started.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** Acknowledgement text for the wrap turn. */
 export const WRAP_LINE =
   "That's everything I wanted to cover. Let me pull your feedback together.";
