@@ -58,11 +58,7 @@ describe("extractEvidence", () => {
     "I rewrote the conflict detection to bucket by day, which cut p99 from 1200ms to 340ms. " +
     "The team was happy about it.";
 
-  /**
-   * The verbatim guarantee is what makes the scorecard's highlight reliable —
-   * the tech design has a whole fallback path for when the quote cannot be
-   * found in the transcript. Computing it locally removes that failure mode.
-   */
+  /** Evidence is always a verbatim substring, so the scorecard highlight is reliable. */
   it("returns an exact substring of the answer", () => {
     expect(ANSWER).toContain(extractEvidence(ANSWER));
   });
@@ -165,11 +161,7 @@ describe("repairDraft", () => {
 });
 
 describe("preClassify — demo insurance", () => {
-  /**
-   * The scripted weak answer from the demo script. It MUST land weak without
-   * the model getting a vote, or the weak-vs-strong contrast on stage becomes
-   * a coin flip.
-   */
+  /** The demo's scripted weak answer must land weak without the model. */
   it("forces weak for the scripted weak answer", () => {
     expect(preClassify("We worked as a team and fixed the bug.")).toBe("weak");
   });
@@ -188,12 +180,7 @@ describe("preClassify — demo insurance", () => {
     expect(preClassify(vague)).toBe("weak");
   });
 
-  /**
-   * The regression that motivated `hasProperNoun`: the obvious regex matches
-   * the word after a full stop, which is sentence-initial, so any
-   * multi-sentence answer looked like it named something and the
-   * pre-classifier silently stopped firing.
-   */
+  /** Regression: the word after a full stop is sentence-initial, not a proper noun. */
   it("does not treat a sentence-initial capital as naming something", () => {
     expect(
       hasProperNoun("we shipped it on time. The team was happy about that."),

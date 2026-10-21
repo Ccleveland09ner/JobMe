@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-/**
- * A stand-in for the browser's SpeechRecognition that behaves like Chrome
- * without the offline English pack: asked to recognise on-device, start()
- * fails with `language-not-supported`; online, it starts normally.
- */
+/** A fake SpeechRecognition like Chrome without the offline pack: on-device start() fails. */
 class FakeRecognition {
   static instances: FakeRecognition[] = [];
   static available: ((opts: unknown) => Promise<string>) | undefined;

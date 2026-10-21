@@ -1,17 +1,8 @@
 "use client";
 
 /**
- * The building, drawn: one canvas for the whole visit, mounted by the
- * (building) layout so it survives every navigation. The street, the lobby,
- * the corridor and the room are all in it at once; the camera decides which
- * one the user is in.
- *
- * Rendered on demand: frames are drawn only while something moves — the
- * camera, a door, or a character who is on screen (each asks for frames
- * only at its own station).
- *
- * Loaded with `ssr: false` by BuildingBackdrop: three.js cannot run on the
- * server.
+ * The building's single canvas, kept for the whole visit by the (building)
+ * layout; the camera decides where the user is. Renders on demand.
  */
 
 import { useGLTF } from "@react-three/drei";
@@ -36,23 +27,17 @@ import { RECRUITER, SECRETARY } from "./world";
 
 const INSIDE: ReadonlySet<Station> = new Set(["desk", "corridor", "room"]);
 
-/**
- * PLACEHOLDER: the secretary is the recruiter model, recoloured, until
- * public/models/secretary.glb is built with design/tools (another
- * TalkingHead sample avatar, re-dressed). Swap the model, keep the look.
- */
+/** PLACEHOLDER: the secretary is the recruiter model, recoloured, until secretary.glb exists. */
 const SECRETARY_LOOK: Look = {
   colors: { avaturn_look_0_material: "#b4553a", Wolf3D_Hair: "#5a3825" },
   glasses: false,
-  // Waiting at her desk, she does not stare the whole time (TalkingHead's
-  // avatarIdleEyeContact).
+  // Not staring the whole time.
   idleGlances: true,
 };
 
 export default function BuildingCanvas() {
   const building = useBuilding();
-  // The secretary smiles and watches the user — and glances at whatever
-  // they point at on her desk or wall (TalkingHead's lookAt), then back.
+  // The secretary glances at whatever the user points at.
   const secretary = useRef<Speaker>({ state: "idle" });
   const hovered = building?.hovered ?? null;
   useEffect(() => {

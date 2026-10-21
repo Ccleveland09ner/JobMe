@@ -1,19 +1,7 @@
 /**
- * Where the user is in the building, and how they are getting somewhere.
- * A pure reducer, so every transition is unit-tested without a browser
- * (buildingMachine.test.ts) — the same approach as room/roomMachine.ts.
- *
- *   settled ──WALK──▶ walking ──ARRIVE──▶ settled
- *                        │
- *                        └──FAIL──▶ returning ──ARRIVE──▶ settled (where it began)
- *
- * A walk can HOLD at its last waypoint while a request is in flight: the walk
- * to the interview room is the wait for the session to be created. ARRIVE
- * from the camera means "reached the end of the path"; RELEASE from the page
- * means "the request is done, carry on".
- *
- * It sequences the BUILDING, never the interview: no score, band or turn is
- * known here, and none must ever be.
+ * Where the user is in the building and how they're getting there. A walk can
+ * hold at its last waypoint until the page releases it (the walk to the room
+ * waits for the session). Knows nothing about the interview.
  */
 
 import type { Station } from "./stations";
@@ -56,8 +44,7 @@ export function initialBuilding(station: Station, render: Render = "3d"): Buildi
 export function buildingReducer(state: BuildingState, event: BuildingEvent): BuildingState {
   switch (event.type) {
     case "ROUTE":
-      // A route change that a walk is already heading to is that walk's
-      // business; anything else teleports.
+      // A walk heading there handles it; anything else teleports.
       if (state.target === event.station) return state;
       if (state.station === event.station && state.target === null) return state;
       return { ...state, station: event.station, target: null, holding: false, returning: false };

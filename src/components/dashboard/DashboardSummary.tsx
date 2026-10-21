@@ -1,7 +1,4 @@
-/**
- * At-a-glance progress: how many interviews, and the latest scorecard's
- * per-dimension averages exactly as the backend stored them.
- */
+/** At-a-glance progress: interview count and the latest scorecard's averages. */
 
 import { ScoreList } from "@/components/score/ScoreList";
 import { Card } from "@/components/ui/Card";

@@ -1,14 +1,8 @@
 "use client";
 
 /**
- * The DOM half of a held object (components/building/heldMachine.ts).
- *
- * While the machine says "open" the object is in the user's hands; when it
- * says "closing" the object plays its closing animation and then reports
- * DOM_CLOSED, so its 3D self can travel back. Outside the building (no
- * provider) the object is simply open.
- *
- * CLOSE_MS mirrors the longest closing animation in globals.css (held-out).
+ * The DOM half of a held object: while closing it plays its animation, then
+ * reports DOM_CLOSED. CLOSE_MS mirrors the held-out animation in globals.css.
  */
 
 import { useEffect } from "react";

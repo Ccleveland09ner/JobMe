@@ -1,23 +1,12 @@
 /**
- * TTF -> three.js typeface JSON, for the building's 3D lettering
- * (src/components/three/lettering.ts reads public/fonts/*.typeface.json).
+ * TTF -> three.js typeface JSON for the 3D lettering (mirrors three's
+ * TTFLoader.parse; printable ASCII only). opentype.js isn't a project
+ * dependency, so run it from a folder where it's installed:
  *
- * The conversion mirrors three's TTFLoader.parse (examples/jsm/loaders/
- * TTFLoader.js, MIT) — that loader cannot run here because it imports
- * opentype.js from a CDN at runtime. Only printable ASCII and a few marks
- * are kept: the lettering never needs more, and the file stays small.
- *
- * opentype.js is NOT a project dependency. Run from a folder where it is
- * installed, e.g.:
- *
- *   mkdir /tmp/fonttool && cd /tmp/fonttool
  *   npm i --no-save opentype.js@1.3.4
- *   node <repo>/design/tools/make-typeface.mjs ComicNeue-Bold.ttf \
- *        <repo>/public/fonts/comic-neue-bold.typeface.json
+ *   node <repo>/design/tools/make-typeface.mjs ComicNeue-Bold.ttf <out.typeface.json>
  *
- * Source font: Comic Neue Bold, SIL Open Font License 1.1
- * (https://github.com/google/fonts/tree/main/ofl/comicneue). See
- * THIRD_PARTY_NOTICES.md.
+ * Source font: Comic Neue Bold (SIL OFL 1.1); see THIRD_PARTY_NOTICES.md.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

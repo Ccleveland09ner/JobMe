@@ -1,21 +1,7 @@
 /**
- * A clipboard: the object forms are filled in on, at the door (sign-in) and
- * at the front desk (interview setup). It stands on its own over the 3D
- * building — no panel behind it — and is drawn the way the building is:
- * flat toon shading in three tones, ink outlines on every edge, and solid
- * depth rather than soft blur.
- *
- *   - the board: hardboard with a bevelled lit/shaded rim and a thick
- *     extruded edge below it, sitting on a flat contact shadow;
- *   - the paper: a sheet with two more peeking out beneath it;
- *   - the clip: a shaded metal plate with rivets and a lever, casting a flat
- *     shadow on the paper it grips.
- * It drops in when it appears (not under reduced motion). The depth is CSS,
- * not WebGL: the fields stay real, sharp form controls.
- *
- * Fields on the paper are written on the line, not typed into a box: use
- * paperField / paperArea for their classes. Labels and semantics are the
- * ordinary ones; the clipboard is presentation only.
+ * A clipboard drawn like the building (toon tones, ink edges, solid depth).
+ * CSS, not WebGL, so its fields stay real form controls; use paperField and
+ * paperArea for fields written on the paper.
  */
 
 import type { HTMLAttributes } from "react";
@@ -25,10 +11,7 @@ export const paperField =
   "w-full border-0 border-b-2 border-ink/70 bg-transparent px-1 py-1.5 text-ink placeholder:text-muted/60 " +
   "transition-colors hover:border-ink focus:border-accent focus:bg-accent-soft/40";
 
-/**
- * A multi-line field: ruled paper. The rule spacing matches the line height
- * (leading-7 = 1.75rem), so the text sits on the lines as it wraps.
- */
+/** A multi-line field: ruled paper, spaced to the line height (leading-7). */
 export const paperArea =
   "w-full rounded-sm border border-ink/30 bg-transparent px-2 py-0 leading-7 text-ink placeholder:text-muted/60 " +
   "bg-[linear-gradient(transparent_calc(1.75rem-1px),var(--color-rule)_calc(1.75rem-1px))] bg-size-[100%_1.75rem] bg-local " +

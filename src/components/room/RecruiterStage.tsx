@@ -1,16 +1,9 @@
 "use client";
 
 /**
- * The recruiter, wherever the room shows one: in the 3D building, the
- * recruiter seated in the building's interview room (this component only
- * drives it); elsewhere, the 3D recruiter inside the line-art room when the
- * browser can draw it, and the SVG recruiter otherwise.
- *
- * The SVG recruiter (Avatar.tsx) is never just a fallback for errors — it is
- * also what the server renders, what shows while the 1MB model downloads,
- * and what WebGL-less browsers keep. Both versions share the same 240x200
- * scene (RoomScenery.tsx) and the same props, so swapping one for the other
- * does not move anything on the page.
+ * The recruiter wherever the room shows one: driven in the 3D building's
+ * room; otherwise the 3D bust when WebGL works, else the SVG recruiter (also
+ * the server render and the placeholder while the model loads).
  */
 
 import dynamic from "next/dynamic";
@@ -63,11 +56,9 @@ export function RecruiterStage({
   const [ready, setReady] = useState(false);
   const onReady = useCallback(() => setReady(true), []);
 
-  // Inside the 3D building the recruiter is already in the room, in the
-  // shared scene: hand it this state every render and show only the status.
+  // In the 3D building the recruiter is in the shared scene: just drive it.
   const building = useBuilding();
-  // Pages hydrate inside a Suspense boundary, after the building already
-  // knows WebGL works; hydrate as the server rendered (the SVG), then switch.
+  // Hydrate as the server rendered (the SVG), then switch.
   const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
   const inBuilding = hydrated && (building?.show3D ?? false);
   const setSpeaker = building?.setSpeaker;
@@ -84,8 +75,7 @@ export function RecruiterStage({
     <FallbackOnError fallback={svg}>
       <figure className="flex flex-col items-center gap-2">
         <div className="relative aspect-[6/5] w-56 sm:w-72">
-          {/* Until the model has drawn its first frame, the SVG recruiter
-              holds the spot so nothing on the page jumps. */}
+          {/* The SVG holds the spot until the model's first frame. */}
           {!ready && <div className="absolute inset-0 [&_figcaption]:hidden">{svg}</div>}
 
           <div className={`absolute inset-0 transition-opacity duration-300 ${ready ? "opacity-100" : "opacity-0"}`}>

@@ -1,15 +1,4 @@
-/**
- * Extracts text from an uploaded resume PDF, locally.
- *
- * Ref: docs/TechDesign-JobMe-MVP.md > External Services and Dependencies
- *
- * Local extraction rather than Gemini's PDF vision, deliberately: it takes
- * milliseconds instead of a model round trip, costs no quota against a 15 RPM
- * free tier, and — most importantly — keeps the resume on our server instead
- * of shipping a document full of personal data to a service whose free tier
- * trains on input. Gemini vision is reserved as an OCR fallback for scanned
- * resumes, where local extraction legitimately returns nothing.
- */
+/** Extracts text from a resume PDF locally: fast, no quota, and the resume stays on our server. */
 
 import { extractText, getDocumentProxy } from "unpdf";
 
@@ -36,19 +25,11 @@ export interface ParsedResume {
   text: string;
   pageCount: number;
   method: ParseMethod;
-  /**
-   * True when the extracted text looks like a multi-column layout was
-   * flattened in the wrong reading order. We do not try to repair it — column
-   * reconstruction is its own project — but the caller must show the user what
-   * was extracted and let them confirm before it is embedded.
-   */
+  /** Looks like a flattened multi-column layout: the user must confirm the text before use. */
   layoutSuspect: boolean;
 }
 
-/**
- * PDFs begin with `%PDF-`. Checking the bytes rather than the filename or the
- * browser-supplied MIME type, both of which are trivially wrong or spoofed.
- */
+/** Checks the bytes for %PDF- (filenames and MIME types can lie). */
 export function looksLikePdf(bytes: Uint8Array): boolean {
   return (
     bytes.length > 4 &&
@@ -60,11 +41,7 @@ export function looksLikePdf(bytes: Uint8Array): boolean {
   );
 }
 
-/**
- * Heuristic for a mangled two-column extraction: lots of very short lines, and
- * few lines of normal prose length. A single-column resume has long bullets; a
- * flattened two-column one produces a stream of fragments.
- */
+/** Heuristic for a mangled two-column extraction: many very short lines, little prose. */
 export function detectSuspectLayout(text: string): boolean {
   const lines = text
     .split(/\r?\n/)
@@ -78,10 +55,7 @@ export function detectSuspectLayout(text: string): boolean {
   return veryShort / lines.length > 0.5 && normal / lines.length < 0.15;
 }
 
-/**
- * Section headings a resume is likely to use. Used only to repair
- * letter-spaced text, never to decide what a heading is.
- */
+/** Likely resume headings, used only to repair letter-spaced text. */
 const HEADING_WORDS = [
   "PROFESSIONAL", "TECHNICAL", "RELEVANT", "ADDITIONAL", "EXTRACURRICULAR",
   "EDUCATION", "EXPERIENCE", "EMPLOYMENT", "SKILLS", "PROJECTS", "PROJECT",
@@ -91,12 +65,7 @@ const HEADING_WORDS = [
   "WORK", "HISTORY", "ACHIEVEMENTS", "REFERENCES", "CONTACT", "ABOUT",
 ];
 
-/**
- * Greedily splits a despaced run into known heading words.
- *
- * Returns null unless the WHOLE run is consumed, so a near-miss is left alone
- * rather than mangled: repairing nothing beats inventing a heading.
- */
+/** Splits a despaced run into known heading words; null unless the whole run is consumed. */
 export function splitHeadingWords(run: string): string | null {
   const words: string[] = [];
   let rest = run;
@@ -114,13 +83,7 @@ export function splitHeadingWords(run: string): string | null {
   return words.length ? words.join(" ") : null;
 }
 
-/**
- * True when a line looks like letter-spaced display text rather than prose.
- *
- * Requires several tokens, most too short to be words, and no lowercase or
- * digits — the signature of tracking applied to a heading. "Data Structures
- * and Algorithms" fails the lowercase test; "GPA 3.81 May 2028" fails both.
- */
+/** Looks like letter-spaced display text: several short tokens, no lowercase or digits. */
 export function looksLetterSpaced(line: string): boolean {
   const tokens = line.trim().split(/\s+/).filter(Boolean);
   if (tokens.length < 2 || tokens.length > 8) return false;
@@ -132,16 +95,8 @@ export function looksLetterSpaced(line: string): boolean {
 }
 
 /**
- * Repairs headings whose letters were spaced apart by the authoring tool.
- *
- * Observed on a real resume: `EDUC ATIO N`, `T EC HNIC AL SKILLS`. These are
- * NOT an extraction artifact — pdfjs reports them as single text items with
- * the spaces already inside, because the PDF genuinely contains them. No
- * extractor setting can fix that, so the text is repaired here instead.
- *
- * Deliberately conservative: a line is rewritten only when it looks
- * letter-spaced AND its despaced form is entirely known heading vocabulary.
- * Everything else is returned untouched.
+ * Repairs headings the authoring tool letter-spaced ("EDUC ATIO N"), only when
+ * the result is entirely known heading words.
  */
 export function repairLetterSpacing(text: string): string {
   return text

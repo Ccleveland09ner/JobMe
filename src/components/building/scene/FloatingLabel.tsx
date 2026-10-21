@@ -1,18 +1,9 @@
 "use client";
 
 /**
- * An object's name, floating over it in the scene: "LEDGER" over the ledger,
- * "REPORTS" over the folder, "START INTERVIEW" over the clipboard.
- *
- * Extruded comic lettering (three/lettering.ts): paper faces in an even ink
- * outline, over a solid ink block shadow that gives the words their depth,
- * with a small ink pointer down to the thing it names. It stays anchored in
- * the world above its object and turns to face the viewer (a billboard),
- * bobbing gently; under reduced motion it holds still.
- *
- * It is part of the object: pointing at either lights both (teal letters, a
- * small lean), and clicking either runs the same action. While its object is
- * picked up, the name hides.
+ * An object's name floating over it ("LEDGER", "REPORTS", …): comic 3D
+ * lettering that faces the camera. Pointing at it or its object lights both;
+ * clicking either runs the action. Hidden while the object is held.
  */
 
 import { useFrame, useThree } from "@react-three/fiber";

@@ -1,23 +1,9 @@
 "use client";
 
 /**
- * The settings, written on the notice board's own notes (/settings).
- *
- * There is one notice board: the 3D one on the lobby wall
- * (building/scene/Objects.tsx), lettered SETTINGS, with two notes pinned to
- * it. This page draws no board. It renders only what is written on the
- * notes — real controls — and the scene pins each onto its 3D note
- * (ScreenAnchor), moving and sizing it every frame to cover the note's
- * blank space exactly. The writing is laid out at one fixed size and scaled
- * with the note, so it always reads as part of the paper, whatever the
- * screen. It appears once the camera has arrived at the board, and is inert
- * (unfocusable) until then.
- *
- * Small screens: a note too small to use shows "Open this note"; that moves
- * the camera close to it (building.focus), and "Done" or Escape steps back.
- * Escape at the board, or the BACK TO DESK tag on the board, returns to the
- * desk. Without the 3D building there is no board to write on: the notes are
- * shown as plain cards instead.
+ * The settings controls, pinned onto the 3D notice board's notes (ScreenAnchor)
+ * once the camera arrives, scaled with each note. A note too small to use
+ * opens as a close-up. Without 3D the notes are plain cards.
  */
 
 import { useRouter } from "next/navigation";
@@ -33,9 +19,9 @@ export interface NoteContent {
   content: ReactNode;
 }
 
-/** The width a note's writing is laid out at, in CSS pixels, before scaling. */
+/** Width the writing is laid out at (CSS px), before scaling. */
 const WRITING_WIDTH = 400;
-/** Scaled below this, the writing is too small to use from where you stand. */
+/** Below this scale the writing is too small to use. */
 const MIN_SCALE = 0.75;
 
 interface Fit {
@@ -43,11 +29,7 @@ interface Fit {
   height: number;
 }
 
-/**
- * Scale the writing to its note, filling it top to bottom. Straight onto the
- * style: the note moves with the camera, and that must not cost a React
- * render per frame.
- */
+/** Scale the writing to fill its note, straight onto the style (no render per frame). */
 function applyFit(box: HTMLElement | null, { scale, height }: Fit) {
   if (!box) return;
   box.style.transform = `scale(${scale})`;
@@ -63,8 +45,7 @@ export function BoardNotes({ notes }: { notes: NoteContent[] }) {
   const atBoard =
     building !== null && building.state.station === "noteboard" && building.state.target === null && building.cameraAt === "noteboard";
 
-  // Escape steps back: out of a close-up, then away from the board. In a
-  // text field it only leaves the field, so a half-typed name isn't lost.
+  // Escape: leave a text field, then a close-up, then the board.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
@@ -176,8 +157,7 @@ function PinnedContent({
       inert={!shown}
       className={`absolute left-0 top-0 transition-opacity duration-300 ${shown ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
     >
-      {/* Keyed apart: the writing's scale is set on its element directly,
-          and must not carry over onto this one. */}
+      {/* Keyed apart, so the writing's inline scale doesn't carry over. */}
       {open ? (
         <div key="open" className="flex h-full items-center justify-center">
           <Button size="sm" onClick={onOpen}>

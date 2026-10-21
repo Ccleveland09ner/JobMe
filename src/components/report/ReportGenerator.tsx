@@ -1,15 +1,8 @@
 "use client";
 
 /**
- * First visit to a scorecard: no report row exists yet, so ask the server to
- * build it — once — then re-render the page from the saved row.
- *
- * POST /api/sessions/[id]/report is idempotent (an existing report comes back
- * with no model call, and a concurrent second request loses the insert), so
- * a double mount in development or a retry after an error is safe.
- *
- * 409 means no answered questions: there is nothing to score, so the
- * candidate is sent back to the interview rather than shown an error.
+ * First visit to a scorecard: ask the server to build the report (idempotent),
+ * then re-render. A 409 (nothing answered) goes back to the interview.
  */
 
 import Link from "next/link";

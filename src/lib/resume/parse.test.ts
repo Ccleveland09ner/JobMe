@@ -18,11 +18,7 @@ describe("looksLikePdf", () => {
     expect(looksLikePdf(bytesOf("%PDF-1.7\n..."))).toBe(true);
   });
 
-  /**
-   * The point of checking magic bytes rather than the filename or the
-   * browser-supplied MIME type: both are trivially wrong. A .docx renamed to
-   * .pdf arrives claiming to be a PDF.
-   */
+  /** Magic bytes, not the filename or MIME type: a renamed .docx claims to be a PDF. */
   it("rejects a renamed non-PDF", () => {
     expect(looksLikePdf(bytesOf("PK\u0003\u0004docx payload"))).toBe(false);
     expect(looksLikePdf(bytesOf("Just some plain text"))).toBe(false);
@@ -105,12 +101,7 @@ describe("normalizeText", () => {
 });
 
 describe("repairLetterSpacing", () => {
-  /**
-   * Both of these came off a real resume. pdfjs reports them as single text
-   * items with the spaces already inside — the PDF genuinely contains them,
-   * because the author applied letter-spacing in their word processor. No
-   * extractor setting can fix it, so it is repaired in the text.
-   */
+  /** Both from a real resume: the PDF itself contains the letter-spacing. */
   it.each([
     ["EDUC ATIO N", "EDUCATION"],
     ["T EC HNIC AL SKILLS", "TECHNICAL SKILLS"],

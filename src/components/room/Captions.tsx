@@ -1,20 +1,8 @@
 "use client";
 
 /**
- * The current question, in text.
- * Ref: docs/PRD-JobMe-MVP.md > Non-Functional Requirements > Accessibility
- *
- * Captions are ALWAYS on - they are an accessibility requirement, not a
- * setting, and they are also what keeps the room usable when TTS has fallen
- * back to the browser voice.
- *
- * `lead` (a transition into a new thread) is shown muted before the question,
- * because it is spoken before it — captions match what is said.
- *
- * While the recruiter speaks, the word being said is highlighted, read from
- * the same lip-sync timeline that moves her mouth (lib/voice/lipsync.ts), so
- * the words visibly keep pace with the voice. The full text is always there;
- * only a class changes, so screen readers are not re-announced anything.
+ * The current question as captions, always on (an accessibility requirement).
+ * The word being spoken is highlighted from the lip-sync timeline.
  */
 
 import { Fragment, useEffect, useState } from "react";

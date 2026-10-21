@@ -1,18 +1,9 @@
 "use client";
 
 /**
- * The things the user holds, as page objects: drawn like the clipboard and
- * the building — ink edges, three toon tones per material, solid depth, a
- * flat shadow — with real, readable, accessible content inside.
- *
- *   HeldBook    the ledger: leather boards; the cover swings open on its spine
- *   HeldFolder  the reports folder: manila; the flap lifts on its top edge
- *   HeldPad     the interview notepad: card back, spiral, pages that flip up
- *
- * Each takes a title (its <h1>/<h2>, focused when it opens), a Close action,
- * and its pages as children. Escape closes. Opening and closing animate
- * (globals.css: held-in/out, cover-*, flap-*); the 3D object's travel to and
- * from the camera is Liftable's (building/scene/Interactive.tsx).
+ * Held objects as pages, drawn like the building: HeldBook (the ledger),
+ * HeldFolder (reports) and HeldPad (the notepad). Each has a focused title,
+ * a Close action and pages; Escape closes.
  */
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -176,11 +167,7 @@ export function HeldPad({ title, kicker, onClose, closeLabel = "Put the notepad 
   );
 }
 
-/**
- * Pages you turn: one at a time, with a page-turn animation in the direction
- * of travel. `axis` "side" turns like a book; "up" flips like a notepad.
- * Left/Right arrow keys turn pages when focus is not in a field.
- */
+/** Pages turned one at a time ("side" like a book, "up" like a notepad); arrow keys turn them. */
 export function Pages({
   page,
   count,

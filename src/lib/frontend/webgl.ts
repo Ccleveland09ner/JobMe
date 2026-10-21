@@ -1,11 +1,6 @@
 /**
- * Can this browser draw WebGL? Asked once per page load.
- *
- * Callers use this as a useSyncExternalStore snapshot, which React calls on
- * every render. Each probe creates a WebGL context, and browsers cap live
- * contexts (about 16): an uncached probe soon makes the browser drop the
- * OLDEST context — the real scene's. So the answer is cached, and the probe
- * context is released straight away.
+ * Can this browser draw WebGL? Cached, with the probe context released at once:
+ * browsers cap live contexts and drop the oldest (the real scene's).
  */
 
 let available: boolean | null = null;

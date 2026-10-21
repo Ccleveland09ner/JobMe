@@ -1,17 +1,8 @@
 "use client";
 
 /**
- * The crowd outside the career center: a sprite sheet of people walked across
- * the hero on a 2D canvas.
- * Ref: design/Landing page.png
- *
- * Adapted from Skiper UI's Skiper39, itself after zadvorsky's CodePen, with
- * illustrations from openpeeps.com. Changed here: typed throughout, scaled to
- * the stage instead of drawn at native size, held still under
- * prefers-reduced-motion, and hidden from assistive tech.
- *
- * Canvas 2D rather than WebGL deliberately — 105 sprites blitted per frame is
- * well inside what 2D handles, and it keeps a 3D runtime off the landing page.
+ * The crowd walking across the landing hero: a sprite sheet on a 2D canvas.
+ * Adapted from Skiper UI's Skiper39 (after zadvorsky's CodePen; art from openpeeps.com).
  */
 
 import { gsap } from "gsap";
@@ -21,43 +12,19 @@ import { useEffect, useRef } from "react";
 const SHEET_COLS = 15;
 const SHEET_ROWS = 7;
 
-/**
- * Stage height at which a sprite draws at native size; smaller stages scale
- * down. Tuned so the canvas can span the whole hero — doubled sprites need
- * the headroom, and a short canvas clipped the back row's heads — while the
- * crowd still reads at the size it did over the old 62%-tall canvas.
- */
+/** Stage height at which a sprite draws at native size; smaller stages scale down. */
 const REFERENCE_HEIGHT = 1160;
 
-/**
- * How large the crowd reads, as a multiple of that reference.
- *
- * Set against the backdrop rather than picked by eye. In the campus art the
- * doorway is 175px of 843 and the building 570px, so on a 1080px window they
- * land at roughly 224px and 730px. At 1 a peep draws 302px: still half again
- * the doorway, so the crowd reads as nearer the camera than the entrance, and
- * about two fifths of the building, so the building clearly stays the larger
- * thing. True architectural scale would be near 0.65, which puts the crowd
- * too far off to be the foreground.
- *
- * Applied to the SPRITE only, not to the depth offsets below. Those fake
- * distance by lifting peeps up the stage, and scaling the lift as well would
- * change how far the crowd spreads rather than how big it is drawn.
- */
+/** Sprite size multiplier, tuned against the backdrop. Depth offsets don't scale with it. */
 const CROWD_SCALE = 1;
 
 /** Past 2x, retina costs fill rate and buys nothing at this size. */
 const MAX_DPR = 2;
 
-/** Seconds to cross the stage. The one number that sets walking speed. */
+/** Seconds to cross the stage: the walking speed. */
 const CROSS_SECONDS = 12;
 
-/**
- * Bobs per crossing, held constant so changing the speed above moves cadence
- * and not stride. Slowing the travel alone would keep the step rate up and
- * leave the crowd mincing along; deriving the bob from the crossing keeps a
- * step the same length however fast they walk.
- */
+/** Bobs per crossing: fixed, so the speed changes cadence, not stride. */
 const BOBS_PER_CROSSING = 40;
 const BOB_SECONDS = CROSS_SECONDS / BOBS_PER_CROSSING;
 
@@ -92,16 +59,11 @@ export function CrowdCanvas({ src, className }: CrowdCanvasProps) {
     const context = element?.getContext("2d");
     if (!element || !context) return;
 
-    // Rebound as non-nullable: `render` and `layout` below are hoisted
-    // function declarations, and TypeScript will not carry the narrowing
-    // from the guard above into those.
+    // Non-null copies: the narrowing doesn't reach the hoisted functions below.
     const canvas: HTMLCanvasElement = element;
     const ctx: CanvasRenderingContext2D = context;
 
-    /**
-     * Read once, not subscribed: someone changing this preference mid-visit
-     * is not worth a listener that has to tear down and rebuild the crowd.
-     */
+    // Read once; a change mid-visit isn't worth a listener.
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     // `scale` draws the sprite; `depth` spaces the rows back from the front.
@@ -142,8 +104,7 @@ export function CrowdCanvas({ src, className }: CrowdCanvasProps) {
       peep.width = peep.sw * stage.scale;
       peep.height = peep.sh * stage.scale;
 
-      // Bias the crowd toward the foreground: `power2.in` clusters offsets
-      // near zero, so most peeps stand on the baseline and a few hang back.
+      // power2.in clusters offsets near zero: most peeps stand at the front.
       const offsetY = 100 - 250 * (gsap.parseEase("power2.in") as (n: number) => number)(Math.random());
       const startY = stage.height - peep.height + offsetY * stage.depth;
       const rightward = Math.random() > 0.5;
@@ -191,7 +152,7 @@ export function CrowdCanvas({ src, className }: CrowdCanvasProps) {
       return peep;
     }
 
-    /** One frozen frame: every peep scattered where a walk would have it. */
+    /** Reduced motion: one still frame of scattered peeps. */
     function fillStill() {
       let peep = takeRandom(waiting);
       while (peep) {
@@ -233,8 +194,7 @@ export function CrowdCanvas({ src, className }: CrowdCanvasProps) {
 
     function layout() {
       if (disposed) return;
-      // Rebuilding restarts every walk, so ignore the sub-pixel reflows a
-      // ResizeObserver reports for a box that did not really change.
+      // Rebuilding restarts every walk: skip resizes that changed nothing.
       const unchanged =
         canvas.clientWidth === stage.width && canvas.clientHeight === stage.height;
       if (unchanged && crowd.length) return;
@@ -269,10 +229,7 @@ export function CrowdCanvas({ src, className }: CrowdCanvasProps) {
     };
     image.src = src;
 
-    /**
-     * Element-sized, not window-sized: the hero changes height with its own
-     * content and with mobile browser chrome, neither of which fires `resize`.
-     */
+    // The element, not the window: its height changes without a window resize.
     const observer = new ResizeObserver(() => layout());
     observer.observe(canvas);
 
@@ -285,7 +242,5 @@ export function CrowdCanvas({ src, className }: CrowdCanvasProps) {
     };
   }, [src]);
 
-  // Decorative: the headline and copy carry the meaning, and the canvas must
-  // never swallow a click meant for the call to action behind it.
   return <canvas ref={canvasRef} aria-hidden="true" className={className} />;
 }

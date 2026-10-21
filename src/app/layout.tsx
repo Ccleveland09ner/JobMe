@@ -2,12 +2,7 @@ import type { Metadata } from "next";
 import { Comic_Neue, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-/**
- * The web fallback for Comic Sans, which is a system font and ships on
- * Windows and macOS but not on Linux or Android. Loaded so those platforms
- * land on a lookalike rather than a generic sans. Not a variable font — the
- * three weights it has are the three it has.
- */
+/** Fallback for Comic Sans, which Linux and Android lack. */
 const comicNeue = Comic_Neue({
   variable: "--font-comic-neue",
   weight: ["300", "400", "700"],

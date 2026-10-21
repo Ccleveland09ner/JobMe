@@ -1,11 +1,9 @@
 "use client";
 
 /**
- * The building's construction kit: boxes, panes and plants in the toon
- * palette. Everything is a closed solid (never a bare plane) so the
- * OutlineEffect's inverted hull draws a clean ink edge around it.
- *
- * Positions are box CENTRES, sizes are full extents, in metres.
+ * The building's construction kit: toon boxes, panes and plants, all closed
+ * solids so the outline pass draws clean edges. Positions are box centres,
+ * sizes full extents, in metres.
  */
 
 import { Edges } from "@react-three/drei";
@@ -16,10 +14,7 @@ import { EDGE_THRESHOLD, EDGE_WIDTH, glassMaterial, PALETTE, toonMaterial, type 
 
 type Vec3 = [number, number, number];
 
-/**
- * Ink along every hard corner of the mesh it sits in — the crease lines the
- * silhouette outline cannot draw. Put it inside any scenery <mesh>.
- */
+/** Ink on the mesh's hard corners, which the silhouette outline can't draw. */
 export function InkEdges({ threshold = EDGE_THRESHOLD }: { threshold?: number }) {
   return <Edges lineWidth={EDGE_WIDTH} threshold={threshold} color={PALETTE.ink} />;
 }

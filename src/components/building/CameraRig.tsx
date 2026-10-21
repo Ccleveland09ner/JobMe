@@ -1,22 +1,9 @@
 "use client";
 
 /**
- * The camera: the user's eyes. It travels between station poses on fixed
- * paths (stations.ts) — the user is led, never steered.
- *
- *   - A walk (state.target) plays every leg of its path, then reports ARRIVE.
- *     A held walk stops before its last leg until the page releases it; a
- *     failed walk retraces the poses it reached, back to where it began.
- *   - A plain route change (a link, the back button) glides there too, but
- *     reports nothing: there is no caller waiting on it.
- *   - At the street and the desk the user can drag to look around a little;
- *     the view eases back to the pose on release. Purely decorative —
- *     nothing is reachable only by looking.
- *   - The page panel covers part of the screen; the projection is shifted
- *     (setViewOffset) so the subject sits in the middle of what is left.
- * Reduced motion: every move is a cut.
- *
- * The canvas renders on demand, so every change here calls invalidate().
+ * The camera: travels between station poses along fixed paths (stations.ts).
+ * Walks report ARRIVE, held walks wait before the last leg, failed walks
+ * retrace. Reduced motion cuts. The canvas renders on demand.
  */
 
 import { useFrame, useThree } from "@react-three/fiber";
@@ -38,7 +25,7 @@ const MAX_LEG = 2.2;
 /** How far the user can look around, radians: ±35° yaw, ±12° pitch. */
 const MAX_YAW = 0.61;
 const MAX_PITCH = 0.21;
-// Not the notice board: its notes carry controls laid exactly onto them.
+// Not the board: its notes carry pinned controls.
 const LOOKABLE: ReadonlySet<Station> = new Set(["street", "desk"]);
 
 interface CameraValues {
@@ -88,10 +75,7 @@ export function CameraRig() {
     latest.current = state;
   });
 
-  /**
-   * Tween through `poses` in order, to rest at `arrivesAt` (null: a
-   * waypoint, not a station); `done` runs after the last.
-   */
+  /** Tween through `poses`, coming to rest at `arrivesAt` (null: a waypoint). */
   const travel = (poses: Pose[], arrivesAt: Station | null, done: () => void) => {
     timeline.current?.kill();
     const reduced = prefersReducedMotion();
@@ -174,8 +158,7 @@ export function CameraRig() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.station, state.target]);
 
-  // A close-up at the notice board (a note, on a narrow screen), and back
-  // out to the whole board. Only on a change: a route's own glide is above.
+  // Glide to a note's close-up and back. Only on change; route glides are above.
   const lastFocus = useRef(focus);
   useEffect(() => {
     if (lastFocus.current === focus) return;
@@ -229,9 +212,7 @@ export function CameraRig() {
     };
   }, [gl, invalidate]);
 
-  // Priority -1: the camera moves first, before anything in the frame that
-  // reads it (names turning to face it, controls pinned onto the board).
-  // A negative priority runs early without taking over rendering.
+  // Priority -1: runs before whatever reads the camera, without taking over rendering.
   useFrame(({ camera, size }, delta) => {
     const c = cam.current;
     const l = look.current;

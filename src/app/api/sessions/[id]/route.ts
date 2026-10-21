@@ -1,14 +1,6 @@
 /**
- * DELETE /api/sessions/[id] — remove a session and everything under it.
- *
- * Ref: docs/TechDesign-JobMe-MVP.md > API Contracts
- *      docs/PRD-JobMe-MVP.md > Dashboard and Progress
- *
- * Response: 204. Errors: 401, 404.
- *
- * `turns` and `reports` cascade on the FK, so one delete is enough. RLS scopes
- * the delete to the caller: another user's session is simply not matched,
- * which is the same 404 as a missing one — the difference never leaks.
+ * DELETE /api/sessions/[id]: turns and reports cascade. Under RLS another
+ * user's session is the same 404 as a missing one.
  */
 
 import { NextResponse } from "next/server";
@@ -32,8 +24,7 @@ export async function DELETE(
 
   const supabase = await createClient();
 
-  // `select` returns the deleted rows; without it zero matches and one match
-  // look identical, and a 404 could not be told apart from a 204.
+  // `select` returns the deleted rows, to tell a 404 from a 204.
   const { data, error } = await supabase
     .from("interview_sessions")
     .delete()

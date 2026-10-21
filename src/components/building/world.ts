@@ -1,19 +1,4 @@
-/**
- * The building's floor plan, in metres. Every scene file and every camera
- * pose reads from here, so moving a wall moves everything that depends on it.
- *
- *            +Z  (street)
- *   ───────────────────────────  z = FACADE_Z, front doors at x = 0
- *   │            LOBBY        │
- *   │     [ front desk ]      │  secretary behind it, facing the doors
- *   │                         │
- *   └──┬──┬───────────────────┘  z = LOBBY.back
- *      │C │  corridor, x = CORRIDOR.x
- *   ┌──┴──┴────┐                 z = ROOM.front, room door
- *   │  ROOM    │  table; recruiter on the far side, facing the door
- *   └──────────┘                 z = ROOM.back
- *            −Z
- */
+/** The building's floor plan, in metres: +Z toward the street, the room at −Z. */
 
 export const FACADE_Z = 0;
 
@@ -27,10 +12,7 @@ export const LOBBY = {
   height: 3.6,
 } as const;
 
-/**
- * The settings notice board on the lobby's back wall, just right of the
- * secretary: in full view from the front desk, header and all.
- */
+/** The settings notice board on the lobby's back wall, right of the secretary. */
 export const NOTEBOARD = { left: 0.55, right: 2.95, bottom: 0.75, top: 2.35, z: LOBBY.back } as const;
 /** Its wooden frame's width, and the header plank across its top. */
 export const BOARD_FRAME = 0.08;

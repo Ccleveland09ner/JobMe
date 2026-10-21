@@ -5,11 +5,7 @@ import type { ResumeItem } from "@/lib/engine/types";
 
 import type { Chunk } from "./chunk";
 
-/**
- * A deterministic stand-in for the embedder: each text becomes a vector of
- * keyword counts, so cosine means something real and the test discriminates
- * on content rather than on a hash.
- */
+/** A deterministic stand-in embedder: keyword-count vectors, so cosine reflects content. */
 const MARKERS = [
   "python", "sql", "postgres", "api", "react", "docker",
   "kubernetes", "pipeline", "data", "frontend",
@@ -122,11 +118,7 @@ describe("itemDocument", () => {
 });
 
 describe("rankItemsAgainstRole", () => {
-  /**
-   * THE regression. Six items over one shared chunk previously all scored
-   * identically, because the score was the max cosine over chunks they had in
-   * common. Each item is now embedded as its own document.
-   */
+  /** Regression: items sharing one chunk used to score identically. */
   it("discriminates between items that share a chunk", async () => {
     const items = [
       item("python-etl", { label: "Python ETL pipeline writing SQL to postgres" }),

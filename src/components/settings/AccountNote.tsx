@@ -1,14 +1,6 @@
 "use client";
 
-/**
- * "Account", written on its note on the settings board: who the user is
- * here. Username and member code are read-only (the database refuses
- * changes to them); the display name — what the recruiter calls you — can be
- * edited, through the profiles row the user is allowed to update. Sign out
- * walks out through the front door.
- *
- * Compact: it has to fit a note.
- */
+/** The account note: username and member code (read-only), display name, sign out. */
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";

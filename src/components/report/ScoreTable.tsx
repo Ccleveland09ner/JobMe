@@ -1,13 +1,6 @@
 /**
- * Per-question results table.
- * Ref: docs/PRD-JobMe-MVP.md > Scorecard
- *
- * Columns: question, question type, band, then the eight rubric dimensions.
- * Unscored turns (scores = null after an eval failure) render as a dash with
- * "not scored" for screen readers — never as zeros.
- *
- * Eight score columns do not fit a phone, so the table scrolls horizontally
- * inside a focusable, labelled region (keyboard users can scroll it too).
+ * Per-question results. Unscored turns show a dash ("not scored"), never zero.
+ * Scrolls sideways in a focusable region on small screens.
  */
 
 import { BandBadge } from "@/components/score/BandBadge";

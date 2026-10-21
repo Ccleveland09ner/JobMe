@@ -1,7 +1,4 @@
-/**
- * A bordered surface. `as` keeps the semantics right — a card that is a page
- * section should be a <section> with a heading, not an anonymous <div>.
- */
+/** A bordered surface; `as` picks the right element (e.g. <section>). */
 
 import type { HTMLAttributes } from "react";
 

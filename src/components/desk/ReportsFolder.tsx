@@ -1,18 +1,8 @@
 "use client";
 
 /**
- * The reports folder: every scorecard, as a stack of evaluation sheets in a
- * manila folder on the front desk.
- *
- * One sheet is on top — the report at the current URL
- * (/interview/[id]/report), rendered by that page with its usual sections.
- * Turning to the next sheet is navigating to the neighbouring report; the new
- * sheet swings in from the side it came from (?turn=newer|older). Newest is on
- * top; "Older" goes down the stack.
- *
- * Opening a particular report from anywhere — the ledger's History, the end
- * of an interview — is just navigating to its URL: the held machine closes
- * whatever is in hand and picks up this folder (heldMachine.ts).
+ * The reports folder: every scorecard as a stack of sheets. The top sheet is
+ * the report at the URL; turning a sheet navigates to the neighbouring report.
  */
 
 import Link from "next/link";

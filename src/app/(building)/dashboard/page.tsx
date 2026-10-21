@@ -1,21 +1,6 @@
 /**
- * Dashboard - home and history, as the performance ledger on the front desk.
- * Server Component.
- * Ref: docs/PRD-JobMe-MVP.md > Dashboard and Progress
- *      docs/TechDesign-JobMe-MVP.md > Components > Dashboard
- *
- * Reads interview_sessions via createClient() from lib/supabase/server. RLS
- * scopes the rows to the signed-in user, so no explicit user_id filter is
- * needed - but requireUser() still gates the page.
- *
- * History is paged on the server by `?page=` with a Supabase range, so the
- * page never loads every session at once. The trend chart has its own
- * lightweight query over completed sessions only.
- *
- * In the building this page IS the ledger (components/desk/Ledger.tsx): the
- * desk shows it closed until the user picks it up (?open=ledger), and its
- * spreads are the sections below. History page links keep the book open on
- * the History spread.
+ * The dashboard, shown as the ledger on the front desk. History is paged on
+ * the server by `?page=`; RLS scopes rows to the user.
  */
 
 import Link from "next/link";
@@ -76,8 +61,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const totalPages = pageCount(total, PAGE_SIZE);
   const page = clampPage(Array.isArray(pageParam) ? pageParam[0] : pageParam, totalPages);
 
-  // Normalise the URL when it named a page that no longer exists, e.g. after
-  // deleting the only row on the last page.
+  // Normalise a page number that no longer exists (e.g. after a delete).
   if (pageParam !== undefined && String(page) !== String(pageParam)) {
     redirect(historyHref(page));
   }

@@ -1,7 +1,4 @@
-/**
- * Pagination arithmetic for collection views (dashboard history, long
- * tables). Not for interview progress — that is ProgressView.
- */
+/** Pagination arithmetic for collections (not interview progress). */
 
 export function pageCount(totalItems: number, pageSize: number): number {
   if (pageSize <= 0) return 1;
@@ -23,11 +20,7 @@ export function rowRange(page: number, pageSize: number): [number, number] {
 
 export type PageSlot = number | "gap";
 
-/**
- * Page numbers to render: always first and last, a window around the current
- * page, and "gap" where pages are skipped. Never more than `2 * radius + 5`
- * slots, so the control keeps a stable width as counts change.
- */
+/** Page numbers to show: first, last, a window around the current page, and gaps (constant width). */
 export function pageWindow(page: number, totalPages: number, radius = 1): PageSlot[] {
   if (totalPages <= 2 * radius + 5) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);

@@ -1,11 +1,6 @@
 /**
- * GET /api/tts?text= — streams the recruiter's voice.
- *
- * The proxy exists for two load-bearing reasons: the API key stays
- * server-side, and being same-origin lets an AnalyserNode read the stream for
- * lip-sync without CORS. Auth-gated, so a stranger cannot drain the quota.
- *
- * Ref: TechDesign > Voice Output
+ * GET /api/tts?text=: streams the recruiter's voice. Proxied so the key stays
+ * server-side and lip-sync can read the stream same-origin. Auth-gated.
  */
 
 import { NextResponse } from "next/server";
@@ -30,8 +25,7 @@ export async function GET(request: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voiceId = process.env.ELEVENLABS_VOICE_ID;
 
-  // Not an error: browser synthesis is the intended dev default, and the
-  // client falls back on a non-200 without complaint.
+  // Not an error: the client falls back to the browser voice.
   if (!apiKey || !voiceId || process.env.TTS_PROVIDER !== "elevenlabs") {
     return NextResponse.json(
       { error: "Neural TTS is not enabled; use the browser voice." },
@@ -39,16 +33,12 @@ export async function GET(request: Request) {
     );
   }
 
-  // `align=1`: the audio plus every character's start and end time, for
-  // lip-sync (lib/voice/lipsync.ts). JSON rather than a stream, because the
-  // alignment comes with the audio; the client already plays a line only once
-  // it has all of it, so nothing is lost on latency.
+  // align=1: audio plus per-character times for lip-sync, as JSON (not streamed).
   if (url.searchParams.get("align") === "1") {
     return alignedSpeech(parsed.data.text, apiKey, voiceId);
   }
 
-  // Validate BEFORE returning the stream: once it begins, the status line and
-  // headers are already on the wire.
+  // Validate before streaming: once it starts, the status is already sent.
   let upstream: Response;
   try {
     upstream = await fetch(

@@ -1,10 +1,6 @@
 "use client";
 
-/**
- * Says where the user has arrived. The only live region the building adds:
- * a walk that turns back is always explained by the page that started it
- * (its own error alert), so the building does not say it twice.
- */
+/** Announces where the user has arrived. A failed walk is explained by its page. */
 
 import { useBuilding } from "./BuildingProvider";
 import { STATION_LABEL } from "./stations";

@@ -23,11 +23,7 @@ describe("cosine", () => {
     expect(cosine([0, 0], [1, 1])).toBe(0);
   });
 
-  /**
-   * Comparing vectors embedded at different `outputDimensionality` is a real
-   * hazard once the bank is re-embedded: it would otherwise read a garbage
-   * similarity and silently mis-score answers.
-   */
+  /** Vectors of different outputDimensionality must not be compared. */
   it("throws on a dimension mismatch instead of guessing", () => {
     expect(() => cosine([1, 2], [1, 2, 3])).toThrow(EmbeddingError);
   });

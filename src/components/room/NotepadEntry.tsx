@@ -1,19 +1,6 @@
 /**
- * One Recruiter's Notepad entry.
- * Ref: docs/PRD-JobMe-MVP.md > Recruiter's Notepad
- *
- *   Q4 · Teamwork · Clarify            [From your resume] [Mediocre]
- *   Situation 3 … Relevance 4          (8 bars, each with its number)
- *   Gap: Ownership
- *   "We worked together to fix the issue."
- *   No clear individual contribution
- *   → Says "we" throughout → asking what they changed
- *
- * The label's move is the type of the question that WAS answered; the reason
- * line says what comes next. Both come from the server as-is.
- *
- * An unscored (degraded) turn says so plainly. It never shows zero bars,
- * because a zero would be a score the recruiter never gave.
+ * One Recruiter's Notepad entry: scores, the gap, the evidence and what comes
+ * next. An unscored turn says so instead of showing zero bars.
  */
 
 import { BandBadge } from "@/components/score/BandBadge";

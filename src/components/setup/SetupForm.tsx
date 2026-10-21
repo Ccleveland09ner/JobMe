@@ -1,17 +1,8 @@
 "use client";
 
 /**
- * Setup form: name, interview type, resume, target job, mic check, Begin.
- * Ref: docs/PRD-JobMe-MVP.md > Interview Setup
- *
- * Begin -> POST /api/sessions -> /interview/[id]?input=typed|voice.
- *
- * The create response's `introLine` is handed to the room through
- * sessionStorage, keyed by session id. It is a nicety: if storage is
- * unavailable the room simply opens on the first question.
- *
- * Begin also unlocks audio (unlockAudio): the AudioContext and the ack clips
- * must start inside a user gesture (lib/voice/audio-graph.ts).
+ * Interview setup on the desk clipboard. Begin creates the session (POST
+ * /api/sessions) while walking to the room, then opens /interview/[id].
  */
 
 import { useRouter } from "next/navigation";
@@ -48,15 +39,12 @@ export function SetupForm({
 }) {
   const router = useRouter();
   const building = useBuilding();
-  // Picked up off the front desk (heldMachine.ts): put down, it plays its
-  // closing before the 3D clipboard goes back to the desk.
+  // A held object: it plays its closing before the 3D clipboard goes back.
   const { closing } = useHeld("clipboard");
   const id = useId();
 
   const [displayName, setDisplayName] = useState(defaultName);
-  // Defaults pinned on the settings board (preferences.ts) start the form;
-  // a choice made here wins. A preference for typing wins over a working
-  // microphone (MicCheck only ever reports what the mic can do).
+  // The board's defaults start the form; a choice here wins. Preferring to type wins over a working mic.
   const defaults = useDefaults();
   const [chosenMode, setMode] = useState<InterviewMode | null>(null);
   const mode = chosenMode ?? defaults?.mode ?? "quick";
@@ -71,13 +59,11 @@ export function SetupForm({
 
   async function begin(e: React.FormEvent) {
     e.preventDefault();
-    // Inside the click: browsers only start audio from a user gesture, and the
-    // recruiter speaks the first question as soon as the room opens.
+    // Audio must be unlocked inside the click (a user gesture).
     unlockAudio();
     setSubmitting(true);
     setError(null);
-    // Down the corridor to the interview room while the session is created:
-    // the walk holds at the room door until the request is done.
+    // Walk to the room while the session is created; the walk holds at the door.
     building?.walkTo("room", { hold: true });
 
     const roleText = job.source === "paste" ? job.roleText.trim() : "";

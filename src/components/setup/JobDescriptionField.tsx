@@ -1,11 +1,6 @@
 /**
- * The target job: a title, then EITHER a pasted description OR a posting
- * link. The API rejects both at once (CreateSessionBody), so the toggle makes
- * that impossible to submit rather than an error to explain afterwards.
- *
- * Links are read only from Greenhouse, Lever, Ashby and SmartRecruiters
- * (lib/job-posting.ts); anything else comes back with a paste-instead
- * message, shown by the form.
+ * The target job: a title, then a pasted description or a posting link
+ * (never both). Links are read only from supported boards (lib/job-posting.ts).
  */
 
 import { useId } from "react";

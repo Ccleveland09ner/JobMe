@@ -1,13 +1,6 @@
 /**
- * Rounded solids for the things the user handles: a clipboard's board, its
- * clip, the notice board's frame and header plank, the back-to-desk tag.
- *
- * A rounded rectangle as a THREE.Shape, extruded with a small bevel —
- * react-three-renderer's <shape> + <extrudeGeometry>, in today's three. Each
- * size is built once and cached (its <resources> idea); never mutate one.
- *
- * Geometry lies in the XY plane, extruded toward +Z, back face at z = 0: put
- * it against a wall as is, or rotate it to lie flat.
+ * Rounded rectangles extruded with a small bevel, cached per size (never
+ * mutate one). XY plane, extruded toward +Z, back face at z = 0.
  */
 
 import * as THREE from "three";

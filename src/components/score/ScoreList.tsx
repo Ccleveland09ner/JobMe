@@ -1,8 +1,4 @@
-/**
- * The rubric as bars, in rubric order: the four STAR components, then
- * Specificity, Impact, Ownership, Relevance. Dimensions without a value are
- * skipped, so partial or legacy data still renders honestly.
- */
+/** The rubric as bars, in rubric order; dimensions without a value are skipped. */
 
 import type { Dimension, Scores } from "@/lib/engine/types";
 import { scoreEntries } from "@/lib/frontend/adapters";

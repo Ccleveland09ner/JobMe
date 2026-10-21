@@ -1,15 +1,6 @@
 /**
- * Words per minute and filler count, overall and per answer.
- * Ref: docs/PRD-JobMe-MVP.md > Scorecard
- *
- * All figures come from the server: the overall ones from the report's
- * `stats` (WPM over total CAPTURE time), the per-answer ones from each turn
- * row. Computed in code there, so this section renders even when every AI
- * call failed. Typed answers have no capture time, so WPM shows as "—"
- * rather than a made-up rate.
- *
- * The filler count is labelled "approximate" - Chrome's STT drops most um/uh
- * before the server sees the text.
+ * Words per minute and filler count from the server, overall and per answer.
+ * Typed answers have no WPM; the filler count is approximate (STT drops most um/uh).
  */
 
 import { Card } from "@/components/ui/Card";

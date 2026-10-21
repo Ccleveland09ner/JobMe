@@ -1,13 +1,6 @@
 "use client";
 
-/**
- * "Interview defaults", written on its note on the settings board: the
- * interview type and answer mode the setup clipboard starts with. Saved in
- * this browser as soon as they change (lib/frontend/preferences.ts); every
- * interview can still choose otherwise.
- *
- * Compact — it has to fit a note — but ordinary radio groups underneath.
- */
+/** The interview defaults note: type and answer mode, saved in this browser. */
 
 import { useId, useState } from "react";
 

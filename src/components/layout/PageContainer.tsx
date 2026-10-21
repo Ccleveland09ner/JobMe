@@ -1,10 +1,4 @@
-/**
- * Page width and gutters. One place, so every screen lines up.
- *
- *   narrow - forms (setup, login)
- *   base   - reading pages (scorecard)
- *   wide   - dashboards and the interview room
- */
+/** Page width and gutters: narrow (forms), base (reading), wide (dashboards, the room). */
 
 import type { HTMLAttributes } from "react";
 

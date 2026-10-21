@@ -1,7 +1,4 @@
-/**
- * Nothing here yet — and what to do about it. Screen-specific empty states
- * compose this rather than restyling their own.
- */
+/** Nothing here yet, and what to do about it. */
 
 import type { ReactNode } from "react";
 

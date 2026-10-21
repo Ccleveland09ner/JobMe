@@ -1,14 +1,6 @@
 "use client";
 
-/**
- * The interview room, in three dimensions: design/mock Inteview session.png
- * redrawn in the toon palette. Whiteboard behind the interviewer, a window
- * on the left, a plant in the corner, the table between interviewer and
- * candidate with the desk mic and the interviewer's notepad on it.
- *
- * The desk mic is the candidate's microphone (DeskMic.tsx): pressable, and
- * lit green while recording, the same control as the mic button over it.
- */
+/** The interview room: whiteboard, window, plant, and the table with the mic and notepad. */
 
 import type { RefObject } from "react";
 
@@ -58,8 +50,7 @@ export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> })
       <OfficeChair at={[RECRUITER.x, 0, RECRUITER.z - 0.05]} />
       <OfficeChair at={[right - 0.7, 0, front - 1.2]} rotationY={-2.4} />
 
-      {/* Desk mic, centred in front of the candidate as if they speak into
-          it (the room's mic button sits over it): lit while listening. */}
+      {/* The candidate's mic, centred in front of them. */}
       <DeskMic speaker={speaker} at={[TABLE.x, tableTop, TABLE.z + TABLE.depth / 2 - 0.12]} />
       {/* The interviewer's notepad: picked up to review the notes so far. */}
       <TableNotepad />

@@ -1,13 +1,6 @@
 "use client";
 
-/**
- * A door leaf that swings open and shut. The hinge is at the leaf's left
- * edge (`hinge` = "left") or right edge, at `at`; the leaf extends along +X
- * or −X from it and opens inward (toward −Z).
- *
- * The swing eases toward its goal every frame and asks for frames only while
- * it is moving, so a shut door costs nothing on a demand-rendered canvas.
- */
+/** A door leaf hinged at `at`, swinging inward (−Z). Requests frames only while moving. */
 
 import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";

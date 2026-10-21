@@ -1,8 +1,4 @@
-/**
- * The reports folder, picked up from the desk without a particular report in
- * mind: open it at the newest scorecard, or show an empty folder.
- * Server Component.
- */
+/** The reports folder without a chosen report: open at the newest, or empty. */
 
 import Link from "next/link";
 import { redirect } from "next/navigation";

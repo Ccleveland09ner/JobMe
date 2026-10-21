@@ -1,19 +1,7 @@
 /**
- * The illustrated look, shared by everything drawn in WebGL: flat toon
- * shading in three tones, ink lines, and the app's palette.
- *
- * Two kinds of ink line, together giving every form a drawn edge:
- *   - the silhouette, around each object's outline (OutlineRenderer.tsx);
- *   - creases, along every hard corner of the scenery, including the ones
- *     inside a silhouette — where a wall meets the floor, the front edge of a
- *     desk (InkEdges in building/scene/parts.tsx).
- * Scenery surfaces are drawn pushed back a hair (polygonOffset) so the crease
- * lines sit cleanly on top of the faces they border instead of flickering.
- * Ref: docs/PRD-JobMe-MVP.md > Look and Feel ("friendly and intentional, not
- *      photoreal"; one confident accent)
- *
- * WebGL cannot read CSS variables, so PALETTE mirrors the tokens in
- * globals.css. Change a colour in both places or not at all.
+ * The illustrated look: three-tone toon shading, ink lines and the palette.
+ * PALETTE mirrors the tokens in globals.css (WebGL can't read CSS variables);
+ * change a colour in both places.
  */
 
 import * as THREE from "three";
@@ -80,10 +68,7 @@ export function toonGradient(): THREE.DataTexture {
 
 const materials = new Map<string, THREE.MeshToonMaterial>();
 
-/**
- * One toon material per colour, cached: scenery built from dozens of boxes
- * shares a handful of materials. Never mutate the result — it is shared.
- */
+/** One cached toon material per colour. Shared: never mutate. */
 export function toonMaterial(color: PaletteColor | string): THREE.MeshToonMaterial {
   const hex = color in PALETTE ? PALETTE[color as PaletteColor] : color;
   let material = materials.get(hex);

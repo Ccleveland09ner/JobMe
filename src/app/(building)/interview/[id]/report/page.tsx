@@ -1,22 +1,6 @@
 /**
- * Scorecard. Server Component.
- * Ref: docs/PRD-JobMe-MVP.md > Scorecard
- *      docs/TechDesign-JobMe-MVP.md > Scorecard Page
- *
- * Loads session, turns and report under RLS. If no report row exists yet,
- * <ReportGenerator> POSTs /api/sessions/[id]/report once and refreshes; the
- * saved row then renders here, instantly on every later visit.
- *
- * The report route does not return the turns, so they are read here.
- * Overall scores are the session's stored `overall_scores` (scored turns
- * only); nothing is averaged on the client.
- *
- * Scores are practice feedback, never framed as a prediction of a hiring
- * outcome. Ref: docs/PRD-JobMe-MVP.md > Non-Goals
- *
- * In the building this page is the top sheet in the reports folder
- * (components/desk/ReportsFolder.tsx); it also reads the ids of every
- * completed interview, newest first, to know which sheets lie either side.
+ * The scorecard: the top sheet in the reports folder. Without a saved report,
+ * ReportGenerator builds it once. Scores are shown as stored.
  */
 
 import { notFound } from "next/navigation";
@@ -97,8 +81,7 @@ export default async function ReportPage({ params }: PageProps<"/interview/[id]/
       neighbours={neighbours}
     >
 
-      {/* A report on a session still marked in progress means a crash
-          between insert and completion; the POST heals it without a model call. */}
+      {/* A report on an in-progress session means a crash mid-way; the POST heals it. */}
       {!report || session.status !== "completed" ? (
         <ReportGenerator sessionId={id} />
       ) : (

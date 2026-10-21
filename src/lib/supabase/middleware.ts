@@ -28,8 +28,7 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // Refreshes the auth token if needed. Required for Server Components,
-  // which cannot write cookies themselves.
+  // Refreshes the auth token (Server Components can't write cookies).
   await supabase.auth.getUser();
 
   return supabaseResponse;

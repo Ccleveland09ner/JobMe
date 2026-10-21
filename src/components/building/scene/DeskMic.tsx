@@ -1,23 +1,9 @@
 "use client";
 
 /**
- * The candidate's microphone on the interview table, after
- * design/Black USB Podcast Microphone on Stand.png: a round base, a short
- * stem, a U-shaped yoke with side knobs, a matte body under a mesh grille,
- * and on its front a status ring with a mic icon, a status dot and a knob.
- *
- * It is the same control as the panel's mic button (room/TableMic.tsx), read
- * from the room through `speaker.current.mic` every frame:
- *   disabled   the interviewer is speaking: a not-allowed cursor, and a
- *              press shows 🚫 instead of starting
- *   ready      press to start answering (pointer cursor)
- *   recording  the ring and dot light green; press to send
- *   off        typed answers: an ordinary, inert mic
- * The panel button stays the accessible control (keyboard, screen readers);
- * this one is for the pointer, in the scene.
- *
- * Rendered in full 3D like the characters (three/rendered.ts). Faces +Z,
- * toward the candidate.
+ * The candidate's mic on the interview table: the same control as the room's
+ * mic button (TableMic.tsx), read from speaker.current.mic each frame. The
+ * button stays the accessible control. Faces +Z.
  */
 
 import { Html } from "@react-three/drei";
@@ -40,16 +26,16 @@ const seam = new THREE.TorusGeometry(0.0475, 0.0025, 8, 48);
 const dot = new THREE.SphereGeometry(0.0042, 16, 12);
 const hitBox = new THREE.BoxGeometry(0.2, 0.4, 0.2);
 
-/** An invisible hit area around the mic, so it is easy to press from the candidate's seat. */
+/** An invisible, generous hit area. */
 const hitMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
 hitMaterial.userData.outlineParameters = { visible: false };
 
-/** The grille's mesh: a fine wire lattice over the grille dome. */
+/** A wire lattice over the grille. */
 const grilleMesh = new THREE.CapsuleGeometry(0.0486, 0.05, 10, 28);
 const grilleWire = new THREE.MeshBasicMaterial({ color: "#6b727c", wireframe: true, transparent: true, opacity: 0.55 });
 grilleWire.userData.outlineParameters = { visible: false };
 
-/** Recording: light green, as on the panel mic. The glow is a deeper green so it stays green, not cyan. */
+/** Recording green; the glow is deeper so it doesn't read as cyan. */
 const GREEN = "#5be38d";
 const GREEN_GLOW = "#1fbf5b";
 

@@ -1,10 +1,4 @@
-/**
- * One score: label, a 1-4 bar, and the number. The number is always rendered
- * — colour never carries the meaning alone.
- * Ref: docs/PRD-JobMe-MVP.md > Non-Functional Requirements > Accessibility
- *
- * Takes fractional values too (session averages), displayed to one decimal.
- */
+/** One score: label, a 1–4 bar and the number (never colour alone). Averages show one decimal. */
 
 import { scoreLevel } from "@/lib/frontend/adapters";
 

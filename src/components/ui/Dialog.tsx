@@ -1,13 +1,6 @@
 "use client";
 
-/**
- * Modal dialog on the native <dialog> element.
- *
- * `showModal()` gives the hard accessibility parts for free: the rest of the
- * page becomes inert (focus cannot leave), Escape closes it, and it sits in
- * the top layer. What it does not do is return focus to whatever opened it,
- * so that is handled here.
- */
+/** A modal on the native <dialog> (inert page, Escape, top layer); returns focus on close. */
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 

@@ -1,7 +1,4 @@
-/**
- * A small text label. Tones tint the badge but the text always carries the
- * meaning — colour alone never does.
- */
+/** A small text label; the text carries the meaning, never colour alone. */
 
 import type { HTMLAttributes } from "react";
 

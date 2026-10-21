@@ -1,15 +1,7 @@
 /**
- * The scorecard pipeline: generate once, then serve.
- *
- * Separate from the route handler for the same reason as `turn.ts`: the parts
- * worth testing — idempotency, and unscored turns never entering an average —
- * need neither HTTP nor a database. The route supplies a Supabase-backed store.
- *
- * Ref: TechDesign > Report Generator; Backend brief §6.4
- *
- * Idempotent at two levels: an existing report is returned with NO model call,
- * and `reports.session_id` is the primary key, so a concurrent second request
- * loses the insert and returns the winner's report instead.
+ * The scorecard pipeline: generate once, then serve (testable without HTTP).
+ * Idempotent: an existing report means no model call, and a concurrent insert
+ * loses to the primary key.
  */
 
 import {
@@ -86,8 +78,7 @@ export async function runReport(
   const overallScores = averageScores(turns);
 
   if (existing) {
-    // A crash between insert and completion would leave the session "in
-    // progress" with a report; heal it rather than regenerate.
+    // A crash mid-way left a report on an in-progress session: heal it.
     if (session.status !== "completed" || !session.overallScores) {
       await store.completeSession(overallScores);
     }

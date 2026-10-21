@@ -1,22 +1,7 @@
 /**
- * Distills a redacted resume into a compact facts object, once, at upload.
- *
- * WHY THIS EXISTS. The obvious design is to retrieve resume chunks per answer
- * and paste them into the turn prompt. That is wrong here for two reasons:
- *
- *   1. Latency. Retrieval needs a query embedding, and the query is the
- *      candidate's answer — which only exists at turn time. That forces
- *      embed -> prompt -> LLM in series, destroying the parallel
- *      `Promise.all([evaluateAndDraft, embed])` the turn budget is built on.
- *      An embedding round trip costs 150-500ms; a 350-token prompt prefix
- *      costs 20-40ms.
- *
- *   2. Reproducibility. A fixed prefix means the same scripted answer produces
- *      the same scores every run, which is exactly what the demo depends on.
- *      Retrieval makes the prompt vary with the answer.
- *
- * Retrieval still exists (see retrieve.ts) for the places a round trip is
- * affordable: session start, topic selection, question de-duplication.
+ * Distills a redacted resume into compact facts once, at upload. They go into
+ * every turn prompt as a fixed prefix: faster and more reproducible than
+ * per-answer retrieval.
  */
 
 import { Type } from "@google/genai";
@@ -77,10 +62,7 @@ export async function distillResume(
     });
     return trimFacts(value);
   } catch (err) {
-    // Distillation is an enhancement, not a gate. A resume that cannot be
-    // distilled is still stored, still chunked, and still retrievable — the
-    // interview just gets less personalised. Failing the upload here would
-    // turn a 429 into "you cannot start an interview".
+    // An enhancement, not a gate: the resume is still stored and chunked.
     console.warn(
       `[distill] falling back to no facts: ${
         err instanceof LlmError ? err.message : String(err)

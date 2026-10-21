@@ -73,11 +73,7 @@ function ctx(overrides: Partial<TurnContext> = {}): TurnContext {
 }
 
 describe("runTurn — context reaches the evaluator", () => {
-  /**
-   * The evaluator is told to score a follow-up against the story so far, and
-   * its drafts to build on the candidate's own words. Both were impossible
-   * while the pipeline sent an empty history.
-   */
+  /** The evaluator gets the thread's history, to score follow-ups in context. */
   it("passes this thread's earlier answers", async () => {
     const evaluate = vi.fn(async () => raw(flat(3)));
     const history = [{ question: FIRST.text, answer: "We fixed the bug." }];
@@ -267,11 +263,7 @@ describe("runTurn — openings come from the question plan", () => {
     resume: { [ACME.id]: { text: ACME_OPENING, topic: "problem_solving" } },
   };
 
-  /**
-   * Two great answers: the engine deepens, then resolves the thread one level
-   * harder and opens the next — bank topic 2 without a resume, the resume
-   * item with one (sources alternate).
-   */
+  /** Two great answers: deepen, then resolve a level harder and open the next thread. */
   async function nextThread(items: ResumeItem[], plan: QuestionPlan | null) {
     const state = initState({
       mode: "quick",

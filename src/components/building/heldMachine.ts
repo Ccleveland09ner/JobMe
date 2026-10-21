@@ -1,27 +1,8 @@
 /**
- * What the user is holding: the ledger, the reports folder or the clipboard
- * from the front desk, or the notepad in the interview room. A pure reducer (heldMachine.test.ts), like
- * buildingMachine.ts and room/roomMachine.ts.
+ * What the user is holding: a desk object or the room's notepad. One object
+ * and one motion at a time; a request made mid-motion is queued (latest wins).
  *
- *   resting ─REQUEST(x)─▶ lifting ─LIFTED─▶ open ─REQUEST(≠x)─▶ closing
- *      ▲                  (3D object         (DOM object          (DOM object
- *      │                   comes to you)      in your hands)       shuts)
- *      │                                                              │
- *      └──────────── RETURNED ◀── returning ◀────── DOM_CLOSED ───────┘
- *                               (3D object goes back to where it rests)
- *
- * One object at a time, one motion at a time. A request that arrives while
- * something is moving is queued — the latest wins — and applied when the
- * motion ends. That queue is the ledger → folder handoff: asking for the
- * folder while the ledger is open closes the ledger, puts it down, then picks
- * up the folder, as one continuous sequence.
- *
- * Who sends what:
- *   REQUEST     the page (from the URL), or the room (its notepad button)
- *   LIFTED      the 3D object, when it reaches the camera (or at once when
- *               there is no 3D — see BuildingProvider)
- *   DOM_CLOSED  the held DOM object, when its closing animation ends
- *   RETURNED    the 3D object, when it is back where it rests
+ *   resting → lifting → open → closing → returning → resting
  */
 
 export type Held = "ledger" | "reports" | "clipboard" | "notepad";
@@ -30,10 +11,7 @@ export type HeldPhase = "resting" | "lifting" | "open" | "closing" | "returning"
 export interface HeldState {
   held: Held | null;
   phase: HeldPhase;
-  /**
-   * What to hold once the current motion ends: an object, null for "nothing",
-   * or undefined when nothing is queued.
-   */
+  /** Held next once the motion ends: an object, null for nothing, undefined if none queued. */
   queued: Held | null | undefined;
 }
 

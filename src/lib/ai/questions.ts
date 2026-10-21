@@ -1,10 +1,6 @@
 /**
- * The gate between model-drafted wording and the candidate. The engine decides
- * the MOVE; this only decides whether the wording for it is usable, and
- * substitutes a bank seed when it is not. Nothing here may change the move —
- * that would put flow control in the AI.
- *
- * Ref: PRD > Adaptive Engine
+ * The gate between drafted wording and the candidate: unusable wording is
+ * replaced by a bank seed. Nothing here may change the move.
  */
 
 import { GAP_PRIORITY } from "../engine/types";
@@ -38,8 +34,7 @@ export function checkDraft(draft: string, askedQuestions: string[] = []): DraftC
 
   if (!text.endsWith("?")) return { ok: false, reason: "not_a_question" };
 
-  // Two questions lets the candidate pick which to answer — exactly the
-  // gap-dodging the follow-up exists to close.
+  // Two questions would let the candidate dodge the gap.
   if ((text.match(/\?/g) ?? []).length > 1) {
     return { ok: false, reason: "multi_question" };
   }
@@ -103,12 +98,7 @@ export function repairDraft(draft: string): string {
   return text;
 }
 
-/**
- * Runs BEFORE the model — the demo's insurance policy. A one-point relevance
- * swing flips the band and therefore the move, and an answer this thin cannot
- * be strong under any rubric, so deciding it in code makes "scripted weak
- * answer always gets a Clarify" true rather than likely.
- */
+/** Runs before the model: an answer this thin is weak under any rubric, so it always gets a Clarify. */
 export const MIN_SUBSTANTIVE_WORDS = 25;
 
 export function preClassify(answer: string): Band | null {
@@ -123,11 +113,8 @@ function hasNumber(text: string): boolean {
 }
 
 /**
- * A capitalised word that is NOT sentence-initial — a proxy for naming a real
- * system, tool or company. Walks sentences rather than using one regex,
- * because the obvious pattern matches the word AFTER a full stop, which is
- * precisely what must be excluded; that bug silently disabled this check for
- * every multi-sentence answer.
+ * A capitalised word that isn't sentence-initial: a proxy for naming a real
+ * system, tool or company. Walks sentences (one regex got this wrong).
  */
 export function hasProperNoun(text: string): boolean {
   for (const sentence of text.split(/(?<=[.!?])\s+/)) {
@@ -146,11 +133,7 @@ export function hasProperNoun(text: string): boolean {
   return false;
 }
 
-/**
- * Degraded-turn scores. Crude on purpose: the point is that an interview
- * survives a 429, not that the numbers are good. The turn persists with
- * `scores: null`, so these never reach an average or a trend line.
- */
+/** Crude degraded-turn scores, only to pick a gap; the turn is saved with scores: null. */
 export function heuristicScores(answer: string): Scores {
   const words = answer.trim().split(/\s+/).filter(Boolean).length;
   const clamp = (n: number) => Math.max(1, Math.min(4, n));
@@ -160,8 +143,7 @@ export function heuristicScores(answer: string): Scores {
   const firstPerson = /\b(I|my)\b/.test(answer);
   const hedges = /\b(we|our)\b/i.test(answer);
 
-  // Keyword proxies per STAR component: enough to pick a plausible gap for a
-  // fallback question, not enough to show as a score.
+  // Keyword proxies per STAR component: enough to pick a gap, not to show.
   const situation = /\b(when|while|during|at the time|last (year|term|semester))\b/i.test(answer) ? 3 : 2;
   const task = /\b(my job|my role|I was responsible|I owned|assigned|tasked)\b/i.test(answer) ? 3 : 1;
   const action = /\b(then|so I|I built|I wrote|I changed|I proposed|I ran)\b/i.test(answer) ? 3 : 2;

@@ -1,40 +1,9 @@
 "use client";
 
 /**
- * The page, in the building: the DOM layer over the canvas that holds the
- * route's content, the single <main> landmark, and the station's fixtures.
- *
- * Every page keeps its own headings, forms and order — the building is
- * presentation, not semantics. How a page sits over the scene depends on
- * what it is (layoutFor):
- *
- *   overlay    the street: the page sits straight over the scene
- *   clipboard  sign-in, at the door: the clipboard stands on its own
- *   held       the front desk: nothing on screen but the office itself, until
- *              the user picks something up off the desk — the ledger
- *              (/dashboard?open=ledger), the setup clipboard
- *              (/interview/new) or the reports folder (/reports,
- *              /interview/[id]/report). The page IS that object;
- *              heldMachine.ts sequences picking it up, opening it, closing
- *              it and putting it down.
- *   board      the settings notice board: the page pins its controls onto
- *              the board's own notes (components/settings/BoardNotes.tsx)
- *   room       the interview room: the page lays its bubbles, microphone and
- *              notepad over the scene
- *   panel      anything else (development pages): a plain side panel
- *
- *   - On a route change, focus moves to the page's <h1>.
- *   - During a walk the page fades out (it is somewhere else now), and fades
- *     back when the walk arrives — or when a failed walk returns, so its
- *     error is in front of the user.
- *   - A side panel or clipboard reports its footprint to the camera
- *     (ViewInset), which frames the scene in the space that is left.
- *
- * At the desk there are no web buttons: the user clicks the objects. Each
- * desk action keeps a twin <button> for the keyboard and screen readers,
- * visually hidden; focusing one points at its object, so the object and its
- * floating name light up in the scene as the focus indicator. Only when
- * there is no 3D building (no WebGL) do the twins show, as paper tags.
+ * The DOM layer over the canvas: the route's content and the single <main>.
+ * How a page sits over the scene depends on its layout (layoutFor). At the
+ * desk the user clicks the 3D objects; hidden twin buttons serve the keyboard.
  */
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -49,7 +18,7 @@ import { stationForPath } from "./stations";
 
 type Layout = "overlay" | "clipboard" | "held" | "board" | "room" | "panel";
 
-/** Routes whose whole page is a clipboard standing on its own, and how wide. */
+/** Routes whose page is a standalone clipboard, and its width. */
 const CLIPBOARD_PAGES: { match: (path: string) => boolean; width: string }[] = [
   { match: (p) => p.startsWith("/login"), width: "md:w-[27rem]" },
 ];
@@ -76,7 +45,7 @@ function heldFor(pathname: string, open: string | null): Held | null {
   return null;
 }
 
-/** Matches Tailwind's `md` breakpoint, where a panel moves to the side. */
+/** Tailwind's md breakpoint, where a panel moves to the side. */
 const SIDE_PANEL_QUERY = "(min-width: 48rem)";
 
 export function StationLayer({ children }: { children: ReactNode }) {
@@ -86,14 +55,11 @@ export function StationLayer({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const main = useRef<HTMLElement>(null);
-  // The layout follows the route, not the camera: content and its frame
-  // arrive together.
   const layout = layoutFor(pathname);
   const routeHeld = heldFor(pathname, search.get("open"));
   const walking = building !== null && building.state.target !== null && !building.state.returning;
 
-  // Focus the page heading on every route change — not on first load,
-  // where focus belongs to the browser.
+  // Focus the page heading on route changes (not on first load).
   const shown = useRef(pathname);
   useEffect(() => {
     if (shown.current === pathname) return;
@@ -105,9 +71,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
     }
   }, [pathname]);
 
-  // The URL says what should be in the user's hands. In the room only its
-  // notepad can be held (the room asks for it); arriving there with a desk
-  // object still in hand (the clipboard, after Begin) puts that down.
+  // The URL says what is held. In the room only the notepad can be.
   const dispatchHeld = building?.dispatchHeld;
   const heldNow = building?.held.held ?? null;
   useEffect(() => {
@@ -115,11 +79,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
     else if (heldNow !== null && heldNow !== "notepad") dispatchHeld?.({ type: "REQUEST", want: null });
   }, [dispatchHeld, layout, routeHeld, heldNow]);
 
-  // A held object closing whose page self is no longer on screen (the route
-  // moved on to a layout that does not show it) cannot play its closing:
-  // count it closed, so its 3D self can go back to where it rests. And
-  // whatever happens to its page, a closing ends: if nothing has reported it
-  // closed a little after its animation's length, it is closed.
+  // A closing ends even if its page isn't shown here or never reports back.
   const heldPhase = building?.held.phase;
   const shownHere = layout === "held" ? heldNow !== "notepad" : layout === "room" ? heldNow === "notepad" : false;
   useEffect(() => {
@@ -132,7 +92,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [heldPhase, shownHere, dispatchHeld]);
 
-  // What the office's objects do, shared by their 3D selves and their twins.
+  // Object actions, shared by the 3D objects and their twin buttons.
   const setAction = building?.setAction;
   useEffect(() => {
     if (!setAction) return;
@@ -149,10 +109,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
     };
   }, [setAction, router]);
 
-  // A held object keeps showing what it held while it closes, even though the
-  // route (and so `children`) has already moved on to the next object.
-  // (State adjusted during render, React's pattern for "remember the
-  // previous value"; it settles in one extra render.)
+  // Keep the closing object's content after the route has moved on.
   const held = building?.held;
   const [heldContent, setHeldContent] = useState<ReactNode>(null);
   if (held && held.phase === "open" && held.held === routeHeld && heldContent !== children) setHeldContent(children);
@@ -190,9 +147,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
       <main id="main" ref={main} className={fade}>
         {showHeld ? (
           <div className="fixed inset-0 z-10 flex overflow-y-auto px-2 py-4 sm:px-6 sm:py-8">
-            {/* Centred by auto margins, not flex alignment: something taller
-                than the screen then starts at the top and scrolls, instead
-                of overflowing above it out of reach. */}
+            {/* Auto margins, not flex centring, so tall content stays scrollable. */}
             <div className="m-auto flex w-full justify-center">{content}</div>
           </div>
         ) : (
@@ -210,8 +165,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
   const frame: Record<Exclude<Layout, "held">, string> = {
     overlay: "relative z-10 flex min-h-dvh flex-1 flex-col",
     clipboard: `fixed inset-x-0 bottom-0 z-10 max-h-[70vh] overflow-y-auto px-3 pt-4 [scrollbar-width:thin] md:inset-y-0 md:left-auto md:right-6 md:max-h-none md:px-2 md:py-6 ${CLIPBOARD_PAGES.find((c) => c.match(pathname))?.width ?? ""}`,
-    // Click-through: the board itself is the 3D one; only the controls
-    // pinned onto its notes take the pointer.
+    // Click-through to the 3D board; only the pinned controls take the pointer.
     board: "pointer-events-none fixed inset-0 z-10",
     room: "pointer-events-none fixed inset-0 z-10",
     panel:
@@ -225,7 +179,7 @@ export function StationLayer({ children }: { children: ReactNode }) {
   );
 }
 
-/** What can be done at the front desk, in the order the objects sit. */
+/** Desk actions, in the order the objects sit. */
 const DESK_ACTIONS: { name: string; label: string }[] = [
   { name: "ledger", label: "Open the ledger: your interview history and progress" },
   { name: "clipboard", label: "Pick up the clipboard: start an interview" },
@@ -233,12 +187,7 @@ const DESK_ACTIONS: { name: string; label: string }[] = [
   { name: "settings", label: "Go to the settings notice board" },
 ];
 
-/**
- * The front desk with nothing in hand. The user clicks the objects in the
- * scene; these are their twins for the keyboard and screen readers —
- * visually hidden, and pointing at their object while focused, so the scene
- * shows where focus is. With no 3D building to click, they show, as tags.
- */
+/** Hidden buttons for the desk objects; focus lights up the object. Shown without 3D. */
 function DeskTwins({
   disabled,
   visible,

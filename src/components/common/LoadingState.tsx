@@ -1,6 +1,4 @@
-/**
- * Loading placeholder. `role="status"` announces the label once, politely.
- */
+/** Loading placeholder; role="status" announces the label once. */
 
 import { Spinner } from "@/components/ui/Spinner";
 

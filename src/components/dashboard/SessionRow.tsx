@@ -1,11 +1,4 @@
-/**
- * One row in the session list: date, mode, progress, average score, status,
- * and the actions that fit the status.
- * Ref: docs/PRD-JobMe-MVP.md > Dashboard and Progress
- *
- * Presentational: deletion is owned by SessionList, which holds the single
- * confirm dialog for the whole list.
- */
+/** One history row: date, mode, progress, average, status and actions. Deletion lives in SessionList. */
 
 import Link from "next/link";
 

@@ -1,15 +1,6 @@
 /**
- * A speech bubble: who is talking, drawn like everything else in the
- * building — paper, an ink edge, a flat offset shadow — with a tail toward
- * the speaker.
- *
- *   tail "down-left"  the interviewer's bubble, its tail toward her face
- *   tail "down"       the candidate's own bubble, its tail toward the
- *                     microphone in front of them
- *
- * Re-keyed by the caller when the speech changes, so each new line pops in
- * (globals.css: bubble-in). The content keeps its own semantics; the bubble
- * is presentation.
+ * A speech bubble with a tail toward the speaker ("down-left": the
+ * interviewer, "down": the candidate). Re-key it to pop in a new line.
  */
 
 import type { ReactNode } from "react";

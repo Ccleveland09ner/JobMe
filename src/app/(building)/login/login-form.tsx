@@ -1,20 +1,9 @@
 "use client";
 
 /**
- * Sign in with email and password, or create an account: username, email,
- * password and its confirmation. Written on the door's clipboard.
- *
- * Usernames are unique regardless of case. The form asks the database
- * (username_available) when the field is left and again before sending, so a
- * taken name is caught early; the unique index behind the sign-up trigger is
- * what actually guarantees it, and a race with another sign-up surfaces as
- * "That username was just taken" (friendlyAuthError).
- *
- * The member code (JM-XXXXXXXX) is assigned by the database at sign-up; the
- * user never chooses or types it. It appears at the front desk.
- *
- * If the Supabase project requires email confirmation, sign-up returns no
- * session: the form says to check the inbox and switches to sign-in.
+ * Sign in, or create an account (username, email, password). Usernames are
+ * unique regardless of case: checked early, guaranteed by a unique index.
+ * The member code is assigned by the database.
  */
 
 import { useRouter } from "next/navigation";

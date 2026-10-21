@@ -1,14 +1,6 @@
 /**
- * Persists an ingested resume and its chunk embeddings.
- *
- * Ref: docs/TechDesign-JobMe-MVP.md > Data Model
- *
- * Every write goes through the cookie-based server client, so RLS scopes rows
- * to the signed-in user automatically. The service-role key is never used.
- *
- * The uploaded PDF itself is never persisted — only redacted text, distilled
- * facts and vectors. That keeps us off the storage quota and means a leak of
- * this table does not leak the original document.
+ * Persists an ingested resume and its chunk embeddings under RLS. The PDF is
+ * never stored: only redacted text, distilled facts and vectors.
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -40,11 +32,7 @@ export class ResumeStoreError extends Error {
   }
 }
 
-/**
- * Inserts the resume and its chunks. Chunks go in one batch insert rather than
- * a loop: a partial failure mid-loop would leave a resume with half its
- * vectors and no signal that retrieval is now silently incomplete.
- */
+/** Inserts the resume and its chunks (one batch, so a failure can't leave half the vectors). */
 export async function storeResume(args: {
   parsed: ParsedResume;
   redaction: RedactionResult;
@@ -98,8 +86,7 @@ export async function storeResume(args: {
   );
 
   if (chunkError) {
-    // Roll back by hand: without this the resume row survives with zero
-    // chunks, and retrieval degrades to silence rather than an error.
+    // Roll back by hand, so no resume survives without its chunks.
     await supabase.from("resumes").delete().eq("id", resume.id);
     throw new ResumeStoreError(
       `Could not save resume chunks: ${chunkError.message}`,

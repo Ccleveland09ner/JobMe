@@ -1,15 +1,6 @@
 /**
- * Where the candidate is in the interview.
- *
- * NOT the PRD's fixed "Topic 2 of 4 · Q5": interviews are Quick (capped at
- * 10) or Full (cap derived from the resume on the server), so this reads
- * whatever progress the backend sent and drops any part it lacks:
- *
- *   Quick interview · Question 5 of up to 10
- *   Full interview · Question 12 of up to 22 · Resume coverage 4 of 6
- *
- * "up to", because the cap is a ceiling — an interview can wrap before it.
- * Nothing here is computed; the cap is never re-derived on the client.
+ * Interview progress, as the server sent it: "Full interview · Question 12 of
+ * up to 22 · Resume coverage 4 of 6". Missing parts are dropped.
  */
 
 import { MODE_LABELS } from "@/lib/frontend/labels";

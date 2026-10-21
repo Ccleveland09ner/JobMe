@@ -1,11 +1,4 @@
-/**
- * A timestamp in the viewer's own locale and time zone.
- *
- * The server renders in ITS time zone and the browser re-renders in the
- * user's, so the text can legitimately differ across hydration;
- * `suppressHydrationWarning` covers exactly this element's text and nothing
- * else. `dateTime` keeps the machine-readable value exact either way.
- */
+/** A timestamp in the viewer's locale and time zone (may differ from the server render). */
 
 const FORMATS = {
   date: { dateStyle: "medium" },

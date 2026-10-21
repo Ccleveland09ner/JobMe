@@ -1,24 +1,9 @@
 "use client";
 
 /**
- * The objects the user handles — the office is the interface. Built from the
- * same toon solids and ink lines as the rest of the building:
- *
- *   on the front desk, each named by lettering floating over it:
- *     LedgerBook   "LEDGER"           the interview history (the dashboard)
- *     Clipboard    "START INTERVIEW"  the interview setup form
- *     Folder       "REPORTS"          the scorecards
- *   on the wall behind:
- *     NoticeBoard  SETTINGS lettered on its header plank; its two pinned
- *                  notes carry the settings controls once the user is at the
- *                  board (ScreenAnchor + components/settings/BoardNotes.tsx)
- *   in the interview room:
- *     TableNotepad the interviewer's notepad
- *
- * The desk objects are Liftable (picked up, then their page self takes
- * over); the board is Clickable (the camera goes to it). Each is modelled
- * lying flat with its top edge toward −Z, as Liftable expects; the board
- * faces +Z off the wall.
+ * The objects the user handles: the desk objects (Liftable, named by floating
+ * labels), the settings notice board (Clickable) and the room's notepad.
+ * Desk objects are modelled lying flat, top edge toward −Z.
  */
 
 import { useMemo } from "react";
@@ -46,10 +31,7 @@ const ON_DESK = {
   reports: { at: [0.75, COUNTER_TOP, DESK.z - 0.32] as Vec3, turn: -0.14, label: 0.3 },
 } as const;
 
-/**
- * Where the secretary looks when the user points at something
- * (TalkingHead's lookAt): each object, and the board's middle.
- */
+/** Where the secretary looks when the user points at something. */
 export const LOOK_POINTS: Record<string, readonly [number, number, number]> = {
   ledger: [ON_DESK.ledger.at[0], COUNTER_TOP + 0.05, ON_DESK.ledger.at[2]],
   clipboard: [ON_DESK.clipboard.at[0], COUNTER_TOP + 0.05, ON_DESK.clipboard.at[2]],
@@ -86,11 +68,7 @@ function Folder() {
   );
 }
 
-/**
- * The setup clipboard, matching the page clipboard it turns into
- * (ui/Clipboard.tsx): a rounded hardboard, a ruled sheet, a metal clip with
- * its lever. Modelled standing in XY, then laid flat.
- */
+/** The setup clipboard, matching ui/Clipboard.tsx. Modelled upright, then laid flat. */
 function Clipboard() {
   const boardH = 0.35;
   return (
@@ -179,7 +157,7 @@ const NOTE_LOOK: Record<BoardNote, { title: string; paper: PaletteColor }> = {
   account: { title: "ACCOUNT", paper: "noteYellow" },
 };
 
-/** The title band at the top of a note, above the space its controls take. */
+/** Height of a note's title band, above its controls. */
 const NOTE_TITLE_BAND = 0.3;
 
 /** One note pinned on the board: paper, a pin, its title, room for its controls. */
@@ -191,8 +169,7 @@ function PinnedNote({ name, inUse }: { name: BoardNote; inUse: boolean }) {
       <Box size={[n.w, n.h, 0.006]} at={[0, 0, 0.003]} color={look.paper} />
       <mesh geometry={pinGeometry} material={toonMaterial("pin")} position={[0, n.h / 2 - 0.07, 0.03]} />
       <Painted text={look.title} size={0.055} at={[0, n.h / 2 - 0.17, 0.0065]} />
-      {/* Pencil lines while it is only pinned there; the real controls take
-          their place when the user is at the board. */}
+      {/* Pencil lines until the real controls are pinned on. */}
       {!inUse &&
         [0.06, -0.06, -0.18, -0.3].map((y, i) => (
           <Box key={y} size={[n.w * (i % 2 ? 0.55 : 0.72), 0.018, 0.002]} at={[-n.w * 0.06, y, 0.0075]} color="ink" />
@@ -207,11 +184,7 @@ function PinnedNote({ name, inUse }: { name: BoardNote; inUse: boolean }) {
   );
 }
 
-/**
- * The settings notice board. One object, always the same one: from the
- * desk its SETTINGS header names it and a click takes the user to it; at the
- * board its notes carry the controls, and its BACK TO DESK tag returns.
- */
+/** The settings notice board: clicked from the desk; at the board its notes carry the controls. */
 export function NoticeBoard() {
   const building = useBuilding();
   const font = useLetteringFont();
@@ -269,7 +242,7 @@ export function NoticeBoard() {
         ))}
       </Clickable>
 
-      {/* At the board: the way back, a tag on the header plank's right end. */}
+      {/* At the board: the way back. */}
       {atBoard && (
         <Clickable action="desk" station="noteboard" position={[right - BOARD_FRAME - 0.06 - tagW / 2, plankY, z + 0.046]}>
           <mesh geometry={roundedSlab({ w: tagW, h: 0.1, r: 0.028, depth: 0.012, bevel: 0.003 })} material={toonMaterial("accent")}>

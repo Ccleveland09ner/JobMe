@@ -1,17 +1,6 @@
 /**
- * Pagination for collections (dashboard history, long tables). Not for
- * interview progress — that is room/ProgressPill.
- *
- * Two modes, same markup:
- *   - `hrefForPage`  -> links. For server-rendered lists paged by URL; works
- *                       without JavaScript and survives refresh/back.
- *   - `onPageChange` -> buttons. For client-side lists.
- *
- * Deliberately no "use client": with `hrefForPage` it renders on the server.
- * A client parent passing `onPageChange` makes it a client component anyway.
- *
- * The slot count is constant (see pageWindow), so the control does not shift
- * the layout as the current page moves.
+ * Pagination for collections: links (`hrefForPage`, server-rendered) or
+ * buttons (`onPageChange`). A constant slot count keeps it from shifting.
  */
 
 import Link from "next/link";

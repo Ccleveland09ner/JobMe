@@ -1,10 +1,4 @@
-/**
- * Band classification. Pure and deterministic — the band decides the next
- * move, which is what makes "the scripted weak answer always gets a Clarify" a
- * guarantee rather than a hope.
- *
- * Ref: PRD > Adaptive Engine (Bands)
- */
+/** Band classification: pure and deterministic, since the band decides the next move. */
 
 import {
   GAP_PRIORITY,
@@ -26,19 +20,10 @@ export const GREAT_FLOOR = 3.5;
 /** No banding dimension may be below this for `great`. */
 export const GREAT_MIN_DIMENSION = 3;
 
-/**
- * How far past a threshold a score must land to leave last turn's band.
- * Observed: one borderline answer scored 2.00 then 1.55, flipping
- * mediocre/weak. Both clarify, but the resolution rules differ, so a flicker
- * can end a topic early for no perceptible reason.
- */
+/** How far past a threshold a score must land to leave last turn's band (no borderline flicker). */
 export const HYSTERESIS = 0.15;
 
-/**
- * `off_topic` forces `weak` only when relevance agrees. Without this gate one
- * model boolean outranks eight scores — observed live, a 3.60-average answer
- * banded `weak` for mis-framing.
- */
+/** `off_topic` forces `weak` only when relevance agrees (one boolean mustn't outrank eight scores). */
 export const OFF_TOPIC_RELEVANCE_CEILING = 2;
 
 export function average(scores: Scores): number {
@@ -61,11 +46,7 @@ export interface ClassifyOptions {
   /** The band of the previous answer in this thread, for hysteresis. */
   previousBand?: Band | null;
   anchor?: AnchorSimilarity;
-  /**
-   * Uncalibrated 0.05 threshold over embeddings that shift with the exemplar
-   * bank or model. Off by default: a false downgrade turns a Deepen into a
-   * Clarify on stage.
-   */
+  /** Uncalibrated, so off by default (a false downgrade turns a Deepen into a Clarify). */
   anchorDowngradeEnabled?: boolean;
 }
 
@@ -124,10 +105,7 @@ export function classifyBand(
   return band;
 }
 
-/**
- * Lowest of all eight, ties broken by GAP_PRIORITY. Overrides the model so the
- * gap on the notepad always matches the scores beside it.
- */
+/** The lowest of all eight (ties by GAP_PRIORITY), so the notepad's gap matches its scores. */
 export function computePrimaryGap(scores: Scores): Dimension {
   let best: Dimension = GAP_PRIORITY[0];
   for (const dimension of GAP_PRIORITY) {
@@ -136,10 +114,7 @@ export function computePrimaryGap(scores: Scores): Dimension {
   return best;
 }
 
-/**
- * No dimension rose by >= 1 against the previous answer. Stops a topic
- * grinding on after the candidate has given what they have.
- */
+/** No dimension rose by 1 or more since the previous answer: the topic has plateaued. */
 export function noDimensionRose(previous: Scores, current: Scores): boolean {
   return GAP_PRIORITY.every((d) => current[d] - previous[d] < 1);
 }

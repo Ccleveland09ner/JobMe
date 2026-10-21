@@ -1,10 +1,4 @@
-/**
- * Where the user can be, and what they see from there.
- *
- * A station is a camera pose. Routes map to stations (stationForPath), and
- * the camera travels between them along fixed paths (pathBetween) — the user
- * is led, never steered. See docs/reverse-engineering/implementation-plan.md.
- */
+/** Stations (camera poses), the routes that map to them, and the paths between. */
 
 import { BOARD_NOTES, CANDIDATE, CORRIDOR, DESK, FACADE_Z, LOBBY, NOTEBOARD, RECRUITER, ROOM, SECRETARY, type BoardNote } from "./world";
 
@@ -15,11 +9,7 @@ export interface Pose {
   target: [number, number, number];
   /** Vertical field of view in landscape; portrait widens it (fovFor). */
   fov: number;
-  /**
-   * Half the width, in metres, that must stay in view at the target: on a
-   * screen too narrow for it, the camera steps back along its line of sight
-   * (CameraRig). For the notice board, whose controls must not be cut off.
-   */
+  /** Half-width (m) to keep in view at the target; narrow screens step back. */
   fit?: number;
 }
 
@@ -27,8 +17,7 @@ export const POSES: Record<Station, Pose> = {
   street: { position: [0, 1.7, FACADE_Z + 21], target: [0, 5.4, FACADE_Z], fov: 46 },
   entrance: { position: [1.4, 1.65, FACADE_Z + 6.2], target: [-0.4, 1.6, FACADE_Z], fov: 46 },
   desk: { position: [0.3, 1.8, DESK.z + 3.5], target: [SECRETARY.x, 0.95, SECRETARY.z], fov: 36 },
-  // Square on to the settings board, near enough that its notes can be read
-  // and used: the whole board fills the view, nothing between.
+  // Square on to the board, close enough to use its notes.
   noteboard: {
     position: [(NOTEBOARD.left + NOTEBOARD.right) / 2, (NOTEBOARD.bottom + NOTEBOARD.top) / 2, NOTEBOARD.z + 2.35],
     target: [(NOTEBOARD.left + NOTEBOARD.right) / 2, (NOTEBOARD.bottom + NOTEBOARD.top) / 2, NOTEBOARD.z],
@@ -49,7 +38,7 @@ export const STATION_LABEL: Record<Station, string> = {
   room: "In the interview room",
 };
 
-/** In the lobby, lined up with the corridor: the turn between desk and corridor. */
+/** Lined up with the corridor: the turn between desk and corridor. */
 const CORRIDOR_MOUTH: Pose = {
   position: [CORRIDOR.x, 1.6, LOBBY.back + 1.6],
   target: [CORRIDOR.x, 1.5, ROOM.front],
@@ -63,10 +52,7 @@ const DESK_END: Pose = {
   fov: 40,
 };
 
-/**
- * Close-ups of each note on the board, for screens too narrow to use them
- * from the board's own pose (CameraRig, building focus).
- */
+/** A close-up of each note, for screens too small to use them from the board pose. */
 export const NOTE_CLOSE_UPS: Record<BoardNote, Pose> = Object.fromEntries(
   (Object.keys(BOARD_NOTES) as BoardNote[]).map((name) => {
     const n = BOARD_NOTES[name];
@@ -83,8 +69,7 @@ const WAYPOINTS: Partial<Record<`${Station}>${Station}`, Pose[]>> = {
   "street>room": [POSES.entrance, POSES.desk, CORRIDOR_MOUTH, POSES.corridor],
   "desk>room": [CORRIDOR_MOUTH, POSES.corridor],
   "desk>corridor": [CORRIDOR_MOUTH],
-  // The board is behind the desk, to the right: walk round the end of the
-  // counter, never over it; anywhere further goes past the desk first.
+  // Round the end of the counter, never over it.
   "desk>noteboard": [DESK_END],
   "noteboard>entrance": [DESK_END, POSES.desk],
   "noteboard>street": [DESK_END, POSES.desk, POSES.entrance],
@@ -105,8 +90,7 @@ const STATIONS: readonly Station[] = ["street", "entrance", "desk", "noteboard",
 
 /** Which station a route belongs to. Unknown routes stand at the desk. */
 export function stationForPath(pathname: string): Station {
-  // Development only: /dev/building/<station> stands at any station without
-  // signing in (app/(building)/dev/building, a 404 in production).
+  // Dev only: /dev/building/<station> (404 in production).
   const dev = /^\/dev\/building\/([a-z]+)$/.exec(pathname)?.[1];
   if (dev && (STATIONS as readonly string[]).includes(dev)) return dev as Station;
   if (pathname === "/") return "street";
@@ -116,10 +100,7 @@ export function stationForPath(pathname: string): Station {
   return "desk";
 }
 
-/**
- * Narrow screens keep roughly the landscape horizontal view by widening the
- * vertical one, so the subject is not cropped off the sides of a phone.
- */
+/** Narrow screens widen the vertical fov to keep the landscape width in view. */
 export function fovFor(pose: Pose, aspect: number): number {
   const minAspect = 1.3;
   if (aspect >= minAspect) return pose.fov;

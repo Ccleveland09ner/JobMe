@@ -1,18 +1,7 @@
 /**
- * The generic question bank: the behavioural questions that actually recur in
- * screens, at three difficulty levels, with seed follow-ups per gap.
- *
- * Ref: docs/PRD-JobMe-MVP.md > Adaptive Engine
- *
- * Openings are FIXED TEXT, never generated. That is what makes the demo
- * reproducible — the same scripted answer meets the same question every run —
- * and it is why a model failure can never leave the interview without
- * something to ask.
- *
- * `seeds.clarify` is keyed by the gap being chased, so a fallback question is
- * still aimed at the right weakness. These are used whenever a model draft is
- * rejected or the evaluator is unavailable, which on a 15 requests/minute free
- * tier is not a rare path.
+ * The question bank: recurring behavioural questions at three levels, with seed
+ * follow-ups per gap. Openings are fixed text, so there is always something to
+ * ask; seeds stand in when a model draft is rejected or unavailable.
  */
 
 import type { Dimension, TopicId } from "./types";
@@ -32,11 +21,7 @@ export interface TopicEntry {
   exemplars: { weak: string; strong: string };
 }
 
-/**
- * Clarify seeds that apply to any topic, used when a topic has no more
- * specific seed for the gap. Every gap needs coverage, because this is the
- * fallback path when the model is rate limited.
- */
+/** Clarify seeds for any topic, per gap (the rate-limited fallback path). */
 const GENERIC_CLARIFY: Record<Dimension, string[]> = {
   situation: [
     "Before we go further — what was the project, and when was this?",
@@ -322,13 +307,7 @@ export function questionFor(topicId: TopicId, difficulty: number): string {
   return entry.opening;
 }
 
-/**
- * Picks `count` topics at random.
- *
- * Randomised once at session creation and captured into `EngineState.topics`,
- * never re-rolled — `step()` must stay pure, and a session that reshuffled its
- * own topics on reload would be unresumable.
- */
+/** Picks `count` topics at random, once at session creation (step() stays pure). */
 export function pickTopics(count: number, exclude: TopicId[] = []): TopicId[] {
   const pool = (Object.keys(BANK) as TopicId[]).filter(
     (t) => !exclude.includes(t),

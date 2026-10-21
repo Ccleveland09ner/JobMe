@@ -1,16 +1,6 @@
 /**
- * POST /api/sessions/[id]/report — generate the scorecard once, then serve it.
- *
- * The pipeline lives in `lib/interview/report.ts`; this is the HTTP shell:
- * auth, the id check, and a Supabase-backed store. Every query goes through
- * the cookie client, so RLS scopes rows to the caller.
- *
- * Response: { summary, weakestTurnId, rewrite | null, stats, overallScores }
- * Errors:   401, 404, 409 (no answers yet)
- *
- * Also the target of End early, so it works from a single answered turn.
- *
- * Ref: TechDesign > Report Generator; Backend brief §6.4
+ * POST /api/sessions/[id]/report: generate the scorecard once, then serve it
+ * (pipeline: lib/interview/report.ts). 409 when nothing is answered yet.
  */
 
 import { NextResponse } from "next/server";

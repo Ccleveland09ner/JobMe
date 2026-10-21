@@ -1,24 +1,8 @@
 /**
- * The interview, prepared before it starts: one model call at session
- * creation that writes each thread's OPENING for this candidate and this job.
- *
- * Hybrid by design — a declared deviation from the brief's "openings are never
- * generated":
- *   - openings are pre-generated HERE, so no turn spends a model call or its
- *     latency on wording one;
- *   - follow-ups stay live: `evaluateAndDraft` drafts them from the answer
- *     just given, in the context of the thread so far;
- *   - the ENGINE still decides every move, and which topic or resume item
- *     comes next. This module only supplies wording, and every entry has a
- *     fixed fallback — the bank's text, or `fallbackResumeQuestion()`.
- *
- * The mix it produces: general behavioural openings (the bank, untouched),
- * role-specific ones (at most ROLE_TAILORED_TOPICS bank topics re-framed for
- * the target job) and resume-led ones (one per item to cover).
- *
- * A session with no job details and no resume never calls this, so it runs
- * the fixed bank text exactly as before — which is how the demo stays
- * reproducible.
+ * The interview, prepared at session creation: one model call writes each
+ * thread's opening for this candidate and job. Follow-ups stay live, the engine
+ * still decides every move, and every entry falls back to fixed text. Not
+ * called without job details or a resume.
  */
 
 import { Type } from "@google/genai";
@@ -179,10 +163,7 @@ export function buildPlanPrompt(inputs: PlanInputs): string {
   return parts.join("\n\n");
 }
 
-/**
- * One call; `null` on any failure. Session start must never fail because the
- * model is rate limited — the fixed openings are a complete interview.
- */
+/** One call; null on any failure (the fixed openings are a complete interview). */
 export async function generateQuestionPlan(
   inputs: PlanInputs,
   generate: typeof generateJson = generateJson,
@@ -208,15 +189,9 @@ export async function generateQuestionPlan(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Validation — every entry stands or falls alone
-// ---------------------------------------------------------------------------
+// Validation: every entry stands or falls alone.
 
-/**
- * Mechanical checks for an opening, in the spirit of `checkDraft` — but an
- * opening may be a "Tell me about a time..." statement, and runs a little
- * longer than a follow-up.
- */
+/** Mechanical checks for an opening (like checkDraft, but statements and a little more length are fine). */
 export function checkOpening(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
@@ -236,10 +211,7 @@ const GENERIC_WORDS = new Set([
   "member", "associate", "consultant", "volunteer", "the", "and", "for",
 ]);
 
-/**
- * A resume-led opening must name its item — otherwise coverage is marked for
- * a question that was never really about it.
- */
+/** A resume-led opening must name its item, or coverage is marked falsely. */
 export function namesItem(text: string, item: ResumeItem): boolean {
   const haystack = text.toLowerCase();
   // A role is named by where it was — "backend intern" alone fits anyone.
@@ -333,9 +305,7 @@ export function validatePlan(raw: unknown, inputs: PlanInputs): QuestionPlan | n
   return { version: 1, role, topics, resume };
 }
 
-// ---------------------------------------------------------------------------
-// Lookups — the turn pipeline asks, and falls back to fixed text on null
-// ---------------------------------------------------------------------------
+// Lookups: the turn pipeline falls back to fixed text on null.
 
 const alreadyAsked = (text: string, asked: string[]) =>
   asked.some((q) => normalise(q) === normalise(text));

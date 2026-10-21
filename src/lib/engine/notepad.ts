@@ -1,13 +1,6 @@
 /**
- * Notepad text.
- *
- * Ref: docs/PRD-JobMe-MVP.md > Recruiter's Notepad
- *
- * The model supplies the *observation* (what it noticed). The *reason* (why
- * this next question) is always built here, so it can never contradict the
- * move the engine actually took — the notepad is the product's claim that the
- * adaptivity is real, and a reason line that disagrees with the question would
- * undermine exactly that.
+ * Notepad text. The model supplies the observation; the reason line is built
+ * here, so it can never contradict the move the engine took.
  */
 
 import type { Band, Dimension, Move, QuestionSource } from "./types";
@@ -65,11 +58,7 @@ const RESUME_LEADS = [
   "Something on your resume caught my eye.",
 ];
 
-/**
- * Spoken before a new thread's opening, so a change of topic sounds like a
- * conversation rather than the next item on a list. Picked by position, never
- * at random, so a scripted rehearsal hears the same words every run.
- */
+/** Spoken before a new thread's opening; picked by position, not at random (reproducible). */
 export function transitionLead(source: QuestionSource, position: number): string {
   const leads = source === "resume" ? RESUME_LEADS : BANK_LEADS;
   return leads[Math.abs(Math.trunc(position)) % leads.length];

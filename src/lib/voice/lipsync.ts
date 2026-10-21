@@ -1,21 +1,8 @@
 /**
- * Lip-sync: spoken text -> a timed sequence of mouth shapes (visemes).
- * Pure, so it is unit-tested without a browser (lipsync.test.ts).
- *
- * The recruiter model carries the 15 Oculus visemes as face shapes
- * (`viseme_sil` … `viseme_U`). Driving them from the text — rather than
- * from loudness alone — is what makes the mouth form the words: lips close
- * on P/B/M, teeth meet the lip on F/V, the mouth rounds on O and U.
- *
- * Two kinds of timeline, one shape:
- *   - alignedTimeline(): from per-character times the TTS service reports
- *     (ElevenLabs "with-timestamps"). Exact: the mouth follows the audio clock.
- *   - estimatedTimeline(): from the text and a speaking rate, for the browser
- *     voice, which reports only when each word starts. The player re-anchors
- *     to those word events, so the estimate never drifts more than a word.
- *
- * English spelling is a loose guide to sound; these rules aim at the mouth
- * shapes a viewer reads (closed lips, rounded lips, open jaw), not phonetics.
+ * Lip-sync: spoken text -> a timed sequence of the model's 15 visemes (pure).
+ * alignedTimeline() uses the TTS service's per-character times (exact);
+ * estimatedTimeline() estimates from the text for the browser voice. Aimed at
+ * the shapes a viewer reads, not phonetics.
  */
 
 export const VISEMES = ["sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "I", "O", "U"] as const;
@@ -105,11 +92,7 @@ const DIGRAPH: Record<string, Viseme> = {
   ow: "O",
 };
 
-/**
- * The visemes of one word, each with the letters it covers (`to` exclusive).
- * Letters with no shape of their own (h, a silent final e, apostrophes) join
- * their neighbour instead of producing one.
- */
+/** One word's visemes and the letters each covers; shapeless letters join a neighbour. */
 export function wordVisemes(word: string): { viseme: Viseme; from: number; to: number }[] {
   const w = word.toLowerCase();
   const out: { viseme: Viseme; from: number; to: number }[] = [];
@@ -179,10 +162,7 @@ function pauseAfter(between: string): number {
   return 0.05;
 }
 
-/**
- * A timeline from the text alone, for the browser voice. `charsPerSecond`
- * is the voice's speaking rate in letters per second, learned while it talks.
- */
+/** A timeline from the text alone (browser voice), at a learned letters-per-second rate. */
 export function estimatedTimeline(text: string, charsPerSecond: number): SpeechTimeline {
   const cues: VisemeCue[] = [];
   const words: WordSpan[] = [];
@@ -203,11 +183,7 @@ export function estimatedTimeline(text: string, charsPerSecond: number): SpeechT
   return { text, cues, words, duration: t };
 }
 
-/**
- * A timeline from per-character times reported with the audio (seconds from
- * its start). `characters` must spell out `text`; where it does not (the
- * service normalised something), the estimate stands in for the whole line.
- */
+/** A timeline from per-character audio times; the estimate stands in if they don't spell the text. */
 export function alignedTimeline(
   text: string,
   characters: string[],
@@ -231,10 +207,7 @@ export function alignedTimeline(
   return { text, cues, words, duration: ends.at(-1) ?? 0 };
 }
 
-/**
- * The mouth at time `t`: every shape within a fade of `t`, ramped in and out
- * over FADE_SECONDS so neighbouring shapes blend. Silence weighs nothing.
- */
+/** The mouth at time `t`: shapes within a fade of `t`, blended. Silence weighs nothing. */
 export function sampleVisemes(timeline: SpeechTimeline, t: number): VisemeWeights {
   const out: VisemeWeights = {};
   for (const cue of timeline.cues) {

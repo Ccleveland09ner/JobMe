@@ -1,9 +1,6 @@
 /**
- * The one button. `buttonClasses()` is exported so a `<Link>` that acts as a
- * button looks identical without a second implementation.
- *
- * Defaults to `type="button"`: a bare <button> inside a form submits it,
- * which is the classic accidental-submit bug.
+ * The one button; buttonClasses() styles a <Link> the same way. Defaults to
+ * type="button", so it never submits a form by accident.
  */
 
 import type { ButtonHTMLAttributes } from "react";
@@ -16,11 +13,7 @@ const BASE =
   "transition-[transform,box-shadow,background-color,border-color] duration-150 " +
   "disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
 
-/**
- * Solid buttons are drawn objects, like the building behind them: an ink
- * edge, a faint paper grain, a soft shadow, and a small lift under the
- * pointer that settles back when pressed. Ghost buttons stay flat.
- */
+/** Solid buttons are drawn objects (ink edge, paper grain, a lift on hover); ghost buttons are flat. */
 const RAISED =
   "grain border-2 border-ink shadow-md " +
   "not-disabled:not-aria-disabled:hover:-translate-y-0.5 not-disabled:not-aria-disabled:hover:shadow-lg " +

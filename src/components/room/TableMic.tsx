@@ -1,18 +1,8 @@
 "use client";
 
 /**
- * The candidate's microphone button: a tabletop podcast mic, after
- * design/Black USB Podcast Microphone on Stand.png and its interactive SVG
- * (a metal body, a mesh grille, a status ring with a mic icon, a status dot).
- *
- *   disabled   the interviewer is speaking: it does not start, and a press
- *              says why (🚫) instead of silently doing nothing
- *   ready      the candidate's turn: press to start answering
- *   recording  lit green and pulsing: press to send
- *
- * A real <button> with aria-pressed: keyboard and screen readers get the same
- * control as the pointer. aria-disabled rather than `disabled`, so it stays
- * focusable and can explain itself when pressed too early.
+ * The candidate's mic button, drawn as a tabletop podcast mic. aria-disabled
+ * rather than disabled, so pressing it too early can explain why (🚫).
  */
 
 import { useEffect, useId, useRef, useState } from "react";

@@ -1,16 +1,8 @@
 "use client";
 
 /**
- * Which resume the interview draws on: the latest one on file, a new upload,
- * or none.
- *
- * Upload goes to the real POST /api/resume (multipart `file`, plus the pasted
- * job description as `roleText` so the coverage list is ranked against it).
- * The PDF is parsed and discarded server-side; only redacted text is kept.
- *
- * `layoutSuspect` is a hard requirement from the resume pipeline: a flattened
- * two-column PDF parses into plausible nonsense that only the candidate can
- * spot, so the extracted text must be confirmed before the resume is used.
+ * Which resume the interview uses: the latest on file, a new upload, or none.
+ * A suspect layout (e.g. two columns) must be confirmed before use.
  */
 
 import { useId, useState } from "react";

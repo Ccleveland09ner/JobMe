@@ -1,23 +1,12 @@
-/**
- * Speaking stats, computed in code so they never depend on an AI call.
- *
- * Ref: docs/TechDesign-JobMe-MVP.md > Speaking Stats
- */
+/** Speaking stats, computed in code so they never depend on an AI call. */
 
-/**
- * Over CAPTURE time, not hold time: hold includes thinking pauses and
- * under-reports speaking rate by 20-40% on a considered answer, which would
- * tell a well-paced candidate they speak too slowly.
- */
+/** Over capture time, not hold time (which includes pauses and under-reports pace). */
 export function wpm(text: string, captureMs: number): number {
   if (captureMs <= 0) return 0;
   return Math.round(wordCount(text) / (captureMs / 60000));
 }
 
-/**
- * Labelled "approximate" wherever it surfaces: Chrome drops most "um"/"uh"
- * before the server sees the transcript, so a low count means little.
- */
+/** Approximate: Chrome drops most "um"/"uh" before the server sees the text. */
 export const FILLER_RE =
   /\b(um+|uh+|erm|like|you know|basically|actually|kind of|sort of|i mean)\b/gi;
 

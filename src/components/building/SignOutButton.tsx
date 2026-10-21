@@ -1,10 +1,6 @@
 "use client";
 
-/**
- * Leaving the building: walk back to the front door first, then sign out
- * with a POST to /logout. Without JavaScript, or without the 3D building, the
- * form simply submits. Lives on the settings board's Account note.
- */
+/** Sign out: walk to the front door, then POST /logout. Without 3D it just submits. */
 
 import { useEffect, useRef, useState } from "react";
 

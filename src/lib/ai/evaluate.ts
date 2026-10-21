@@ -1,17 +1,7 @@
 /**
- * One LLM call per turn: score the answer AND draft both follow-ups, so the
- * policy picks a move without a second round trip.
- *
- * THE INVARIANT: this returns scores and wording, never a move. `RawEvaluation`
- * gaining `move`, `action` or `next_question` is the one change that breaks
- * the architecture — reviewable in five seconds.
- *
- * `primary_gap` and `evidence` are computed in code instead of asked for:
- * the gap was already overridden by `computePrimaryGap()`, and models
- * paraphrase rather than quote, so extracting evidence locally guarantees the
- * scorecard highlight matches. Decode dominates latency, so both are speedups.
- *
- * Ref: TechDesign > Evaluator
+ * One LLM call per turn: score the answer and draft both follow-ups.
+ * INVARIANT: it returns scores and wording, never a move. primary_gap and
+ * evidence are computed in code (models paraphrase rather than quote).
  */
 
 import { Type } from "@google/genai";
@@ -37,10 +27,7 @@ export interface RawEvaluation {
   scores: Scores;
   observation: string;
   off_topic: boolean;
-  /**
-   * Follow-ups only: restated the earlier answer instead of expanding it. A
-   * distinct failure from a weak answer, and it gets different copy.
-   */
+  /** Follow-ups only: restated the earlier answer instead of expanding it. */
   repeats_previous: boolean;
   drafts: { deepen: string; clarify: string };
 }
@@ -117,11 +104,7 @@ export function validateEvaluation(value: unknown): RawEvaluation {
   };
 }
 
-/**
- * The most quotable sentence, scored by evidence density — numbers and
- * first-person language, which is what the rubric cares about. Guaranteed to
- * be a verbatim substring, which is what makes the scorecard highlight work.
- */
+/** The most quotable sentence (numbers, first person), always a verbatim substring. */
 export function extractEvidence(answer: string, maxWords = 20): string {
   const sentences = answer
     .split(/(?<=[.!?])\s+/)
@@ -145,10 +128,7 @@ export function extractEvidence(answer: string, maxWords = 20): string {
   return words.length <= maxWords ? best : words.slice(0, maxWords).join(" ");
 }
 
-/**
- * Retries once on a validation failure (usually a transient sampling artefact)
- * but never on a rate limit, where retrying burns the next of 15 per minute.
- */
+/** Retries once on a validation failure, never on a rate limit. */
 export async function evaluateAndDraft(args: {
   topic: string;
   questionText: string;

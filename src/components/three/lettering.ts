@@ -1,17 +1,6 @@
 /**
- * 3D lettering for the building: words that are part of the scene, not
- * pages laid over it — the names floating over the desk's objects, SETTINGS
- * on the notice board's header, the titles of its notes.
- *
- * Comic Neue Bold (the app's own fallback face; SIL OFL, see
- * THIRD_PARTY_NOTICES.md) as a three.js typeface, extruded with
- * TextGeometry — react-three-renderer's <textGeometry>, in today's three.
- *
- * Built once, shared everywhere (react-three-renderer's <resources> idea):
- *   - the font loads once (R3F's loader cache);
- *   - each (text, size, depth) geometry is built once and cached here;
- *   - materials are cached per colour pair.
- * Never mutate what these return — they are shared.
+ * 3D lettering for words in the scene (Comic Neue Bold, SIL OFL). The font,
+ * geometries and materials are built once and shared: never mutate them.
  */
 
 import { useLoader } from "@react-three/fiber";
@@ -34,18 +23,9 @@ export interface LetteringSpec {
   size: number;
   /** Extrusion depth in metres; 0 is flat paint. */
   depth: number;
-  /**
-   * "center": centred on all axes (floating words).
-   * "surface": centred in the plane, back face at z = 0, so the letters sit
-   * on whatever surface they are placed on (painted or raised lettering).
-   */
+  /** "center": centred on all axes. "surface": back face at z = 0, to sit on a surface. */
   anchor?: "center" | "surface";
-  /**
-   * Fatten every glyph outward by this much, in metres: drawn in ink behind
-   * the letters, it is their outline. (The building's ink-outline pass works
-   * by pushing back faces out along their normals, which on lettering — flat
-   * caps facing the camera — scatters into a ragged halo.)
-   */
+  /** Fatten each glyph by this much (m); drawn in ink behind the letters, it's an even outline. */
   stroke?: number;
 }
 
@@ -59,8 +39,7 @@ export function letteringGeometry(font: Font, { text, size, depth, anchor = "cen
     geometry = new TextGeometry(
       text,
       stroke > 0
-        ? // The whole glyph pushed out by `stroke` (bevelOffset moves the
-          // caps too), with no slope: an even, flat-sided fattening.
+        ? // bevelOffset pushes the whole glyph out, caps included.
           {
             font,
             size,
@@ -103,11 +82,7 @@ export function letteringWidth(geometry: THREE.BufferGeometry): number {
 
 const materialCache = new Map<string, THREE.MeshToonMaterial[]>();
 
-/**
- * [face, sides] — ExtrudeGeometry's two material groups — as toon
- * materials. `outlined: false` keeps the ink outline pass off them (painted
- * lettering is already ink; an outline on top only blots it).
- */
+/** [face, sides] toon materials. `outlined: false` keeps the outline pass off them. */
 export function letteringMaterials(face: PaletteColor, side: PaletteColor, outlined = true): THREE.MeshToonMaterial[] {
   const key = `${face}|${side}|${outlined}`;
   let materials = materialCache.get(key);

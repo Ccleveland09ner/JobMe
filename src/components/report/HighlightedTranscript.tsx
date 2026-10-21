@@ -1,12 +1,6 @@
 /**
- * Full transcript with each answer's evidence quote marked and tagged.
- * Ref: docs/TechDesign-JobMe-MVP.md > Scorecard Page
- *
- * The turn's `evidence` is located inside the answer case-insensitively
- * (findEvidence) and wrapped in <mark> with its gap tag.
- *
- * FALLBACK THAT MATTERS: if there is no match, the quote is shown beneath the
- * answer instead. Never dropped silently, never a crash over it.
+ * The full transcript with each answer's evidence quote marked. A quote that
+ * can't be found is shown beneath its answer, never dropped.
  */
 
 import { DIMENSION_LABELS, MOVE_LABELS, topicLabel } from "@/lib/frontend/labels";

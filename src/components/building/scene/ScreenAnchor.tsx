@@ -1,18 +1,9 @@
 "use client";
 
 /**
- * Pins a DOM element onto a rectangle in the scene.
- *
- * Every rendered frame (no React render), the rectangle's corners are
- * projected through the camera, and the element registered under `name`
- * (building.setAnchor) is moved and sized to cover exactly that rectangle —
- * rotated with it, if it is tilted. The element is ordinary, sharp,
- * accessible DOM; it just sits where the 3D thing is. Used to put the
- * settings controls onto the notice board's own notes: the board is the 3D
- * one, the writing on its notes is real form controls.
- *
- * Place it inside the group the rectangle belongs to; the rectangle lies in
- * that group's XY plane, centred on `position`.
+ * Pins the DOM element registered as `name` (building.setAnchor) onto a
+ * rectangle in the parent group's XY plane: each frame its corners are
+ * projected and the element is moved, sized and rotated to cover it.
  */
 
 import { useFrame } from "@react-three/fiber";
@@ -53,10 +44,7 @@ export function ScreenAnchor({
     const el = building?.anchors.current.get(name);
     const g = group.current;
     if (!el || !g) return;
-    // This frame's camera (CameraRig has already moved it) and this frame's
-    // place for the rectangle: the renderer only refreshes world matrices
-    // after the frame callbacks, and with on-demand frames a stale
-    // projection could be the last word.
+    // Fresh matrices: the renderer only updates them after frame callbacks.
     camera.updateMatrixWorld();
     g.updateWorldMatrix(true, false);
     const tl = toScreen(corner.tl.set(-width / 2, height / 2, 0), g, camera, size.width, size.height);

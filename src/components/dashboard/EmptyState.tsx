@@ -1,7 +1,4 @@
-/**
- * First-use dashboard state.
- * Ref: docs/PRD-JobMe-MVP.md > States and Boundaries
- */
+/** First-use dashboard state. */
 
 import Link from "next/link";
 

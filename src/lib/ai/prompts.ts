@@ -1,13 +1,6 @@
 /**
- * Prompt text, kept out of the logic files so it can be tuned without touching
- * control flow.
- *
- * PROMPT INJECTION: the answer, role text and resume are all untrusted —
- * anyone can upload or say anything — so each is wrapped in
- * `asUntrustedData()`. The model cannot change flow regardless of what it is
- * told: the state machine owns that, and only consumes scores and wording.
- *
- * Ref: TechDesign > Evaluator
+ * Prompt text. Candidate text (answer, role, resume) is untrusted and wrapped
+ * in asUntrustedData(); the model supplies scores and wording, never flow.
  */
 
 /** Marks candidate text as data, not orders. */
@@ -15,10 +8,7 @@ export function asUntrustedData(label: string, text: string): string {
   return `<${label}>\n${text}\n</${label}>`;
 }
 
-/**
- * Anchors are spelled out at every level because "score 1-4" alone drifts
- * between runs, and drift in `relevance` flips the band and the next move.
- */
+/** Anchors at every level: "score 1-4" alone drifts between runs. */
 const RUBRIC = `
 Score each dimension 1-4.
 
@@ -110,12 +100,8 @@ export function evaluatorSystemFor(questionType: string): string {
 }
 
 /**
- * A follow-up is graded on what it ADDS, not on whether it re-tells a whole
- * STAR story — demanding that would penalise the focused answer we asked for.
- *
- * The dimensions stay identical to the opening's on purpose: the engine
- * compares `threadScores` across turns to detect a plateau, which is
- * meaningless if the axes shift. So the axes are fixed and the reading shifts.
+ * A follow-up is graded on what it adds, on the opening's axes (the engine
+ * compares scores across a thread to spot a plateau).
  */
 export const FOLLOWUP_GUIDANCE = [
   "",

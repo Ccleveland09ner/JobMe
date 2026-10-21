@@ -1,11 +1,8 @@
 "use client";
 
 /**
- * Draws the whole scene once through three's OutlineEffect: the ink edge on
- * every mesh, characters and scenery alike. Mount exactly one per <Canvas>.
- *
- * Priority 1 takes over rendering from R3F, and runs after every priority-0
- * frame callback (avatars, camera), so the frame is drawn fully updated.
+ * Renders the scene through OutlineEffect (the ink edge on every mesh). One
+ * per <Canvas>; priority 1 takes over rendering, after all other callbacks.
  */
 
 import { useFrame, useThree } from "@react-three/fiber";

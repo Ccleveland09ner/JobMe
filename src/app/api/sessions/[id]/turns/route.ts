@@ -1,11 +1,6 @@
 /**
- * POST /api/sessions/[id]/turns — the hot path.
- *
- * The orchestration lives in `lib/interview/turn.ts` so the rehearsal harness
- * runs identical code. This is the HTTP shell: auth, validation, idempotency,
- * persistence.
- *
- * Ref: TechDesign > The Core Journey (8)
+ * POST /api/sessions/[id]/turns: the hot path. The orchestration is
+ * lib/interview/turn.ts; this is auth, validation, idempotency, persistence.
  */
 
 import { NextResponse, after } from "next/server";
@@ -50,10 +45,8 @@ export async function POST(
 
   const supabase = await createClient();
 
-  // RLS makes another user's session invisible: "not found" and "not yours"
-  // are the same 404, so the difference never leaks. The latest turns come
-  // back in the same round trip — a thread is at most MAX_FOLLOW_UPS answers
-  // deep, and the evaluator needs them to score a follow-up in context.
+  // Under RLS another user's session is the same 404. The latest turns come in
+  // the same round trip, to score a follow-up in context.
   const [
     { data: session, error: sessionError },
     { data: recentTurns, error: turnsError },
@@ -71,9 +64,7 @@ export async function POST(
       .limit(MAX_FOLLOW_UPS),
   ]);
 
-  // A failed query is not a missing row. Answering 404 here would tell the
-  // candidate their interview is gone when the database merely errored — and
-  // hide the likeliest cause after a deploy, an unapplied migration.
+  // A failed query isn't a missing row (often an unapplied migration): not a 404.
   if (sessionError) {
     console.error(
       `[turn] load session ${id}: ${sessionError.message} ` +
@@ -101,11 +92,7 @@ export async function POST(
 
   const state = session.engine_state as EngineState;
 
-  /**
-   * Idempotency. Push-to-talk double-fires constantly; without this the same
-   * answer is scored twice and the engine advanced twice. The client resyncs
-   * from the state in this body rather than retrying.
-   */
+  /** Idempotency: a double-fired submit gets the state to resync from, not a second turn. */
   if (body.clientTurnSeq !== state.turnSeq + 1) {
     return NextResponse.json(
       {
@@ -122,8 +109,7 @@ export async function POST(
   const planParse = QuestionPlan.safeParse(session.question_plan);
   const plan = planParse.success ? planParse.data : null;
 
-  // Distilled facts go in every prompt — a fixed prefix, cheap and
-  // reproducible.
+  // Distilled facts go in every prompt (a fixed prefix).
   let resumeFacts: string | null = null;
   let role: RoleProfile | null = null;
 
@@ -146,8 +132,7 @@ export async function POST(
     captureMs: body.captureMs,
     resumeFacts,
     role,
-    // THIS session's job outranks the resume's. The plan's distilled summary
-    // is preferred to the raw posting: shorter prompt, same signal.
+    // This session's job outranks the resume's; the plan's summary beats the raw posting.
     roleText: plan?.role
       ? formatRoleForPrompt(plan.role)
       : (session.role_text ?? null),
@@ -163,12 +148,8 @@ export async function POST(
   }
 
   /**
-   * SYNCHRONOUS and ATOMIC. The tech design put the turn insert in `after()`
-   * for latency, which is wrong: if it fails after the response is sent, the
-   * candidate heard a question that was never persisted and idempotency
-   * silently breaks. `submit_turn` writes the turn and advances engine_state
-   * in one transaction, and only from the turnSeq read above — so a
-   * double-fired submit racing this one cannot overwrite it.
+   * Synchronous and atomic: submit_turn writes the turn and advances
+   * engine_state in one transaction, only from the turnSeq read above.
    */
   const saveStarted = performance.now();
   const { error: submitError } = await supabase.rpc("submit_turn", {
@@ -180,8 +161,7 @@ export async function POST(
   const saveMs = Math.round(performance.now() - saveStarted);
 
   if (isStaleSubmit(submitError)) {
-    // Lost the race: the other submit's turn is the one that counts, and the
-    // client resyncs from its state rather than retrying.
+    // Lost the race: the other submit counts; the client resyncs.
     const { data: latest } = await supabase
       .from("interview_sessions")
       .select("engine_state")
@@ -210,11 +190,7 @@ export async function POST(
     );
   }
 
-  // Telemetry only. `after()` runs even when the response errored, so nothing
-  // here may be load-bearing. One line per turn is how the latency budget is
-  // measured (PRD > Success Metrics: "timing logged in dev console"): eval is
-  // the model call, save the atomic write, total everything up to the reply.
-  // No transcript or other candidate text goes in the log.
+  // Telemetry only (after() runs even on errors): one timing line per turn, no candidate text.
   // TODO(integration): TTS prewarm belongs here once /api/tts has a cache.
   const totalMs = Math.round(performance.now() - started);
   after(() => {

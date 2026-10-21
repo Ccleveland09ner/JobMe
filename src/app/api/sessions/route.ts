@@ -1,14 +1,7 @@
 /**
- * POST /api/sessions — create a session and return its first question.
- *
- * Ref: docs/TechDesign-JobMe-MVP.md > API Contracts
- *
- * The interview is prepared here, before it starts. When there is anything to
- * personalise — a job title, a job description (pasted, or read from a
- * posting link) or a resume — one model call writes the thread openings
- * (lib/ai/question-plan.ts). It is this route's only model call, it is
- * time-boxed, and if it fails the session starts on the fixed bank text: a
- * rate limit costs polish, never the interview.
+ * POST /api/sessions: create a session and its first question. With anything
+ * to personalise, one time-boxed model call writes the thread openings; if it
+ * fails, the fixed bank text is used.
  */
 
 import { NextResponse } from "next/server";
@@ -54,8 +47,7 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
 
-  // Independent reads and the profile write, in one round trip. The resume's
-  // chunks come along so the plan can quote the text behind each item.
+  // Reads and the profile write in one round trip (chunks let the plan quote the resume).
   const [, resumeRes, postingRes] = await Promise.allSettled([
     supabase
       .from("profiles")
@@ -76,8 +68,7 @@ export async function POST(request: Request) {
     body.jobUrl ? fetchJobPosting(body.jobUrl) : Promise.resolve(null),
   ]);
 
-  // The candidate chose to give a link; ignoring a bad one silently would
-  // start an interview that is quietly not about their job.
+  // A bad link is an error, never silently ignored.
   if (postingRes.status === "rejected") {
     const err = postingRes.reason;
     if (err instanceof JobLinkError) {
@@ -87,11 +78,7 @@ export async function POST(request: Request) {
   }
   const posting = postingRes.value;
 
-  /**
-   * Already ranked against the job description at ingest. Full mode without a
-   * resume has nothing to cover, so it degrades to a longer bank-led
-   * interview rather than failing.
-   */
+  /** Ranked at ingest. Full mode without a resume becomes a longer bank-led interview. */
   const resume =
     resumeRes.status === "fulfilled" ? resumeRes.value.data : null;
   const resumeItems = (resume?.coverage_items ?? []) as ResumeItem[];
@@ -100,8 +87,7 @@ export async function POST(request: Request) {
   const topics = pickTopics(body.mode === "full" ? FULL_TOPICS : QUICK_TOPICS);
   const jobText = posting?.text ?? body.roleText ?? null;
 
-  // Quick mode's cap leaves room for only a few resume threads; items past
-  // those still get the deterministic opening if they are reached.
+  // Quick mode plans only a few resume threads; later ones get the fixed opening.
   const planItems =
     body.mode === "full"
       ? resumeItems

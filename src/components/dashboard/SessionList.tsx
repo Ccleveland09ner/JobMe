@@ -1,14 +1,8 @@
 "use client";
 
 /**
- * Interview history for the current page, plus delete.
- *
- * Pagination is NOT in here: the dashboard pages on the server by URL
- * (`?page=`), so this list only ever receives one page of rows. Moving to a
- * paged API later changes the page component, not this one.
- *
- * Delete: confirm -> DELETE /api/sessions/[id] -> router.refresh(). No full
- * reload. A 404 counts as success — the row is gone either way.
+ * One page of interview history (the server pages by URL), with delete.
+ * A 404 on delete counts as success: the row is gone either way.
  */
 
 import { useRouter } from "next/navigation";

@@ -1,8 +1,4 @@
-/**
- * Setup -> room handoff through sessionStorage. Optional by design: every
- * read and write tolerates storage being unavailable (private mode, blocked
- * site data), and the room works without it.
- */
+/** Setup -> room handoff through sessionStorage; optional, so storage may be unavailable. */
 
 const introKey = (sessionId: string) => `jobme:intro:${sessionId}`;
 

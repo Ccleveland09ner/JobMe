@@ -1,10 +1,4 @@
-/**
- * Auth guard for every protected page and route. Load-bearing now that
- * `proxy.ts` no longer matches `/api/*`: handlers authenticate here instead of
- * relying on middleware that cost a `getUser()` round trip on every request.
- *
- * Ref: TechDesign > Components > Auth and Profile
- */
+/** Auth guards. Route handlers authenticate here (proxy.ts skips /api). */
 
 import { redirect } from "next/navigation";
 
@@ -16,9 +10,8 @@ export interface AuthedUser {
 }
 
 /**
- * Pages and Server Components; redirects when signed out. Uses `getUser()`,
- * which revalidates the token — NOT `getSession()`, which reads the cookie
- * without verifying it and must never be trusted server-side.
+ * For pages: redirects when signed out. Uses getUser(), which verifies the
+ * token (getSession() doesn't, so never trust it server-side).
  */
 export async function requireUser(): Promise<AuthedUser> {
   const user = await getUserOrNull();

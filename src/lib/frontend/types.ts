@@ -1,16 +1,6 @@
 /**
- * View types: what pages and components render.
- *
- * These describe the API responses and table rows the frontend consumes,
- * narrowed to what is safe and useful to show. They deliberately do NOT carry
- * `EngineState` — engine internals stay on the server; pages extract a
- * `ProgressView` and the current question instead (see adapters.ts).
- *
- * Shapes follow the route implementations, not the tech design, where the two
- * disagree:
- *   - POST /api/sessions             src/app/api/sessions/route.ts
- *   - POST /api/sessions/[id]/turns  src/app/api/sessions/[id]/turns/route.ts
- *   - POST /api/sessions/[id]/report src/lib/interview/report.ts (ReportBody)
+ * View types: the API responses and rows the frontend renders, narrowed to
+ * what is safe to show. EngineState stays on the server.
  */
 
 import type {
@@ -38,11 +28,7 @@ export interface QuestionView {
   lead?: string;
 }
 
-/**
- * Interview progress. Every field past `questionCount` is optional because
- * the create and turn responses expose different subsets, and the component
- * must degrade rather than break when one is missing.
- */
+/** Interview progress; fields past questionCount are optional (the responses differ). */
 export interface ProgressView {
   mode?: InterviewMode;
   /** The number of the question on screen. Starts at 1. */
@@ -55,11 +41,7 @@ export interface ProgressView {
   topicsTotal?: number;
 }
 
-/**
- * One Recruiter's Notepad entry. Mirrors `NotepadEntry` in
- * lib/interview/turn.ts — the shape the turn route actually returns, which
- * has `source` and `degraded` where engine/types.ts's older copy does not.
- */
+/** One notepad entry, as the turn route returns it (NotepadEntry in lib/interview/turn.ts). */
 export interface NoteView {
   seq: number;
   topic: TopicId;
@@ -78,9 +60,7 @@ export interface NoteView {
   degraded: boolean;
 }
 
-// ---------------------------------------------------------------------------
 // API responses
-// ---------------------------------------------------------------------------
 
 export interface CreateSessionResponse {
   sessionId: string;
@@ -134,9 +114,7 @@ export interface ReportView {
   overallScores: Partial<Scores> | null;
 }
 
-// ---------------------------------------------------------------------------
 // Rows the pages read directly (RLS-scoped)
-// ---------------------------------------------------------------------------
 
 export type SessionStatus = "in_progress" | "completed";
 

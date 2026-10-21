@@ -1,18 +1,8 @@
 "use client";
 
 /**
- * Score trend across completed interviews, oldest to newest.
- * Ref: docs/PRD-JobMe-MVP.md > Dashboard and Progress
- *
- * Hand-rolled SVG rather than a chart library: one series at a time, chosen
- * with a radio group, is clearer than eight overlapping lines and costs no
- * dependency. Values are the backend's `overall_scores`; nothing is
- * recomputed here except the headline "Average" series (see displayAverage).
- *
- * Accessibility: the SVG is a labelled image with per-point <title>s, and a
- * visually hidden table carries every value for screen-reader users.
- *
- * Needs >= 2 completed sessions; below that a placeholder.
+ * Score trend across completed interviews, one series at a time, as plain SVG
+ * with a hidden data table for screen readers. Needs 2+ completed sessions.
  */
 
 import { useId, useState } from "react";

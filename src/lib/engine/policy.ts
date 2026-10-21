@@ -1,13 +1,7 @@
 /**
- * The adaptive state machine — the kernel. Every next move is decided here;
- * the model only ever supplies WORDING, which is validated and replaceable by
- * a bank seed.
- *
- * `step()` is pure: no I/O, no Date.now(), no Math.random(). Randomness lives
- * in `initState()`, captured into `topics` and never re-rolled, so a session
+ * The adaptive state machine: every next move is decided here; the model only
+ * supplies wording. step() is pure (no I/O, clock or randomness), so a session
  * survives a refresh and a scripted run repeats exactly.
- *
- * Ref: PRD > Adaptive Engine
  */
 
 import { noDimensionRose } from "./classify";
@@ -47,10 +41,7 @@ export interface StepInput {
 export interface StepResult {
   state: EngineState;
   move: Move;
-  /**
-   * What the next question must be about. The caller resolves it to text, then
-   * writes it back with `commitQuestion()`.
-   */
+  /** What the next question must be about; the caller resolves the text and commits it. */
   next: NextQuestionSpec | null;
 }
 
@@ -77,14 +68,8 @@ export function initState(args: InitArgs): EngineState {
   const all = args.resumeItems.map((i) => ({ ...i, covered: false }));
 
   /**
-   * A resume with more items than the cap can reach is trimmed HERE, to the
-   * best-matching ones, rather than carried and quietly left uncovered.
-   *
-   * The alternative is a session that reports twelve items to cover, covers
-   * ten, and wraps - which reads as a bug and breaks the promise the mode
-   * exists to make. Trimming keeps `coverageTotal` honest; the items are
-   * already ranked against the job description, so what survives is what
-   * matters most for this application. The caller reports the difference.
+   * Items beyond what the cap can reach are trimmed here, keeping the best
+   * matches, so coverageTotal stays honest. The caller reports the difference.
    */
   const items =
     args.mode === "full" ? all.slice(0, maxCoverableItems()) : all;
@@ -119,15 +104,8 @@ export function isPlateau(state: EngineState, input: StepInput): boolean {
   return noDimensionRose(previous, input.scores);
 }
 
-/** Should this thread end? Ref: PRD > Adaptive Engine (resolution rules) */
-/**
- * Follow-ups this thread may spend.
- *
- * A full-mode resume thread gets one, not two. Full mode promises to cover
- * every role and project, and measurement showed a second follow-up on each
- * put six items 36 turns out of reach. Breadth over depth is the distinction
- * between the modes: quick mode still digs the full two.
- */
+/** Should this thread end? */
+/** Follow-ups this thread may spend: one for a full-mode resume thread (breadth), else two. */
 export function maxFollowUpsFor(state: EngineState): number {
   return state.mode === "full" && state.currentQuestion.source === "resume"
     ? MAX_FOLLOW_UPS_FULL_RESUME
@@ -156,27 +134,19 @@ export function uncovered(state: EngineState): ResumeItem[] {
   return state.resumeItems.filter((i) => !i.covered);
 }
 
-/**
- * Resume item or bank question next? A real screen alternates, so the default
- * is "not what we did last time". Full mode overrides that when short on
- * budget — coverage is the mode's promise, and it outranks variety.
- */
+/** Resume item or bank question next? Alternate, unless full mode is short on budget for coverage. */
 export function nextSource(state: EngineState): QuestionSource {
   const remaining = uncovered(state);
   if (remaining.length === 0) return "bank";
 
-  // No bank topic left to advance to. `topicIndex` is the LAST used index, so
-  // the guard is against length - 1; comparing against length let the caller
-  // pick bank, find nothing, and wrap with items still uncovered.
+  // No bank topic left (topicIndex is the last used index, hence length - 1).
   if (state.topicIndex >= state.topics.length - 1) return "resume";
 
   if (state.mode === "full") {
-    // Bank threads are a fixed budget here, not an alternating half of the
-    // interview. `topicIndex` counts the bank threads already opened.
+    // Bank threads are a fixed budget here; topicIndex counts those opened.
     if (state.topicIndex + 1 >= FULL_BANK_THREADS) return "resume";
 
-    // Even inside the budget, coverage wins once the remaining turns would
-    // not otherwise fit every uncovered item.
+    // Coverage wins once the remaining turns couldn't otherwise fit every item.
     const questionsLeft = state.questionCap - state.questionCount;
     if (questionsLeft <= remaining.length * TURNS_PER_RESUME_THREAD) {
       return "resume";
@@ -195,11 +165,7 @@ function markCurrentCovered(state: EngineState): ResumeItem[] {
   );
 }
 
-/**
- * Nothing left to ask. Full mode will not wrap while an item is uncovered —
- * that is the mode — unless the cap is hit, the backstop against a
- * pathological resume producing an endless interview.
- */
+/** Nothing left to ask. Full mode won't wrap with an item uncovered, unless the cap is hit. */
 export function shouldWrap(state: EngineState): boolean {
   if (state.questionCount >= state.questionCap) return true;
 
@@ -224,7 +190,7 @@ export function step(state: EngineState, input: StepInput): StepResult {
 
   const resolving = shouldResolveTopic(state, input);
 
-  // ---- continue the current thread ---------------------------------------
+  // Continue the current thread.
   if (!resolving) {
     // Checked BEFORE issuing a follow-up: never start what we cannot finish.
     if (base.questionCount >= base.questionCap) {
@@ -255,7 +221,7 @@ export function step(state: EngineState, input: StepInput): StepResult {
     };
   }
 
-  // ---- resolve the thread and move on ------------------------------------
+  // Resolve the thread and move on.
   const resumeItems = markCurrentCovered(base);
   const difficulty =
     input.band === "great"
@@ -279,13 +245,10 @@ export function step(state: EngineState, input: StepInput): StepResult {
     if (item) return openResumeThread(resolved, item);
   }
 
-  // ---- next bank topic ---------------------------------------------------
+  // Next bank topic.
   const topicIndex = resolved.topicIndex + 1;
   if (topicIndex >= resolved.topics.length) {
-    // Out of bank topics. Running out of VARIETY must not end an interview
-    // that still owes the candidate coverage, so fall back to the next item
-    // rather than wrapping. Without this, coverage silently capped at the
-    // number of bank topics however large the resume or the cap.
+    // Out of bank topics: fall back to the next uncovered item rather than wrapping.
     const fallback = uncovered(resolved)[0];
     if (fallback) return openResumeThread(resolved, fallback);
     return wrap(resolved);
@@ -340,10 +303,7 @@ function wrap(state: EngineState): StepResult {
   };
 }
 
-/**
- * Writes the chosen question text back into state. Separate from `step()`
- * because resolving the text may need a model call, and `step()` stays pure.
- */
+/** Writes the chosen question text into state (outside step(), which stays pure). */
 export function commitQuestion(
   state: EngineState,
   question: Question,

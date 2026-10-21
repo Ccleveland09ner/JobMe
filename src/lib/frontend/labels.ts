@@ -1,10 +1,6 @@
 /**
- * Display labels for engine enums. Formatting only — nothing here decides
- * anything.
- *
- * Topic labels duplicate `BANK[id].label` on purpose: importing the bank into
- * a client component would ship every question's text to the browser for the
- * sake of eleven short strings. labels.test.ts fails if the two drift apart.
+ * Display labels for engine enums. Topic labels duplicate BANK[id].label to
+ * keep the bank off the client; labels.test.ts catches drift.
  */
 
 import type {

@@ -1,17 +1,8 @@
 "use client";
 
 /**
- * The performance ledger: the dashboard, as the book on the front desk.
- *
- * Its sections are spreads you turn to — Trends, History, Summary — with the
- * dashboard's own components on them, unchanged (the page renders them on the
- * server and hands them in). The section is kept in the URL
- * (?open=ledger&section=…) so a reload, a history page link, or the back
- * button lands on the same spread.
- *
- * Picking an interview in History opens its report: that link goes to
- * /interview/[id]/report, and the held machine closes this book, puts it down
- * and picks up the reports folder at that report (heldMachine.ts).
+ * The dashboard as the ledger on the front desk: spreads (Trends, History,
+ * Summary) kept in the URL. Picking an interview opens its report.
  */
 
 import { useRouter } from "next/navigation";

@@ -1,25 +1,9 @@
 "use client";
 
 /**
- * Things in the building the user can touch.
- *
- *   <Clickable>  stays where it is: hovering lifts it a touch, clicking runs
- *                its action (the settings notice board).
- *   <Liftable>   can be picked up (heldMachine.ts): clicking runs its action,
- *                which asks the page to hold it; while held it travels to just
- *                in front of the camera, turned to face the user, then hides
- *                as its DOM self takes over. Put down, it travels back.
- *
- * Both only respond at their own station, with nothing in hand and nothing
- * moving — so two objects can never animate against each other. Their
- * actions are the same ones their hidden keyboard twins run (StationLayer,
- * the room), so a click on the object and Enter on its twin are one thing.
- *
- * Pointing is shared (building.hovered, by action name): the object, its
- * floating name (FloatingLabel.tsx) and the secretary's glance all follow
- * the same value, and keyboard focus on a twin sets it too.
- *
- * Reduced motion: the object jumps instead of travelling.
+ * Things the user can touch. <Clickable> stays put; <Liftable> is picked up
+ * (heldMachine.ts), travels to the camera, then its DOM self takes over.
+ * Both respond only at their station, with nothing held or moving.
  */
 
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
@@ -47,10 +31,7 @@ export function useCanTouch(station: Station): boolean {
   return state.station === station && state.target === null && held.phase === "resting";
 }
 
-/**
- * Pointer handlers that point at `name` (or stop pointing at it), and
- * whether it is being pointed at — by the pointer or by keyboard focus.
- */
+/** Pointer handlers for `name`, and whether it is pointed at (pointer or keyboard). */
 export function usePointing(name: string, canTouch: boolean) {
   const building = useBuilding();
   const hovered = canTouch && building?.hovered === name;
@@ -101,7 +82,7 @@ export function Clickable({
   station: Station;
   position?: Vec3;
   rotation?: Vec3;
-  /** 1: no lean (a big thing on a wall), its own lettering lights up instead. */
+  /** 1 for no lean (the wall board). */
   hoverScale?: number;
   children: ReactNode;
 }) {
@@ -133,10 +114,7 @@ const scratch = {
   basis: new THREE.Matrix4(),
 };
 
-/**
- * Facing the camera: the object's top (+Y, a book's cover) toward the
- * viewer, its far edge (−Z) up, its right (+X) to the viewer's right.
- */
+/** Facing the camera: top (+Y) toward the viewer, far edge (−Z) up. */
 function facingCamera(camera: THREE.Camera, out: THREE.Quaternion): THREE.Quaternion {
   camera.getWorldDirection(scratch.forward);
   scratch.right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
@@ -180,8 +158,7 @@ export function Liftable({
 
   useEffect(() => () => void motion.current.tween?.kill(), []);
 
-  // The canvas draws on demand: wake it whenever what is held changes, so the
-  // frame loop below sees the new phase.
+  // Wake the on-demand canvas when the held state changes.
   const invalidate = useThree((st) => st.invalidate);
   const heldName = building?.held.held;
   const heldPhase = building?.held.phase;

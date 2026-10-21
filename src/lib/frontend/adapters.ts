@@ -1,11 +1,6 @@
 /**
- * Row and response -> view adapters. Pure, so they are unit-tested and safe
- * to call on either side of the server/client boundary.
- *
- * The rule these enforce: the frontend FORMATS what the backend decided, it
- * never re-decides it. Band, move, gap, reason, cap and coverage are passed
- * through untouched. The one derived figure is `displayAverage()`, and it
- * averages values the backend already averaged over scored turns only.
+ * Row and response -> view adapters (pure). The frontend formats what the
+ * backend decided; it never re-decides band, move, gap, cap or coverage.
  */
 
 import {
@@ -28,9 +23,7 @@ import type {
   SessionSummary,
 } from "./types";
 
-// ---------------------------------------------------------------------------
 // Scores
-// ---------------------------------------------------------------------------
 
 const DIMENSION_SET = new Set<string>(DIMENSIONS);
 
@@ -38,11 +31,7 @@ export function isDimension(value: unknown): value is Dimension {
   return typeof value === "string" && DIMENSION_SET.has(value);
 }
 
-/**
- * Keeps the known dimensions with numeric values. Anything else — including a
- * legacy five-dimension `structure` key — is dropped rather than rendered as
- * a ninth bar. Null and empty both mean "unscored".
- */
+/** Keeps known dimensions with numeric values (legacy keys dropped); null or empty is unscored. */
 export function pickScores(raw: unknown): Partial<Scores> | null {
   if (!raw || typeof raw !== "object") return null;
   const out: Partial<Scores> = {};
@@ -61,11 +50,7 @@ export function scoreEntries(scores: Partial<Scores>): [Dimension, number][] {
   );
 }
 
-/**
- * One headline number for a dashboard row: the mean of the backend's
- * per-dimension `overall_scores`, which already exclude unscored turns. Not
- * used anywhere a decision is made.
- */
+/** A row's headline number: the mean of the backend's averages. Never used for decisions. */
 export function displayAverage(scores: Partial<Scores> | null): number | null {
   if (!scores) return null;
   const values = scoreEntries(scores).map(([, v]) => v);
@@ -78,9 +63,7 @@ export function scoreLevel(value: number): 1 | 2 | 3 | 4 {
   return Math.min(4, Math.max(1, Math.round(value))) as 1 | 2 | 3 | 4;
 }
 
-// ---------------------------------------------------------------------------
 // Rows
-// ---------------------------------------------------------------------------
 
 const BANDS = new Set(["weak", "mediocre", "great"]);
 const QUESTION_TYPES = new Set(["opening", "deepen", "clarify"]);
@@ -128,10 +111,7 @@ export function noteFromTurnRow(row: TurnRow): NoteView {
   };
 }
 
-/**
- * A notepad entry from the turn route. Already NoteView-shaped; this only
- * guards the score keys so a malformed payload cannot render stray bars.
- */
+/** A notepad entry from the turn route, with its score keys guarded. */
 export function noteFromResponse(note: NoteView): NoteView {
   const scores = pickScores(note.scores);
   return { ...note, scores, degraded: note.degraded || scores === null };
@@ -178,15 +158,9 @@ export function sessionSummaryFromRow(row: SessionRowData): SessionSummary {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Engine state -> view (SERVER side: keeps engine_state off the client)
-// ---------------------------------------------------------------------------
+// Engine state -> view (server side: keeps engine_state off the client)
 
-/**
- * Reads progress out of the engine state. Reads, not computes: the cap and
- * the coverage flags are the engine's; this only counts covered items, which
- * is exactly what the turn route reports as `coverageDone`.
- */
+/** Reads progress from the engine state (the cap and coverage are the engine's). */
 export function progressFromState(state: EngineState): ProgressView {
   const items = state.resumeItems ?? [];
   return {
@@ -205,9 +179,7 @@ export function questionFromState(state: EngineState): QuestionView {
   return { text: q.text, type: q.type, topic: q.topic, source: q.source };
 }
 
-// ---------------------------------------------------------------------------
 // Evidence
-// ---------------------------------------------------------------------------
 
 export interface EvidenceSplit {
   before: string;
@@ -215,11 +187,7 @@ export interface EvidenceSplit {
   after: string;
 }
 
-/**
- * Locates the evidence quote inside the answer, case-insensitively. Null when
- * it is not there — the caller then shows the quote beneath the answer rather
- * than dropping it.
- */
+/** Finds the evidence quote in the answer (case-insensitive); null if it isn't there. */
 export function findEvidence(
   answer: string,
   evidence: string | null | undefined,
@@ -235,15 +203,9 @@ export function findEvidence(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Errors
-// ---------------------------------------------------------------------------
 
-/**
- * A message a candidate can read. Route `error` strings are written for the
- * candidate already, except the two technical ones below; `detail` (Zod
- * issues) and anything unexpected never reach the screen.
- */
+/** A message a candidate can read; Zod details and unexpected errors never reach the screen. */
 export function friendlyError(status: number, body: unknown): string {
   const message =
     body && typeof body === "object" && typeof (body as { error?: unknown }).error === "string"

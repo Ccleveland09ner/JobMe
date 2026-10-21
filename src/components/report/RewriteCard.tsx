@@ -1,16 +1,6 @@
 /**
- * STAR rewrite of the weakest answer.
- * Ref: docs/PRD-JobMe-MVP.md > Scorecard
- *
- * Keeps the candidate's own facts and invents no achievements - [metric]
- * placeholders stand in where a fact was missing. That constraint is the whole
- * point: a rewrite that fabricates a number teaches someone to lie in a real
- * interview.
- *
- * rewrite = null (the model failed): an honest "unavailable" state. There is
- * deliberately NO retry button — the report route is idempotent and returns
- * the saved report without regenerating, so a retry could not produce one.
- * The rest of the scorecard stands on its own.
+ * A STAR rewrite of the weakest answer from the candidate's own facts
+ * ([metric] where one is missing). No retry: the report is saved once.
  *
  * TODO(voice, P1): the recruiter reads this aloud.
  */

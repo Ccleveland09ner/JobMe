@@ -1,12 +1,6 @@
 /**
- * The headline: the written summary and the session's per-dimension averages.
- *
- * `overallScores` is the backend's figure (lib/stats.ts averageScores over
- * SCORED turns only) and is displayed as-is — the client never re-averages,
- * so an unscored turn can never drag a dimension down.
- *
- * Scores are practice feedback, never framed as a prediction of a hiring
- * outcome. Ref: docs/PRD-JobMe-MVP.md > Non-Goals
+ * The written summary and the session's averages, as the server computed them
+ * (scored turns only). Practice feedback, never a hiring prediction.
  */
 
 import { ScoreList } from "@/components/score/ScoreList";

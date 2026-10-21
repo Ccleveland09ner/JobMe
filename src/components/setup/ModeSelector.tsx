@@ -1,8 +1,4 @@
-/**
- * Quick or Full. The lengths shown are the engine's own constants — the
- * actual cap for a Full interview is decided on the server from the resume,
- * so this states the range, never a computed number.
- */
+/** Quick or Full. Shows the engine's ranges; the Full cap is decided on the server. */
 
 import {
   FULL_QUESTION_CAP_MAX,

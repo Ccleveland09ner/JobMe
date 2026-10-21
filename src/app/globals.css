@@ -1,22 +1,8 @@
 @import "tailwindcss";
 
 /**
- * JobMe design tokens.
- * Ref: docs/TechDesign-JobMe-MVP.md > Look and Feel
- *      docs/PRD-JobMe-MVP.md > Look and Feel
- *
- * Feel: calm, warm, professional. A good career-center room - not a game and
- * not a sci-fi AI console.
- *
- * Deliberately light-only. The PRD specifies one warm palette (off-white
- * ground, deep ink text, a single accent); the starter's prefers-color-scheme
- * block has been removed because a dark inversion would have made these token
- * values wrong half the time. Revisit if dark mode is ever scoped in.
- *
- * Every colour a component uses comes from here. A hex value inside a
- * component is a bug.
- *
- * Avoid: purple-gradient AI styling, chat bubbles, walls of text in the room.
+ * JobMe design tokens (light only). Every colour a component uses comes from
+ * here; a hex value in a component is a bug.
  */
 
 @theme {
@@ -37,11 +23,7 @@
   --color-danger: #b42318;
   --color-danger-soft: #fdecea;
 
-  /*
-   * Score colours, 1-4. ALWAYS rendered alongside the number - colour never
-   * carries meaning on its own.
-   * Ref: docs/PRD-JobMe-MVP.md > Non-Functional Requirements > Accessibility
-   */
+  /* Score colours, 1-4, always shown with the number (colour never alone). */
   --color-score-1: #b42318;
   --color-score-2: #b54708;
   --color-score-3: #a16207;
@@ -50,12 +32,7 @@
   /* Evidence highlight in the transcript. */
   --color-highlight: #fdf2c4;
 
-  /*
-   * The building (components/building): scenery colours for the toon-shaded
-   * 3D scene. WebGL cannot read these, so components/three/toon.ts mirrors
-   * them in PALETTE — change both or neither. Ink stays the outline colour,
-   * so the scene is coloured but still drawn.
-   */
+  /* Scene colours for the 3D building, mirrored in components/three/toon.ts PALETTE. */
   --color-sky: #f3ece0;
   --color-wall: #efe6d8;
   --color-trim: #d8c9b2;
@@ -68,10 +45,7 @@
   --color-path: #d3c8b6;
   --color-fabric: #2f3e46;
 
-  /*
-   * The clipboard forms are written on (components/ui/Clipboard.tsx). Each
-   * material has three toon tones, lit / base / shaded, like the scene.
-   */
+  /* The clipboard (components/ui/Clipboard.tsx): lit / base / shaded tones per material. */
   --color-board-light: #c9966a;
   --color-board: #a9774c; /* hardboard */
   --color-board-dark: #7d5332;
@@ -82,11 +56,7 @@
   --color-paper-shade: #ece4d4;
   --color-rule: #c8d5e2; /* ruled lines on the paper */
 
-  /*
-   * Things the user picks up (components/held): the ledger's leather, the
-   * reports folder's manila, the notice board's cork. Mirrored in
-   * components/three/toon.ts PALETTE for their 3D selves.
-   */
+  /* Held objects (components/held), also mirrored in toon.ts PALETTE. */
   --color-leather-light: #8a3f37;
   --color-leather: #6b2f2a;
   --color-leather-dark: #4a1f1b;
@@ -100,17 +70,7 @@
   --color-wood-light: #a8774f;
   --color-wood-dark: #5f3c25;
 
-  /*
-   * Comic Sans where it is installed, Comic Neue (loaded in layout.tsx) where
-   * it is not — neither ships on Linux or Android, and falling straight
-   * through to a generic sans would lose the look entirely.
-   *
-   * Both have only a regular and a bold, so `font-medium` resolves to 400 and
-   * `font-semibold` to 700. That is the same behaviour real Comic Sans has.
-   *
-   * Mono stays a true monospace: it sets notepad evidence quotes, where
-   * character alignment is the point.
-   */
+  /* Comic Sans where installed, else Comic Neue (layout.tsx); both only regular and bold. */
   --font-sans: "Comic Sans MS", "Comic Sans", var(--font-comic-neue), cursive;
   --font-mono: var(--font-geist-mono);
 
@@ -147,10 +107,7 @@ dialog::backdrop {
   background: rgb(28 27 26 / 0.4);
 }
 
-/*
- * The clipboard drops onto the scene when it appears: down, and tipping from
- * a slight lean to flat. It ends untransformed, so text stays crisp.
- */
+/* The clipboard drops onto the scene and settles flat, ending untransformed (crisp text). */
 @keyframes clipboard-in {
   from {
     opacity: 0;
@@ -168,14 +125,8 @@ dialog::backdrop {
 }
 
 /*
- * Held objects (components/held). The 3D object has just travelled to the
- * camera; its DOM self takes over by settling into the hands (held-in) and
- * opening — a book's cover swings left on its spine, a folder's flap and
- * a notepad's page flip up on their top edge. Closing plays the same in
- * reverse (held-out, *-shut), then the 3D object travels back.
- *
- * Page turns (page-next / page-prev) swing the new page in from its binding
- * edge. Every animation ends untransformed, so text is crisp when still.
+ * Held objects (components/held): settle into the hands, then open; closing
+ * reverses. Page turns swing in from the binding. All end untransformed.
  * Durations are mirrored in components/held/useHeld.ts.
  */
 @keyframes held-in {
@@ -326,11 +277,7 @@ dialog::backdrop {
   }
 }
 
-/*
- * A faint paper grain over a surface: buttons and the clipboard's paper.
- * Fractal noise, multiplied in, so it darkens a touch and never lightens.
- * The overlay ignores the pointer and follows the element's corners.
- */
+/* A faint paper grain (multiplied fractal noise) over buttons and the clipboard's paper. */
 .grain {
   position: relative;
   isolation: isolate;
@@ -347,10 +294,7 @@ dialog::backdrop {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
-/*
- * Reduced motion: transitions collapse to instant. The avatar reads
- * prefers-reduced-motion itself (mouth only, no nod).
- */
+/* Reduced motion: transitions collapse to instant. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

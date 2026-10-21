@@ -1,13 +1,6 @@
 /**
- * Soft studio lighting for physically based materials: the reflections and
- * ambient light that give skin, fabric and hair their 3D shading.
- *
- * Generated in code from three's RoomEnvironment (a lit, neutral grey room),
- * so there is no HDR file to download. Built once per renderer and cached.
- *
- * Applied per material (material.envMap), not to the whole scene: the
- * building's toon scenery ignores it either way, and only the characters
- * opt in.
+ * Studio lighting for physically based materials, generated from three's
+ * RoomEnvironment (no HDR file). Cached per renderer; applied per material.
  */
 
 import * as THREE from "three";
