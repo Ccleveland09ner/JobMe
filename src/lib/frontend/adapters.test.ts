@@ -32,8 +32,13 @@ describe("TOPIC_LABELS", () => {
 });
 
 describe("pickScores", () => {
-  it("keeps all eight dimensions", () => {
+  it("keeps all eight legacy dimensions, so an old session still renders", () => {
     expect(pickScores(FULL)).toEqual(FULL);
+  });
+
+  it("keeps the current dimensions", () => {
+    const technical = { relevance: 3, accuracy: 2, reasoning: 3, specificity: 3, communication: 4 };
+    expect(pickScores(technical)).toEqual(technical);
   });
 
   it("drops the legacy structure key and non-numbers", () => {
@@ -48,11 +53,15 @@ describe("pickScores", () => {
 });
 
 describe("scoreEntries", () => {
-  it("returns rubric order regardless of key order", () => {
-    const entries = scoreEntries({ relevance: 4, situation: 1 });
-    expect(entries).toEqual([
+  it("returns display order regardless of key order", () => {
+    expect(scoreEntries({ relevance: 4, situation: 1 })).toEqual([
       ["situation", 1],
       ["relevance", 4],
+    ]);
+    expect(scoreEntries({ communication: 3, accuracy: 2, relevance: 4 })).toEqual([
+      ["relevance", 4],
+      ["accuracy", 2],
+      ["communication", 3],
     ]);
   });
 });
@@ -129,7 +138,23 @@ describe("sessionSummaryFromRow", () => {
       endedAt: null,
       questionCount: 7,
       overallScores: { impact: 2.5 },
+      // A session stored before `overall` existed: the mean it showed then.
+      overall: 2.5,
     });
+  });
+
+  it("uses the stored overall score, and never renders it as a dimension", () => {
+    const summary = sessionSummaryFromRow({
+      id: "s2",
+      status: "completed",
+      question_count: 5,
+      overall_scores: { reasoning: 2, outcome: 4, overall: 3.24 },
+      started_at: "2026-10-20T10:00:00Z",
+      ended_at: null,
+      mode: "quick",
+    });
+    expect(summary.overall).toBe(3.2);
+    expect(summary.overallScores).toEqual({ reasoning: 2, outcome: 4 });
   });
 
   it("does not invent a mode it cannot read", () => {

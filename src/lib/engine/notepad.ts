@@ -14,14 +14,13 @@ import type { Band, Dimension, Move, QuestionSource } from "./types";
 
 /** What a follow-up aimed at each gap is trying to get. */
 const GAP_REASON: Record<Dimension, string> = {
-  situation: "No context set → asking what the situation was",
-  task: "Own responsibility unclear → asking what they were accountable for",
-  action: "Actions are vague → asking what they actually did",
-  result: "No outcome stated → asking how it turned out",
-  specificity: "Too general → asking for a concrete example",
-  impact: "No measurable result → asking for impact",
-  ownership: 'Says "we" throughout → asking what they changed',
   relevance: "Drifted from the question → steering back",
+  specificity: "Still general → asking for a concrete example",
+  ownership: "Own part unclear → asking what they did themselves",
+  reasoning: "The why is missing → asking how they decided",
+  outcome: "No outcome yet → asking how it turned out",
+  accuracy: "Part of that looks off → checking their understanding",
+  communication: "Hard to follow → asking them to walk through it",
 };
 
 export function reasonLine(move: Move, gap: Dimension, band: Band): string {
@@ -43,11 +42,38 @@ export function reasonLine(move: Move, gap: Dimension, band: Band): string {
 export const REPEAT_LINE =
   "Restated the last answer → asking for something new";
 
+/**
+ * Shown when the candidate said they have no such experience. The interview
+ * moves on instead of pressing for a story they would have to invent.
+ */
+export const NO_EXPERIENCE_LINE = "No direct experience → moving on";
+
 /** Shown when scoring failed. Never leaks the error to the candidate. */
 export const SCORING_FAILED_LINE = "Couldn't score that one. Let's keep going.";
 
 /** Shown for an answer under 5 words. Doesn't count toward the cap. */
 export const NUDGE_LINE = "Take your time. Could you say a bit more?";
+
+/**
+ * Spoken once, before the first question. Says up front that any real
+ * experience counts, so a student does not hear "tell me about a time" as a
+ * request for workplace stories they do not have.
+ */
+export function introLineFor(name: string, notTailored = false): string {
+  return [
+    `Thanks for making the time, ${name}.`,
+    // Said out loud rather than buried in a flag nothing reads: the candidate
+    // gave job details expecting a tailored interview and should know when
+    // the tailoring failed.
+    notTailored
+      ? "I couldn't tailor every question to the job details you gave this time, so some will be standard ones for this kind of role."
+      : null,
+    "When I ask about your experience, examples from school, work, clubs or personal projects all count.",
+    "Let's get started.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 /** Acknowledgement text for the wrap turn. */
 export const WRAP_LINE =

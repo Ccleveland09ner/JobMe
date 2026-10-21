@@ -1,25 +1,26 @@
 /**
  * At-a-glance progress: how many interviews, and the latest scorecard's
- * per-dimension averages exactly as the backend stored them.
+ * overall score and per-dimension averages exactly as the backend stored them.
  */
 
 import { ScoreList } from "@/components/score/ScoreList";
 import { Card } from "@/components/ui/Card";
-import type { Scores } from "@/lib/engine/types";
-import { displayAverage } from "@/lib/frontend/adapters";
+import type { StoredScores } from "@/lib/engine/types";
+import { scoreLevelLabel } from "@/lib/frontend/labels";
 
 export function DashboardSummary({
   completed,
   inProgress,
   latestScores,
+  latestOverall,
 }: {
   completed: number;
   inProgress: number;
   /** overall_scores of the most recent completed interview. */
-  latestScores: Partial<Scores> | null;
+  latestScores: StoredScores | null;
+  /** Its headline score, the mean of its question scores. */
+  latestOverall: number | null;
 }) {
-  const latestAverage = displayAverage(latestScores);
-
   return (
     <Card as="section" aria-labelledby="summary-title" className="flex flex-col gap-5">
       <h2 id="summary-title" className="text-base font-semibold text-ink">
@@ -28,7 +29,11 @@ export function DashboardSummary({
       <dl className="grid grid-cols-3 gap-4">
         <Stat label="Completed" value={String(completed)} />
         <Stat label="In progress" value={String(inProgress)} />
-        <Stat label="Latest average" value={latestAverage === null ? "—" : `${latestAverage} / 4`} />
+        <Stat
+          label="Latest overall"
+          value={latestOverall === null ? "—" : `${latestOverall} / 4`}
+          note={latestOverall === null ? undefined : scoreLevelLabel(latestOverall)}
+        />
       </dl>
       {latestScores ? (
         <div className="flex flex-col gap-2">
@@ -44,11 +49,14 @@ export function DashboardSummary({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="flex flex-col gap-1">
       <dt className="text-xs text-muted">{label}</dt>
-      <dd className="text-xl font-semibold tabular-nums text-ink">{value}</dd>
+      <dd className="text-xl font-semibold tabular-nums text-ink">
+        {value}
+        {note && <span className="block text-xs font-normal text-muted">{note}</span>}
+      </dd>
     </div>
   );
 }

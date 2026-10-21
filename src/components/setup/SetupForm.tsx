@@ -57,7 +57,7 @@ export function SetupForm({
   const [chosenMode, setMode] = useState<InterviewMode | null>(null);
   const mode = chosenMode ?? defaults?.mode ?? "quick";
   const [resumeId, setResumeId] = useState<string | null>(latestResume?.id ?? null);
-  const [job, setJob] = useState<JobValue>({ targetRole: "", source: "paste", roleText: "", jobUrl: "" });
+  const [job, setJob] = useState<JobValue>({ targetRole: "", company: "", source: "paste", roleText: "", jobUrl: "" });
   const [micMode, setInputMode] = useState<InputMode>("typed");
   const inputMode: InputMode = defaults?.inputMode === "typed" ? "typed" : micMode;
   const [submitting, setSubmitting] = useState(false);
@@ -82,6 +82,7 @@ export function SetupForm({
       displayName: displayName.trim(),
       mode,
       ...(job.targetRole.trim() && { targetRole: job.targetRole.trim() }),
+      ...(job.company.trim() && { company: job.company.trim() }),
       ...(roleText && { roleText }),
       ...(jobUrl && { jobUrl }),
       ...(resumeId && { resumeId }),

@@ -1,14 +1,17 @@
 /**
  * POST /api/sessions — create a session and return its first question.
  *
- * Ref: docs/TechDesign-JobMe-MVP.md > API Contracts
+ * Ref: docs/TechDesign-JobMe-MVP.md > API Contracts; docs/Scoring-Rubric.md
  *
- * The interview is prepared here, before it starts. When there is anything to
- * personalise — a job title, a job description (pasted, or read from a
- * posting link) or a resume — one model call writes the thread openings
- * (lib/ai/question-plan.ts). It is this route's only model call, it is
- * time-boxed, and if it fails the session starts on the fixed bank text: a
- * rate limit costs polish, never the interview.
+ * The interview is prepared here, before it starts:
+ *   1. the job — title, company, posting text (pasted, or read from a link);
+ *   2. role-family defaults (engine/roles.ts): motivation first, the family's
+ *      own question second, then behavioural competencies for that family;
+ *   3. one model call (lib/ai/question-plan.ts) that may re-choose and
+ *      re-word those topics for this specific job and order the resume.
+ * It is this route's only model call, it is time-boxed, and if it fails the
+ * session starts on the role defaults with the job context still stored: a
+ * rate limit costs polish, never the interview or its relevance to the role.
  */
 
 import { NextResponse } from "next/server";
@@ -16,23 +19,27 @@ import { NextResponse } from "next/server";
 import {
   QUICK_PLAN_RESUME_ITEMS,
   generateQuestionPlan,
+  orderResumeItems,
   plannedBankOpening,
+  usableJobText,
 } from "@/lib/ai/question-plan";
 import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
-import { pickTopics, questionFor } from "@/lib/engine/bank";
+import { questionFor } from "@/lib/engine/bank";
+import { introLineFor } from "@/lib/engine/notepad";
 import { initState } from "@/lib/engine/policy";
+import { defaultTopics, inferSeniority, roleFamily } from "@/lib/engine/roles";
 import type { Question, ResumeItem } from "@/lib/engine/types";
 import { formatRoleForPrompt, type RoleProfile } from "@/lib/jd/distill";
 import { JobLinkError, fetchJobPosting } from "@/lib/job-posting";
 import { formatFactsForPrompt } from "@/lib/resume/distill";
 import type { ResumeFacts } from "@/lib/resume/store";
-import { CreateSessionBody, LIMITS } from "@/lib/schemas";
+import { CreateSessionBody } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
 /** A posting fetch plus one model call can outrun a platform's default. */
 export const maxDuration = 30;
 
-/** Drawn from a bank of 11 — this is where session-to-session variety comes from. */
+/** Bank threads per session, before resume coverage. */
 const QUICK_TOPICS = 4;
 const FULL_TOPICS = 6;
 
@@ -61,7 +68,9 @@ export async function POST(request: Request) {
       .from("profiles")
       .update({
         display_name: body.displayName,
-        target_role: body.targetRole ?? body.roleText,
+        // The title only. This used to fall back to the pasted description,
+        // writing up to 2000 characters into a 100-character title field.
+        ...(body.targetRole && { target_role: body.targetRole }),
       })
       .eq("id", user.id),
     body.resumeId
@@ -88,33 +97,47 @@ export async function POST(request: Request) {
   const posting = postingRes.value;
 
   /**
-   * Already ranked against the job description at ingest. Full mode without a
-   * resume has nothing to cover, so it degrades to a longer bank-led
-   * interview rather than failing.
+   * Already ranked against the job description given at upload; the plan
+   * re-orders them for THIS job. Full mode without a resume has nothing to
+   * cover, so it degrades to a longer bank-led interview rather than failing.
    */
   const resume =
     resumeRes.status === "fulfilled" ? resumeRes.value.data : null;
-  const resumeItems = (resume?.coverage_items ?? []) as ResumeItem[];
+  const uploadRanked = (resume?.coverage_items ?? []) as ResumeItem[];
   const chunks = (resume?.resume_chunks ?? []) as { seq: number; content: string }[];
 
-  const topics = pickTopics(body.mode === "full" ? FULL_TOPICS : QUICK_TOPICS);
-  const jobText = posting?.text ?? body.roleText ?? null;
+  // ---- the job ------------------------------------------------------------
+  const targetRole = body.targetRole ?? (posting?.title || null);
+  // A stated company wins over one guessed from a link's board name.
+  const company = body.company ?? posting?.company ?? null;
+  const companyInferred = !body.company && Boolean(posting?.companyInferred);
+  // Too short to be a description ("asdf") is treated as none at all.
+  const jobText = usableJobText(posting?.text ?? body.roleText ?? null);
+  const family = roleFamily(targetRole, jobText);
+  const seniority = inferSeniority(targetRole, jobText);
+
+  const defaults = defaultTopics(
+    family,
+    body.mode === "full" ? FULL_TOPICS : QUICK_TOPICS,
+  );
 
   // Quick mode's cap leaves room for only a few resume threads; items past
   // those still get the deterministic opening if they are reached.
   const planItems =
     body.mode === "full"
-      ? resumeItems
-      : resumeItems.slice(0, QUICK_PLAN_RESUME_ITEMS);
+      ? uploadRanked
+      : uploadRanked.slice(0, QUICK_PLAN_RESUME_ITEMS);
 
   const plan = await generateQuestionPlan({
-    topics,
+    topics: defaults,
+    family,
     resumeItems: planItems.map((item) => ({
       item,
       excerpt: excerptFor(item, chunks),
     })),
-    targetRole: body.targetRole ?? posting?.title ?? null,
-    company: posting?.company ?? null,
+    targetRole,
+    company,
+    companyInferred,
     jobText,
     roleSummary: resume?.role_profile
       ? formatRoleForPrompt(resume.role_profile as RoleProfile)
@@ -122,7 +145,11 @@ export async function POST(request: Request) {
     resumeFacts: resume?.resume_facts
       ? formatFactsForPrompt(resume.resume_facts as ResumeFacts)
       : null,
+    seniority,
   });
+
+  const topics = plan.order?.length ? plan.order : defaults;
+  const resumeItems = orderResumeItems(uploadRanked, plan);
 
   const firstQuestion: Question = {
     text:
@@ -143,8 +170,8 @@ export async function POST(request: Request) {
   const { data: session, error } = await supabase
     .from("interview_sessions")
     .insert({
-      // Capped as if pasted; the plan's role summary is what turns use.
-      role_text: jobText ? jobText.slice(0, LIMITS.roleText) : null,
+      // The plan's distilled role is what turns use; this is the fallback.
+      role_text: jobText,
       job_url: body.jobUrl ?? null,
       question_plan: plan,
       resume_id: body.resumeId ?? null,
@@ -166,13 +193,25 @@ export async function POST(request: Request) {
   return NextResponse.json({
     sessionId: session.id,
     mode: state.mode,
-    introLine: `Thanks for making the time, ${body.displayName}. Let's get started.`,
+    introLine: introLineFor(
+      body.displayName,
+      Boolean(targetRole || jobText || planItems.length) && plan.job?.generated !== true,
+    ),
     question: firstQuestion,
-    /** False when nothing was given to personalise, or the plan call failed. */
-    personalized: plan !== null,
+    /**
+     * False when nothing was given to personalise, or the plan call failed;
+     * the interview then runs on role-family defaults, which the setup
+     * screen says.
+     */
+    personalized: plan.job?.generated === true,
     /** What was read from the link, so the setup screen can confirm it. */
     job: posting
-      ? { title: posting.title, company: posting.company, provider: posting.provider }
+      ? {
+          title: posting.title,
+          company: posting.company,
+          companyInferred: posting.companyInferred,
+          provider: posting.provider,
+        }
       : null,
     progress: {
       questionCount: state.questionCount,

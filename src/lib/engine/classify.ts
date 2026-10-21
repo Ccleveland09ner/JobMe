@@ -3,14 +3,21 @@
  * move, which is what makes "the scripted weak answer always gets a Clarify" a
  * guarantee rather than a hope.
  *
- * Ref: PRD > Adaptive Engine (Bands)
+ * Every function takes the question's KIND: a band is the kind's weighted
+ * score (see WEIGHTS), and a gap is chosen only among the dimensions that
+ * kind is scored on.
+ *
+ * Ref: PRD > Adaptive Engine (Bands); docs/Scoring-Rubric.md
  */
 
 import {
   GAP_PRIORITY,
-  bandingValues,
+  NEVER_A_GAP,
+  dimensionsFor,
+  weightedScore,
   type Band,
   type Dimension,
+  type QuestionKind,
   type Scores,
 } from "./types";
 
@@ -19,11 +26,11 @@ export interface AnchorSimilarity {
   simStrong: number;
 }
 
-/** Below this average, the answer is weak. */
+/** Below this weighted score, the answer is weak. */
 export const WEAK_CEILING = 2.0;
-/** At or above this average, with no low dimension, the answer is great. */
+/** At or above this weighted score, with no low dimension, the answer is great. */
 export const GREAT_FLOOR = 3.5;
-/** No banding dimension may be below this for `great`. */
+/** No gating dimension may be below this for `great`. */
 export const GREAT_MIN_DIMENSION = 3;
 
 /**
@@ -36,24 +43,33 @@ export const HYSTERESIS = 0.15;
 
 /**
  * `off_topic` forces `weak` only when relevance agrees. Without this gate one
- * model boolean outranks eight scores — observed live, a 3.60-average answer
+ * model boolean outranks every score — observed live, a 3.60-average answer
  * banded `weak` for mis-framing.
  */
 export const OFF_TOPIC_RELEVANCE_CEILING = 2;
 
-export function average(scores: Scores): number {
-  const values = bandingValues(scores);
-  return values.reduce((a, b) => a + b, 0) / values.length;
+/** The kind's weighted score; 1 when nothing applicable was scored. */
+export function average(scores: Scores, kind: QuestionKind): number {
+  return weightedScore(scores, kind) ?? 1;
 }
 
-export function minimum(scores: Scores): number {
-  return Math.min(...bandingValues(scores));
+/**
+ * The lowest score among the dimensions that gate `great`: everything the
+ * kind is scored on except communication (see NEVER_A_GAP).
+ */
+export function minimum(scores: Scores, kind: QuestionKind): number {
+  const values = dimensionsFor(kind)
+    .filter((d) => !NEVER_A_GAP.has(d))
+    .map((d) => scores[d])
+    .filter((v): v is number => typeof v === "number");
+  return values.length ? Math.min(...values) : 1;
 }
 
 /** True when the model's off-topic claim is corroborated by relevance. */
 export function isOffTopic(scores: Scores, modelSaysOffTopic: boolean): boolean {
   return (
-    modelSaysOffTopic && scores.relevance <= OFF_TOPIC_RELEVANCE_CEILING
+    modelSaysOffTopic &&
+    (scores.relevance ?? 1) <= OFF_TOPIC_RELEVANCE_CEILING
   );
 }
 
@@ -98,12 +114,13 @@ function applyHysteresis(raw: Band, previous: Band, avg: number): Band {
 
 export function classifyBand(
   scores: Scores,
+  kind: QuestionKind,
   modelSaysOffTopic: boolean,
   options: ClassifyOptions = {},
 ): Band {
   const offTopic = isOffTopic(scores, modelSaysOffTopic);
-  const avg = average(scores);
-  const min = minimum(scores);
+  const avg = average(scores, kind);
+  const min = minimum(scores, kind);
 
   let band = rawBand(avg, min, offTopic);
 
@@ -124,22 +141,59 @@ export function classifyBand(
   return band;
 }
 
+/** The dimensions a follow-up may chase for this kind, in priority order. */
+export function gapCandidates(kind: QuestionKind): Dimension[] {
+  const applicable = new Set(dimensionsFor(kind));
+  return GAP_PRIORITY.filter((d) => applicable.has(d) && !NEVER_A_GAP.has(d));
+}
+
 /**
- * Lowest of all eight, ties broken by GAP_PRIORITY. Overrides the model so the
- * gap on the notepad always matches the scores beside it.
+ * Lowest applicable dimension, ties broken by GAP_PRIORITY. Overrides the
+ * model so the gap on the notepad always matches the scores beside it.
  */
-export function computePrimaryGap(scores: Scores): Dimension {
-  let best: Dimension = GAP_PRIORITY[0];
-  for (const dimension of GAP_PRIORITY) {
-    if (scores[dimension] < scores[best]) best = dimension;
+export function computePrimaryGap(scores: Scores, kind: QuestionKind): Dimension {
+  const candidates = gapCandidates(kind);
+  let best: Dimension = candidates[0];
+  for (const dimension of candidates) {
+    if ((scores[dimension] ?? 1) < (scores[best] ?? 1)) best = dimension;
   }
   return best;
 }
 
 /**
+ * The gap a clarify should chase. The model wrote its clarify draft against
+ * the gap IT named, so that gap wins when it is a real one — an applicable
+ * dimension scored below solid — and the notepad's reason line then describes
+ * the question actually asked. Otherwise the code's gap, which the bank seeds
+ * are then picked for.
+ */
+export function resolveGap(
+  scores: Scores,
+  kind: QuestionKind,
+  modelGap: string | null | undefined,
+): { gap: Dimension; fromModel: boolean } {
+  const candidates: string[] = gapCandidates(kind);
+  if (
+    modelGap &&
+    candidates.includes(modelGap) &&
+    (scores[modelGap as Dimension] ?? GREAT_MIN_DIMENSION) < GREAT_MIN_DIMENSION
+  ) {
+    return { gap: modelGap as Dimension, fromModel: true };
+  }
+  return { gap: computePrimaryGap(scores, kind), fromModel: false };
+}
+
+/**
  * No dimension rose by >= 1 against the previous answer. Stops a topic
- * grinding on after the candidate has given what they have.
+ * grinding on after the candidate has given what they have. Compares only the
+ * dimensions both answers carry, so a rubric change mid-session cannot read
+ * as progress or as a plateau.
  */
 export function noDimensionRose(previous: Scores, current: Scores): boolean {
-  return GAP_PRIORITY.every((d) => current[d] - previous[d] < 1);
+  return GAP_PRIORITY.every((d) => {
+    const before = previous[d];
+    const after = current[d];
+    if (typeof before !== "number" || typeof after !== "number") return true;
+    return after - before < 1;
+  });
 }

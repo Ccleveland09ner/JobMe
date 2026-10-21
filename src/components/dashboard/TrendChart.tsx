@@ -7,7 +7,7 @@
  * Hand-rolled SVG rather than a chart library: one series at a time, chosen
  * with a radio group, is clearer than eight overlapping lines and costs no
  * dependency. Values are the backend's `overall_scores`; nothing is
- * recomputed here except the headline "Average" series (see displayAverage).
+ * recomputed here: the headline "Overall" series is the stored `overall`.
  *
  * Accessibility: the SVG is a labelled image with per-point <title>s, and a
  * visually hidden table carries every value for screen-reader users.
@@ -19,14 +19,15 @@ import { useId, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
 import { Card } from "@/components/ui/Card";
-import { DIMENSIONS, type Dimension, type Scores } from "@/lib/engine/types";
-import { displayAverage } from "@/lib/frontend/adapters";
+import { DIMENSIONS, type Dimension, type StoredScores } from "@/lib/engine/types";
 import { DIMENSION_LABELS } from "@/lib/frontend/labels";
 
 export interface TrendPoint {
   id: string;
   startedAt: string;
-  scores: Partial<Scores> | null;
+  scores: StoredScores | null;
+  /** The stored headline score; see pickOverall. */
+  overall: number | null;
 }
 
 type Series = "average" | Dimension;
@@ -84,12 +85,12 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
 }
 
 function seriesLabel(s: Series): string {
-  return s === "average" ? "Average" : DIMENSION_LABELS[s];
+  return s === "average" ? "Overall" : DIMENSION_LABELS[s];
 }
 
-function valueOf(scores: Partial<Scores> | null, s: Series): number | null {
-  if (!scores) return null;
-  return s === "average" ? displayAverage(scores) : (scores[s] ?? null);
+function valueOf(point: TrendPoint, s: Series): number | null {
+  if (s === "average") return point.overall;
+  return point.scores?.[s] ?? null;
 }
 
 function Chart({ points, series }: { points: TrendPoint[]; series: Series }) {
@@ -98,7 +99,7 @@ function Chart({ points, series }: { points: TrendPoint[]; series: Series }) {
   const x = (i: number) => PAD.left + (points.length === 1 ? innerW / 2 : (i * innerW) / (points.length - 1));
   const y = (v: number) => PAD.top + ((MAX - v) / (MAX - MIN)) * innerH;
 
-  const values = points.map((p) => valueOf(p.scores, series));
+  const values = points.map((p) => valueOf(p, series));
 
   // Break the line where a session has no value for this series.
   let d = "";
@@ -156,7 +157,7 @@ function DataTable({ points }: { points: TrendPoint[] }) {
       <thead>
         <tr>
           <th scope="col">Interview</th>
-          <th scope="col">Average</th>
+          <th scope="col">Overall</th>
           {DIMENSIONS.map((d) => (
             <th key={d} scope="col">
               {DIMENSION_LABELS[d]}
@@ -170,7 +171,7 @@ function DataTable({ points }: { points: TrendPoint[] }) {
             <th scope="row">
               #{i + 1}, <LocalDate iso={p.startedAt} />
             </th>
-            <td>{valueOf(p.scores, "average") ?? "—"}</td>
+            <td>{valueOf(p, "average") ?? "—"}</td>
             {DIMENSIONS.map((d) => (
               <td key={d}>{p.scores?.[d] ?? "—"}</td>
             ))}

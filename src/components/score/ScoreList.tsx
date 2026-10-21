@@ -1,10 +1,10 @@
 /**
- * The rubric as bars, in rubric order: the four STAR components, then
- * Specificity, Impact, Ownership, Relevance. Dimensions without a value are
- * skipped, so partial or legacy data still renders honestly.
+ * The rubric as bars, in display order. Only the dimensions present are
+ * shown: each question type is scored on its own subset (a technical answer
+ * has no Ownership bar), and legacy STAR rows still render honestly.
  */
 
-import type { Dimension, Scores } from "@/lib/engine/types";
+import type { AnyDimension, StoredScores } from "@/lib/engine/types";
 import { scoreEntries } from "@/lib/frontend/adapters";
 import { DIMENSION_LABELS } from "@/lib/frontend/labels";
 
@@ -15,9 +15,9 @@ export function ScoreList({
   highlight,
   compact = false,
 }: {
-  scores: Partial<Scores>;
+  scores: StoredScores;
   /** Marks one dimension, e.g. the primary gap. */
-  highlight?: Dimension | null;
+  highlight?: AnyDimension | null;
   compact?: boolean;
 }) {
   const entries = scoreEntries(scores);

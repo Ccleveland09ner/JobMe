@@ -11,24 +11,30 @@ import {
 } from "./report";
 
 const flat = (n: number): Scores => ({
-  situation: n,
-  task: n,
-  action: n,
-  result: n,
-  specificity: n,
-  impact: n,
-  ownership: n,
   relevance: n,
+  specificity: n,
+  ownership: n,
+  reasoning: n,
+  outcome: n,
+  communication: n,
 });
 
-function turn(seq: number, scores: Scores | null): ReportTurnRow {
+function turn(
+  seq: number,
+  scores: Scores | null,
+  questionType: "opening" | "clarify" | "deepen" = "opening",
+  topic = "teamwork",
+): ReportTurnRow {
   return {
     id: `turn-${seq}`,
     seq,
+    questionType,
+    topic,
+    source: "bank",
     questionText: `Question ${seq}?`,
     answerTranscript: `Answer number ${seq} about the checkout service.`,
     scores,
-    primaryGap: scores ? "impact" : null,
+    primaryGap: scores ? "outcome" : null,
     captureMs: 4000,
   };
 }
@@ -67,8 +73,9 @@ function memoryStore(opts: {
 }
 
 const DRAFT: ReportDraft = {
-  summary: "Put a number on your outcomes.",
-  rewrite: "Situation: … Result: [metric].",
+  summary: "Say how your stories turned out.",
+  rewrite: "I took on the backend… [result].",
+  feedback: { strengths: [], improvements: [] },
 };
 
 describe("runReport", () => {
@@ -128,7 +135,7 @@ describe("runReport", () => {
 
     // (4 + 2) / 2 — the unscored turn neither drags nor lifts the average.
     expect(outcome.body).toMatchObject({
-      overallScores: flat(3),
+      overallScores: { ...flat(3), overall: 3 },
       weakestTurnId: "turn-3",
     });
     expect(outcome.body).toHaveProperty("stats.answered", 3);
@@ -163,7 +170,7 @@ describe("runReport", () => {
     warn.mockRestore();
     expect(outcome.status).toBe(200);
     expect(outcome.body).toMatchObject({ rewrite: null });
-    expect((outcome.body as { summary: string }).summary).toMatch(/Across 1 answer/);
+    expect((outcome.body as { summary: string }).summary).toMatch(/Across 1 question/);
     expect(db.session?.status).toBe("completed");
     // The failure is logged server-side, never returned.
     expect(JSON.stringify(outcome.body)).not.toMatch(/rate limited|requests\/minute/i);
@@ -202,5 +209,63 @@ describe("runReport", () => {
 
     expect(generateText).not.toHaveBeenCalled();
     expect(db.session?.status).toBe("completed");
+  });
+});
+
+describe("runReport — a follow-up adds to the question it came from", () => {
+  /**
+   * The opening missed the outcome (2s); the clarify supplied it, and its
+   * cumulative evaluation of the whole answer is 4s. The question scores 4:
+   * the less complete evaluation before the follow-up is never averaged in.
+   */
+  it("scores each original question by its latest cumulative evaluation", async () => {
+    const { store } = memoryStore({
+      turns: [turn(1, flat(2)), turn(2, flat(4), "clarify"), turn(3, flat(3), "opening", "conflict")],
+    });
+    const outcome = await runReport(store, { generateText: async () => DRAFT });
+
+    // Two questions, (4 + 3) / 2 — not three turns averaging (2 + 4 + 3) / 3.
+    expect(outcome.body).toHaveProperty("overallScores.overall", 3.5);
+    expect(outcome.body).toHaveProperty("stats.answered", 2);
+    // Weakest is the conflict question; the first is now complete.
+    expect(outcome.body).toMatchObject({ weakestTurnId: "turn-3" });
+  });
+
+  it("sends the model each question with its follow-ups, and cites the opening as weakest", async () => {
+    const { store } = memoryStore({
+      turns: [turn(1, flat(1)), turn(2, flat(2), "clarify"), turn(3, flat(3), "opening", "conflict")],
+    });
+    const generateText = vi.fn(async () => DRAFT);
+    const outcome = await runReport(store, { generateText });
+
+    const [args] = generateText.mock.calls[0] as unknown as [
+      { questions: { ref: string; parts: unknown[] }[]; weakestRef: string },
+    ];
+    expect(args.questions.map((q) => [q.ref, q.parts.length])).toEqual([["Q1", 2], ["Q2", 1]]);
+    expect(args.weakestRef).toBe("Q1");
+    expect(outcome.body).toMatchObject({ weakestTurnId: "turn-1" });
+  });
+
+  /** A technical question has no Ownership; it must not count as a zero there. */
+  it("averages each dimension only over the questions it applies to", async () => {
+    const technical = { relevance: 4, accuracy: 4, reasoning: 4, specificity: 4, communication: 4 };
+    const { store } = memoryStore({
+      turns: [turn(1, flat(2)), turn(2, technical, "opening", "technical_knowledge")],
+    });
+    const outcome = await runReport(store, { generateText: async () => DRAFT });
+
+    expect(outcome.body).toHaveProperty("overallScores.ownership", 2);
+    expect(outcome.body).toHaveProperty("overallScores.accuracy", 4);
+    expect(outcome.body).toHaveProperty("overallScores.reasoning", 3);
+  });
+
+  it("stores the feedback with the report", async () => {
+    const feedback = {
+      strengths: [{ question: "Q1", point: "Clear ownership.", quote: "Answer number 1" }],
+      improvements: [],
+    };
+    const { store, db } = memoryStore({ turns: [turn(1, flat(2))] });
+    await runReport(store, { generateText: async () => ({ ...DRAFT, feedback }) });
+    expect(db.report?.stats.feedback).toEqual(feedback);
   });
 });

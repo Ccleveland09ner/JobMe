@@ -1,5 +1,7 @@
 /**
- * Full transcript with each answer's evidence quote marked and tagged.
+ * Full transcript, one entry per ORIGINAL question: the first answer, then
+ * each follow-up and what the candidate added, nested beneath it. Each
+ * answer's evidence quote is marked and tagged.
  * Ref: docs/TechDesign-JobMe-MVP.md > Scorecard Page
  *
  * The turn's `evidence` is located inside the answer case-insensitively
@@ -9,27 +11,39 @@
  * answer instead. Never dropped silently, never a crash over it.
  */
 
-import { DIMENSION_LABELS, MOVE_LABELS, topicLabel } from "@/lib/frontend/labels";
+import { DIMENSION_LABELS, KIND_LABELS, MOVE_LABELS } from "@/lib/frontend/labels";
 import { findEvidence } from "@/lib/frontend/adapters";
-import type { ReportTurnView } from "@/lib/frontend/types";
+import type { ReportQuestionView, ReportTurnView } from "@/lib/frontend/types";
 
-export function HighlightedTranscript({ turns }: { turns: ReportTurnView[] }) {
+export function HighlightedTranscript({ questions }: { questions: ReportQuestionView[] }) {
   return (
     <section aria-labelledby="transcript-title" className="flex flex-col gap-3">
       <h2 id="transcript-title" className="text-base font-semibold text-ink">
         Transcript
       </h2>
       <ol className="flex flex-col gap-4">
-        {turns.map((t) => (
-          <li key={t.id} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+        {questions.map((q) => (
+          <li key={q.opening.id} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
             <div className="flex flex-col gap-1">
               <p className="text-xs text-muted">
-                Q{t.seq} · {topicLabel(t.topic)}
-                {t.questionType && ` · ${MOVE_LABELS[t.questionType]}`}
+                {q.ref} · {q.label} · {KIND_LABELS[q.kind]}
               </p>
-              <p className="font-medium text-ink">{t.questionText}</p>
+              <p className="font-medium text-ink">{q.opening.questionText}</p>
             </div>
-            <Answer turn={t} />
+            <Answer turn={q.opening} />
+            {q.followUps.length > 0 && (
+              <ol className="flex flex-col gap-3 border-l-2 border-line pl-3">
+                {q.followUps.map((f) => (
+                  <li key={f.id} className="flex flex-col gap-1">
+                    <p className="text-xs text-muted">
+                      {f.questionType ? `${MOVE_LABELS[f.questionType]} follow-up` : "Follow-up"}
+                    </p>
+                    <p className="text-sm font-medium text-ink">{f.questionText}</p>
+                    <Answer turn={f} />
+                  </li>
+                ))}
+              </ol>
+            )}
           </li>
         ))}
       </ol>
@@ -60,7 +74,7 @@ function Answer({ turn }: { turn: ReportTurnView }) {
       </p>
       {split && gap && (
         <p className="text-xs text-muted">
-          Highlighted: <span className="font-medium text-ink">{gap}</span> was the main gap in this answer.
+          Highlighted: <span className="font-medium text-ink">{gap}</span> was the main gap at this point.
         </p>
       )}
       {!split && turn.evidence && (

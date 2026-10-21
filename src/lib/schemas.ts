@@ -12,10 +12,16 @@ import { TOPIC_IDS, type TopicId } from "./engine/types";
 /** Input caps. Ref: docs/TechDesign-JobMe-MVP.md > Security */
 export const LIMITS = {
   transcript: 5000,
-  roleText: 2000,
+  /**
+   * Matches what a posting link yields (lib/job-posting.ts MAX_POSTING_CHARS).
+   * It was 2000, which silently cut most real job descriptions to their first
+   * third — usually the company blurb, before the requirements.
+   */
+  roleText: 8000,
   ttsText: 600,
   displayName: 40,
   targetRole: 100,
+  company: 100,
   jobUrl: 500,
 } as const;
 
@@ -24,6 +30,8 @@ export const CreateSessionBody = z
     displayName: z.string().trim().min(1).max(LIMITS.displayName),
     /** The job title, e.g. "Backend Engineering Intern". */
     targetRole: z.string().trim().min(1).max(LIMITS.targetRole).optional(),
+    /** The employer, when the candidate knows it. Never required. */
+    company: z.string().trim().min(1).max(LIMITS.company).optional(),
     /** A pasted job description... */
     roleText: z.string().max(LIMITS.roleText).optional(),
     /**
@@ -65,13 +73,15 @@ export const QuestionPlan = z.object({
       competencies: z.array(z.string()),
     })
     .nullable(),
-  /** Role-tailored wording for SOME bank topics, per difficulty level. */
+  /** Role-tailored wording for the session's topics, per difficulty level. */
   topics: z.partialRecord(
     Topic,
     z.object({
       l1: z.string().optional(),
       l2: z.string().optional(),
       l3: z.string().optional(),
+      /** What the topic assesses for this job, shown on the scorecard. */
+      purpose: z.string().optional(),
     }),
   ),
   /** One opening per resume item, keyed by item id. */
@@ -79,6 +89,26 @@ export const QuestionPlan = z.object({
     z.string(),
     z.object({ text: z.string(), topic: Topic.nullable() }),
   ),
+  /** The session's topics in ask order. Absent on plans stored before 2026-10. */
+  order: z.array(Topic).optional(),
+  /** Resume item ids, most relevant to this job first. */
+  resumeOrder: z.array(z.string()).optional(),
+  /**
+   * The job, stored even when the model contributed nothing, so every turn
+   * knows the role and the level it is judging against.
+   */
+  job: z
+    .object({
+      title: z.string().nullable(),
+      company: z.string().nullable(),
+      /** Read from the posting link's path, not stated by the posting. */
+      companyInferred: z.boolean(),
+      family: z.enum(["software", "product", "data", "general"]),
+      seniority: z.string().nullable(),
+      /** The model contributed to this plan — what "personalised" means. */
+      generated: z.boolean(),
+    })
+    .optional(),
 });
 export type QuestionPlan = z.infer<typeof QuestionPlan>;
 

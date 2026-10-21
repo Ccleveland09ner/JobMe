@@ -4,19 +4,19 @@
  *
  * The rule these enforce: the frontend FORMATS what the backend decided, it
  * never re-decides it. Band, move, gap, reason, cap and coverage are passed
- * through untouched. The one derived figure is `displayAverage()`, and it
- * averages values the backend already averaged over scored turns only.
+ * through untouched. The headline score is the backend's stored `overall`;
+ * `displayAverage()` only stands in for sessions stored before it existed.
  */
 
 import {
-  DIMENSIONS,
+  DISPLAY_DIMENSIONS,
+  type AnyDimension,
   type Band,
-  type Dimension,
   type EngineState,
   type InterviewMode,
   type QuestionSource,
   type QuestionType,
-  type Scores,
+  type StoredScores,
   type TopicId,
 } from "../engine/types";
 import type {
@@ -32,20 +32,22 @@ import type {
 // Scores
 // ---------------------------------------------------------------------------
 
-const DIMENSION_SET = new Set<string>(DIMENSIONS);
+const DIMENSION_SET = new Set<string>(DISPLAY_DIMENSIONS);
 
-export function isDimension(value: unknown): value is Dimension {
+/** A current or legacy (pre-2026-10 STAR) dimension key. */
+export function isDimension(value: unknown): value is AnyDimension {
   return typeof value === "string" && DIMENSION_SET.has(value);
 }
 
 /**
- * Keeps the known dimensions with numeric values. Anything else — including a
- * legacy five-dimension `structure` key — is dropped rather than rendered as
- * a ninth bar. Null and empty both mean "unscored".
+ * Keeps the known dimensions with numeric values, current and legacy alike,
+ * so an old session still renders. Anything else — the `overall` figure, or
+ * the five-dimension `structure` key — is dropped rather than rendered as a
+ * stray bar. Null and empty both mean "unscored".
  */
-export function pickScores(raw: unknown): Partial<Scores> | null {
+export function pickScores(raw: unknown): StoredScores | null {
   if (!raw || typeof raw !== "object") return null;
-  const out: Partial<Scores> = {};
+  const out: StoredScores = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (isDimension(key) && typeof value === "number" && Number.isFinite(value)) {
       out[key] = value;
@@ -54,19 +56,33 @@ export function pickScores(raw: unknown): Partial<Scores> | null {
   return Object.keys(out).length ? out : null;
 }
 
-/** [dimension, value] in rubric order, skipping dimensions with no value. */
-export function scoreEntries(scores: Partial<Scores>): [Dimension, number][] {
-  return DIMENSIONS.flatMap((d) =>
-    typeof scores[d] === "number" ? [[d, scores[d] as number] as [Dimension, number]] : [],
+/**
+ * The session's headline 1-4 score as the backend stored it (`overall`, the
+ * mean of its question scores). Sessions stored before it existed fall back
+ * to the plain mean of their dimensions, which is what they showed then.
+ */
+export function pickOverall(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const overall = (raw as Record<string, unknown>).overall;
+  if (typeof overall === "number" && Number.isFinite(overall)) {
+    return Number(overall.toFixed(1));
+  }
+  return displayAverage(pickScores(raw));
+}
+
+/** [dimension, value] in display order, skipping dimensions with no value. */
+export function scoreEntries(scores: StoredScores): [AnyDimension, number][] {
+  return DISPLAY_DIMENSIONS.flatMap((d) =>
+    typeof scores[d] === "number" ? [[d, scores[d] as number] as [AnyDimension, number]] : [],
   );
 }
 
 /**
- * One headline number for a dashboard row: the mean of the backend's
- * per-dimension `overall_scores`, which already exclude unscored turns. Not
- * used anywhere a decision is made.
+ * The plain mean of a score set's dimensions. Only the fallback headline for
+ * sessions stored before `overall` existed; never used where a decision is
+ * made.
  */
-export function displayAverage(scores: Partial<Scores> | null): number | null {
+export function displayAverage(scores: StoredScores | null): number | null {
   if (!scores) return null;
   const values = scoreEntries(scores).map(([, v]) => v);
   if (!values.length) return null;
@@ -175,6 +191,7 @@ export function sessionSummaryFromRow(row: SessionRowData): SessionSummary {
     endedAt: row.ended_at,
     questionCount: row.question_count ?? 0,
     overallScores: pickScores(row.overall_scores),
+    overall: pickOverall(row.overall_scores),
   };
 }
 

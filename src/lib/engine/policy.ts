@@ -17,6 +17,7 @@ import {
   TURNS_PER_RESUME_THREAD,
   fullModeCap,
   maxCoverableItems,
+  questionKind,
   type Band,
   type Dimension,
   type EngineState,
@@ -32,6 +33,8 @@ import {
 export const MAX_FOLLOW_UPS = 2;
 /** Full-mode resume threads: see maxFollowUpsFor. */
 export const MAX_FOLLOW_UPS_FULL_RESUME = 1;
+/** "Why this role" threads: one follow-up is a conversation, two an interrogation. */
+export const MAX_FOLLOW_UPS_MOTIVATIONAL = 1;
 export const MAX_DIFFICULTY = 3;
 
 /** What `step()` needs about the answer just given. */
@@ -41,6 +44,11 @@ export interface StepInput {
   primaryGap: Dimension;
   /** The follow-up restated the previous answer instead of expanding it. */
   repeatsPrevious?: boolean;
+  /**
+   * The candidate said they have no such experience. Pressing would only
+   * invite an invented story, so the thread ends and the interview moves on.
+   */
+  noExperience?: boolean;
 }
 
 /** `next` is null only when `move === 'wrap'`. */
@@ -119,25 +127,31 @@ export function isPlateau(state: EngineState, input: StepInput): boolean {
   return noDimensionRose(previous, input.scores);
 }
 
-/** Should this thread end? Ref: PRD > Adaptive Engine (resolution rules) */
 /**
  * Follow-ups this thread may spend.
  *
  * A full-mode resume thread gets one, not two. Full mode promises to cover
  * every role and project, and measurement showed a second follow-up on each
  * put six items 36 turns out of reach. Breadth over depth is the distinction
- * between the modes: quick mode still digs the full two.
+ * between the modes: quick mode still digs the full two. A motivational
+ * thread gets one in either mode.
  */
 export function maxFollowUpsFor(state: EngineState): number {
-  return state.mode === "full" && state.currentQuestion.source === "resume"
-    ? MAX_FOLLOW_UPS_FULL_RESUME
-    : MAX_FOLLOW_UPS;
+  if (state.mode === "full" && state.currentQuestion.source === "resume") {
+    return MAX_FOLLOW_UPS_FULL_RESUME;
+  }
+  if (questionKind(state.currentQuestion) === "motivational") {
+    return MAX_FOLLOW_UPS_MOTIVATIONAL;
+  }
+  return MAX_FOLLOW_UPS;
 }
 
+/** Should this thread end? Ref: PRD > Adaptive Engine (resolution rules) */
 export function shouldResolveTopic(
   state: EngineState,
   input: StepInput,
 ): boolean {
+  if (input.noExperience) return true;
   if (state.followUpsUsed >= maxFollowUpsFor(state)) return true;
   if (isPlateau(state, input)) return true;
   if (state.lastMove === "deepen" && input.band === "great") return true;
