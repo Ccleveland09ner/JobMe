@@ -286,3 +286,19 @@ describe("heuristicScores — degraded turn", () => {
     ).toBe("outcome");
   });
 });
+
+describe("already asked", () => {
+  // One test everywhere: case, punctuation and spacing don't make a new question.
+  it("is caught whatever the case, punctuation or spacing", () => {
+    expect(checkDraft("What did  you change , yourself?", ["what did you change yourself?"])).toEqual({ ok: false, reason: "repeat" });
+  });
+
+  it("moves on to an unused seed rather than repeating one", () => {
+    const chosen = chooseQuestionText({
+      draft: undefined,
+      seeds: ["What did you change yourself?", "How did you know it worked?"],
+      askedQuestions: ["what did you change YOURSELF"],
+    });
+    expect(chosen).toMatchObject({ text: "How did you know it worked?", source: "seed" });
+  });
+});

@@ -40,7 +40,7 @@ const QUOTE_MAX_WORDS = 20;
 export const REPORT_TIMEOUT_MS = 15_000;
 
 /** One original question as the report sees it. */
-export interface ReportQuestion {
+export interface ReportPromptQuestion {
   /** "Q1", "Q2"… in ask order: how feedback items cite a question. */
   ref: string;
   competency: string;
@@ -137,7 +137,7 @@ const ReportOutput = z.object({
 
 /** The prompt: every question with its whole answer, the weakest marked. */
 export function buildReportPrompt(args: {
-  questions: ReportQuestion[];
+  questions: ReportPromptQuestion[];
   weakestRef: string | null;
   roleText?: string | null;
 }): string {
@@ -172,7 +172,7 @@ export function buildReportPrompt(args: {
  */
 export async function generateReportText(
   args: {
-    questions: ReportQuestion[];
+    questions: ReportPromptQuestion[];
     weakestRef: string | null;
     roleText?: string | null;
   },
@@ -214,7 +214,7 @@ export async function generateReportText(
  */
 function cleanItems(
   items: z.infer<typeof Item>[],
-  byRef: Map<string, ReportQuestion>,
+  byRef: Map<string, ReportPromptQuestion>,
   kind: "strength" | "improvement",
 ): FeedbackItem[] {
   const out: FeedbackItem[] = [];

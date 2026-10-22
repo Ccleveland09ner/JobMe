@@ -14,6 +14,7 @@ import {
   FOLDER_COMPETENCY_ROWS,
   FOLDER_FLOW_START,
   isFiled,
+  latestFiledReportId,
   loadReportDocument,
   loadReportIndex,
   reportDocumentFromRows,
@@ -266,5 +267,15 @@ describe("loadReportDocument and loadReportIndex", () => {
     ]);
     expect(db.queries[0].filters).toContainEqual(["eq", "status", "completed"]);
     expect(db.queries[0].modifiers).toContain("limit:60");
+  });
+});
+
+describe("latestFiledReportId", () => {
+  it("is the newest finished interview, or none", async () => {
+    const db = fakeSupabase(() => ({ data: { id: "s9" } }));
+    expect(await latestFiledReportId(db.client as never)).toBe("s9");
+    expect(db.queries[0].filters).toContainEqual(["eq", "status", "completed"]);
+    expect(await latestFiledReportId(fakeSupabase(() => ({ data: null })).client as never)).toBeNull();
+    await expect(latestFiledReportId(fakeSupabase(() => ({ error: { message: "down" } })).client as never)).rejects.toThrow("reports: down");
   });
 });

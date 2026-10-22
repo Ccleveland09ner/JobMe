@@ -1,12 +1,8 @@
 /** Storing a resume: the row, then its chunks, and the hand-made rollback when the chunks fail. */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { fakeSupabase, filterValue, type FakeQuery, type FakeResult } from "@/lib/testing/fake-supabase";
-
-vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
-
-import { createClient } from "@/lib/supabase/server";
 
 import type { Chunk } from "./chunk";
 import type { ParsedResume } from "./parse";
@@ -31,17 +27,15 @@ function database(script: { chunks?: FakeResult; rollback?: FakeResult }) {
     if (q.table === "resumes" && q.action === "delete") return script.rollback ?? {};
     return {};
   };
-  const fake = fakeSupabase(answer);
-  vi.mocked(createClient).mockResolvedValue(fake.client as never);
-  return fake;
+  return fakeSupabase(answer);
 }
 
-beforeEach(() => vi.mocked(createClient).mockReset());
+const store = (fake: ReturnType<typeof database>, args: Parameters<typeof storeResume>[1]) => storeResume(fake.client as never, args);
 
 describe("storeResume", () => {
   it("saves the resume, then every chunk with its vector", async () => {
     const fake = database({});
-    expect(await storeResume({ parsed, redaction, chunks, vectors, facts: null })).toEqual({ id: "resume-1", chunkCount: 2, layoutSuspect: false });
+    expect(await store(fake, { parsed, redaction, chunks, vectors, facts: null })).toEqual({ id: "resume-1", chunkCount: 2, layoutSuspect: false });
     const rows = fake.queries.find((q) => q.table === "resume_chunks")?.payload as { resume_id: string; seq: number; embedding: unknown }[];
     expect(rows.map((r) => [r.resume_id, r.seq, r.embedding])).toEqual([
       ["resume-1", 0, vectors[0]],
@@ -51,7 +45,7 @@ describe("storeResume", () => {
 
   it("removes the resume again when its chunks can't be saved", async () => {
     const fake = database({ chunks: { error: { message: "vector dimension mismatch" } } });
-    const error = await storeResume({ parsed, redaction, chunks, vectors, facts: null }).catch((e: unknown) => e);
+    const error = await store(fake, { parsed, redaction, chunks, vectors, facts: null }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ResumeStoreError);
     expect((error as Error).message).toBe("Could not save resume chunks: vector dimension mismatch");
     const rollback = fake.queries.find((q) => q.table === "resumes" && q.action === "delete");
@@ -59,15 +53,15 @@ describe("storeResume", () => {
   });
 
   it("says so when the rollback fails too, so the orphan can be found", async () => {
-    database({ chunks: { error: { message: "timeout" } }, rollback: { error: { message: "connection lost" } } });
-    await expect(storeResume({ parsed, redaction, chunks, vectors, facts: null })).rejects.toThrow(
+    const fake = database({ chunks: { error: { message: "timeout" } }, rollback: { error: { message: "connection lost" } } });
+    await expect(store(fake, { parsed, redaction, chunks, vectors, facts: null })).rejects.toThrow(
       "Could not save resume chunks: timeout; resume resume-1 was left behind: connection lost",
     );
   });
 
   it("refuses chunks and vectors that don't pair up, before writing anything", async () => {
     const fake = database({});
-    await expect(storeResume({ parsed, redaction, chunks, vectors: [vectors[0]], facts: null })).rejects.toThrow(ResumeStoreError);
+    await expect(store(fake, { parsed, redaction, chunks, vectors: [vectors[0]], facts: null })).rejects.toThrow(ResumeStoreError);
     expect(fake.queries).toHaveLength(0);
   });
 });

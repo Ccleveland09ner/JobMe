@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 
 import { getUserOrNull } from "@/lib/auth";
-import { unauthorized } from "@/lib/http";
+import { unauthorized, unavailable } from "@/lib/http";
 import { TtsQuery } from "@/lib/schemas";
 import { TTS_MODEL_ID, TTS_OUTPUT_FORMAT } from "@/lib/voice/config";
 
@@ -27,10 +27,7 @@ export async function GET(request: Request) {
 
   // Not an error: the client falls back to the browser voice.
   if (!apiKey || !voiceId || process.env.TTS_PROVIDER !== "elevenlabs") {
-    return NextResponse.json(
-      { error: "Neural TTS is not enabled; use the browser voice." },
-      { status: 503 },
-    );
+    return unavailable({ error: "Neural TTS is not enabled; use the browser voice." });
   }
 
   // align=1: audio plus per-character times for lip-sync, as JSON (not streamed).

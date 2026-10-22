@@ -40,6 +40,31 @@ export function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+// Stored scores
+
+const DIMENSION_SET = new Set<string>(DISPLAY_DIMENSIONS);
+
+/** A current or legacy (pre-2026-10 STAR) dimension key. */
+export function isDimension(value: unknown): value is AnyDimension {
+  return typeof value === "string" && DIMENSION_SET.has(value);
+}
+
+/**
+ * Keeps known dimensions with numeric values, current and legacy alike, so an
+ * old session still renders; anything else (`overall`, the old `structure`
+ * key) is dropped. Null or empty is unscored.
+ */
+export function pickScores(raw: unknown): StoredScores | null {
+  if (!raw || typeof raw !== "object") return null;
+  const out: StoredScores = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (isDimension(key) && typeof value === "number" && Number.isFinite(value)) {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // ---------------------------------------------------------------------------
 // Questions: a follow-up adds to the question it came from
 // ---------------------------------------------------------------------------

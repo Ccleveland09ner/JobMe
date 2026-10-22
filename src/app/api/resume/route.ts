@@ -1,187 +1,104 @@
 /**
- * POST /api/resume: guard -> parse -> redact -> chunk -> embed + distill ->
- * store. Redaction runs before anything leaves this server. A route handler,
- * not a server action (actions cap bodies at 1 MB).
+ * POST /api/resume: the upload checks, then lib/resume/ingest.ts (parse ->
+ * redact -> chunk -> embed + distill -> rank -> store). A route handler, not
+ * a server action (actions cap bodies at 1 MB).
  */
 
 import { NextResponse } from "next/server";
 
-import { embedMany } from "@/lib/ai/embeddings";
 import { getUserOrNull } from "@/lib/auth";
-import { serverError, unauthorized } from "@/lib/http";
-import { MAX_JD_CHARS, distillJobDescription } from "@/lib/jd/distill";
-import { chunkResume } from "@/lib/resume/chunk";
-import { distillResume } from "@/lib/resume/distill";
-import { buildResumeItems, rankItemsAgainstRole } from "@/lib/resume/items";
-import { ResumeParseError, parseResumePdf } from "@/lib/resume/parse";
-import { redact } from "@/lib/resume/redact";
-import { ResumeStoreError, storeResume } from "@/lib/resume/store";
+import { FREE_TIER_RPM } from "@/lib/ai/llm";
+import type { ResumeUploadResponse } from "@/lib/frontend/types";
+import { serverError, unauthorized, unavailable, unprocessable } from "@/lib/http";
+import { ingestResume } from "@/lib/resume/ingest";
+import { storeResume } from "@/lib/resume/store";
+import { createClient } from "@/lib/supabase/server";
 
-/** Below the 6MB proxy cap. A text resume is tens of KB. */
+/** A text resume is tens of KB. */
 const MAX_BYTES = 4 * 1024 * 1024;
+
+const tooLarge = () => NextResponse.json({ error: `Resume must be under ${MAX_BYTES / 1024 / 1024}MB.` }, { status: 413 });
+const unreadableUpload = () => NextResponse.json({ error: "Could not read the upload." }, { status: 400 });
 
 export async function POST(request: Request) {
   if (!(await getUserOrNull())) return unauthorized();
 
   // Reject on the declared size BEFORE reading the body.
   const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > MAX_BYTES) {
-    return NextResponse.json(
-      { error: `Resume must be under ${MAX_BYTES / 1024 / 1024}MB.` },
-      { status: 413 },
-    );
+  if (declared > MAX_BYTES) return tooLarge();
+
+  // Read once, then parse the form from the same bytes.
+  let raw: ArrayBuffer;
+  try {
+    raw = await request.arrayBuffer();
+  } catch {
+    return unreadableUpload();
   }
 
   /**
-   * Truncation guard: proxyClientMaxBodySize lets an oversized body through
-   * truncated, so compare content-length with the whole body received (the
-   * multipart envelope, not just the file). Cloned, as a body reads once.
+   * Truncation guard: content-length against the whole body received (the
+   * multipart envelope, not just the file). Next buffers, and past
+   * proxyClientMaxBodySize silently truncates, a body it hands to the proxy;
+   * the proxy skips api/ today, so this only catches a cut further upstream.
    */
-  let received: number;
-  try {
-    received = (await request.clone().arrayBuffer()).byteLength;
-  } catch {
+  if (declared > 0 && raw.byteLength < declared) {
     return NextResponse.json(
-      { error: "Could not read the upload." },
-      { status: 400 },
-    );
-  }
-
-  if (declared > 0 && received < declared) {
-    return NextResponse.json(
-      {
-        error:
-          "The upload was truncated in transit. Try a smaller file, or " +
-          "re-export the PDF.",
-      },
+      { error: "The upload was truncated in transit. Try a smaller file, or re-export the PDF." },
       { status: 413 },
     );
   }
 
-  let file: File | null = null;
-  let form: FormData | null = null;
+  let form: FormData;
   try {
-    form = await request.formData();
-    const value = form.get("file");
-    if (value instanceof File) file = value;
+    form = await new Response(raw, { headers: { "content-type": request.headers.get("content-type") ?? "" } }).formData();
   } catch {
-    return NextResponse.json(
-      { error: "Could not read the upload." },
-      { status: 400 },
-    );
+    return unreadableUpload();
   }
 
-  if (!file) {
-    return NextResponse.json(
-      { error: "No file was uploaded." },
-      { status: 422 },
-    );
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return unprocessable({ error: "No file was uploaded." });
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength > MAX_BYTES) return tooLarge();
 
-  if (bytes.byteLength > MAX_BYTES) {
-    return NextResponse.json(
-      { error: `Resume must be under ${MAX_BYTES / 1024 / 1024}MB.` },
-      { status: 413 },
-    );
-  }
-
-  // Parse.
-  let parsed;
-  try {
-    parsed = await parseResumePdf(bytes);
-  } catch (err) {
-    if (err instanceof ResumeParseError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: 422 },
-      );
-    }
-    throw err;
-  }
-
-  // Redact, before anything leaves this server.
-  const redaction = redact(parsed.text);
-
-  const chunks = chunkResume(redaction.text);
-  if (!chunks.length) {
-    return NextResponse.json(
-      { error: "That resume produced no readable sections." },
-      { status: 422 },
-    );
-  }
-
-  /** Reorders coverage by relevance; every role and project is still covered. */
-  const jdText = String(form?.get("roleText") ?? "").slice(0, MAX_JD_CHARS);
-
-  // Embed and distill, in parallel.
-  let vectors: number[][];
-  let facts;
-  let role;
-  try {
-    [vectors, facts, role] = await Promise.all([
-      embedMany(
-        chunks.map((c) => c.content),
-        "RETRIEVAL_DOCUMENT",
-      ),
-      distillResume(redaction.text),
-      jdText ? distillJobDescription(jdText) : Promise.resolve(null),
-    ]);
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error:
-          "Could not process the resume right now. The free AI tier allows " +
-          "15 requests a minute — wait a moment and try again.",
-        detail: (err as Error).message.slice(0, 200),
-      },
-      { status: 503 },
-    );
-  }
-
-  // Reuses the chunk vectors: one extra embedding call, for the role query.
-  const items = await rankItemsAgainstRole(
-    buildResumeItems(facts, chunks),
-    chunks,
-    role,
+  const outcome = await ingestResume(bytes, String(form.get("roleText") ?? ""), async (args) =>
+    storeResume(await createClient(), args),
   );
 
-  // Store.
-  try {
-    const stored = await storeResume({
-      parsed,
-      redaction,
-      chunks,
-      vectors,
-      facts,
-      role,
-      items,
-    });
-
-    return NextResponse.json({
-      resumeId: stored.id,
-      chunkCount: stored.chunkCount,
-      pageCount: parsed.pageCount,
-      /** What the interview will work through, in ask order. */
-      coverage: items.map((i) => ({
-        id: i.id,
-        kind: i.kind,
-        label: i.label,
-        relevance: Number(i.relevanceToRole.toFixed(3)),
-      })),
-      role: role ? { title: role.title, seniority: role.seniority } : null,
-      /** When set, the client must confirm the extracted text (some layouts parse into nonsense). */
-      layoutSuspect: stored.layoutSuspect,
-      extractedPreview: redaction.text.slice(0, 600),
-      /** Diagnostics so the user can see redaction actually happened. */
-      redacted: redaction.removed,
-      hasFacts: facts !== null,
-    });
-  } catch (err) {
-    if (err instanceof ResumeStoreError) {
-      return serverError(`[resume] store: ${err.message}`, "Couldn't save your resume. Please try again.");
-    }
-    throw err;
+  switch (outcome.kind) {
+    case "unreadable":
+      return unprocessable({ error: outcome.error.message, code: outcome.error.code });
+    case "empty":
+      return unprocessable({ error: "That resume produced no readable sections." });
+    case "ai-unavailable":
+      return unavailable({
+        error: `Could not process the resume right now. The free AI tier allows ${FREE_TIER_RPM} requests a minute — wait a moment and try again.`,
+        detail: outcome.reason,
+      });
+    case "store-failed":
+      return serverError(`[resume] store: ${outcome.reason}`, "Couldn't save your resume. Please try again.");
   }
+
+  const { stored, items, role, redaction } = outcome;
+  return NextResponse.json({
+    resumeId: stored.id,
+    chunkCount: stored.chunkCount,
+    pageCount: outcome.pageCount,
+    /** What the interview will work through, in ask order. */
+    coverage: items.map((i) => ({
+      id: i.id,
+      kind: i.kind,
+      label: i.label,
+      relevance: Number(i.relevanceToRole.toFixed(3)),
+    })),
+    role: role ? { title: role.title, seniority: role.seniority } : null,
+    /** When set, the client must confirm the extracted text (some layouts parse into nonsense). */
+    layoutSuspect: stored.layoutSuspect,
+    extractedPreview: redaction.text.slice(0, 600),
+    /** Diagnostics so the user can see redaction actually happened. */
+    redacted: redaction.removed,
+    hasFacts: outcome.hasFacts,
+  } satisfies ResumeUploadResponse);
 }

@@ -12,7 +12,7 @@ import {
   pickWeakest,
   reportStats,
   verifyQuote,
-  type ReportQuestion,
+  type ReportPromptQuestion,
 } from "./report";
 
 /** A stand-in for the model that returns `value` and records its arguments. */
@@ -29,7 +29,7 @@ const NO_NUMBERS_ANSWER =
   "We had a slow checkout page. I profiled it, found the query doing a full " +
   "scan, and added an index. The page got a lot faster after that.";
 
-const QUESTIONS: ReportQuestion[] = [
+const QUESTIONS: ReportPromptQuestion[] = [
   {
     ref: "Q1",
     competency: "Teamwork",

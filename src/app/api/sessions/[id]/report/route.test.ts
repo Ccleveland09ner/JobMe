@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeQuery, type FakeResult } from "@/lib/testing/fake-supabase";
 
-vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn(), UNAUTHORIZED: { error: "Unauthorized" } }));
+vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/ai/report", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ai/report")>()),
@@ -122,6 +122,17 @@ describe("POST /api/sessions/[id]/report", () => {
     database({ session: { status: "in_progress", overall_scores: null, ended_at: null, role_text: "Raw posting", question_plan: null }, turns: [TURN_ROW] });
     await POST(request(), ctx(ID));
     expect(vi.mocked(generateReportText).mock.calls.at(-1)?.[0].roleText).toBe("Raw posting");
+  });
+
+  // Unknown keys (an overall figure, a retired dimension) never reach the report prompt.
+  it("reads each turn's scores the way the scorecard does", async () => {
+    database({
+      session: { status: "in_progress", overall_scores: null, ended_at: null },
+      turns: [{ ...TURN_ROW, scores: { relevance: 3, specificity: 2, overall: 9, structure: 1 } }],
+    });
+    await POST(request(), ctx(ID));
+    const { questions } = vi.mocked(generateReportText).mock.calls.at(-1)![0];
+    expect(questions[0].scores).toEqual({ relevance: 3, specificity: 2 });
   });
 
   it("answers 409 when nothing has been answered", async () => {

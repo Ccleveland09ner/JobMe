@@ -53,12 +53,13 @@ const SYSTEM = [
 /** Null on failure: a job description only improves ordering, never blocks a start. */
 export async function distillJobDescription(
   text: string,
+  generate: typeof generateJson = generateJson,
 ): Promise<RoleProfile | null> {
   const trimmed = text.trim();
   if (trimmed.length < 40) return null;
 
   try {
-    const { value } = await generateJson<RoleProfile>({
+    const { value } = await generate<RoleProfile>({
       systemInstruction: SYSTEM,
       prompt: asUntrustedData("job_posting", trimmed.slice(0, MAX_JD_CHARS)),
       responseSchema: SCHEMA,

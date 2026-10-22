@@ -27,7 +27,7 @@ import type { ReportQuestionView, ReportTurnView, SessionStatus } from "./types"
 
 const SESSION_COLUMNS = `id, status, overall_scores, started_at, ${SESSION_JSON_COLUMNS}`;
 const TURN_COLUMNS =
-  "id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text, wpm, filler_count";
+  "id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text";
 
 /** Reports the folder keeps a tab for, newest first. */
 export const REPORT_INDEX_LIMIT = 60;
@@ -159,6 +159,19 @@ export async function loadReportIndex(supabase: RowReader): Promise<ReportTab[]>
     .limit(REPORT_INDEX_LIMIT);
   if (error) throw new Error(`report index: ${error.message}`);
   return reportTabsFromRows((data ?? []) as unknown as SessionRow[]);
+}
+
+/** The newest finished interview, which the bare reports folder opens at; null when there is none. */
+export async function latestFiledReportId(supabase: RowReader): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("interview_sessions")
+    .select("id")
+    .eq("status", "completed")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`reports: ${error.message}`);
+  return (data as { id: string } | null)?.id ?? null;
 }
 
 /** The tab for a document, for one the index doesn't list (an unfinished one). */

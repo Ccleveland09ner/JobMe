@@ -15,6 +15,8 @@ import type { ParsedResume } from "./parse";
 
 export type { ResumeFacts } from "./facts";
 
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
 export interface StoredResume {
   id: string;
   chunkCount: number;
@@ -28,8 +30,7 @@ export class ResumeStoreError extends Error {
   }
 }
 
-/** Inserts the resume and its chunks (one batch, so a failure can't leave half the vectors). */
-export async function storeResume(args: {
+export interface StoreResumeArgs {
   parsed: ParsedResume;
   redaction: RedactionResult;
   chunks: Chunk[];
@@ -39,7 +40,10 @@ export async function storeResume(args: {
   role?: RoleProfile | null;
   /** Coverage list, already ranked. Seeds `EngineState.resumeItems`. */
   items?: ResumeItem[];
-}): Promise<StoredResume> {
+}
+
+/** Inserts the resume and its chunks (one batch, so a failure can't leave half the vectors). */
+export async function storeResume(supabase: Supabase, args: StoreResumeArgs): Promise<StoredResume> {
   const { parsed, redaction, chunks, vectors, facts, role, items } = args;
 
   if (chunks.length !== vectors.length) {
@@ -47,8 +51,6 @@ export async function storeResume(args: {
       `Refusing to store ${chunks.length} chunks with ${vectors.length} vectors.`,
     );
   }
-
-  const supabase = await createClient();
 
   const { data: resume, error: resumeError } = await supabase
     .from("resumes")

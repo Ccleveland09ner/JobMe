@@ -10,7 +10,8 @@ import { NextResponse } from "next/server";
 import { generateQuestionPlan } from "@/lib/ai/question-plan";
 import { getUserOrNull } from "@/lib/auth";
 import { defaultTopics } from "@/lib/engine/roles";
-import { readBody, serverError, unauthorized } from "@/lib/http";
+import type { CreateSessionResponse } from "@/lib/frontend/types";
+import { readBody, serverError, unauthorized, unprocessable } from "@/lib/http";
 import { startInterview, type StartResume, type StartStore } from "@/lib/interview/start";
 import { fetchJobPosting } from "@/lib/job-posting";
 import { CreateSessionBody } from "@/lib/schemas";
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   });
 
   if (outcome.kind === "bad-link") {
-    return NextResponse.json({ error: outcome.error.message, code: outcome.error.code }, { status: 422 });
+    return unprocessable({ error: outcome.error.message, code: outcome.error.code });
   }
   if (outcome.kind === "failed") {
     return serverError(`[sessions] create: ${outcome.reason}`, "Couldn't start the interview. Please try again.");
@@ -61,18 +62,20 @@ export async function POST(request: Request) {
       coverageTotal: outcome.coverageTotal,
       coverageDone: 0,
     },
-  });
+  } satisfies CreateSessionResponse);
 }
 
 function sessionStore(supabase: Supabase, userId: string): StartStore {
   return {
     saveProfile: async (patch) => supabase.from("profiles").update(patch).eq("id", userId),
     async loadResume(id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("resumes")
         .select("coverage_items, resume_facts, role_profile, resume_chunks(seq, content)")
         .eq("id", id)
         .maybeSingle();
+      // Not fatal: the interview starts without the resume, and says so in the log.
+      if (error) console.warn(`[sessions] resume ${id} unreadable: ${error.message}`);
       return (data ?? null) as StartResume | null;
     },
     async insertSession(row) {

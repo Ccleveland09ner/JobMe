@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { evaluateAndDraft } from "./evaluate";
-import type { generateJson } from "./llm";
+import { LlmError, type generateJson } from "./llm";
 import { FOLLOWUP_GUIDANCE } from "./prompts";
 
 const ARGS = {
   kind: "behavioral" as const,
   topic: "Teamwork",
   questionText: "What did you change yourself?",
-  questionType: "clarify",
+  questionType: "clarify" as const,
   answer: "I wrote the sharding script.",
 };
 
@@ -51,5 +51,14 @@ describe("evaluateAndDraft — what the evaluator is told about a follow-up", ()
     const generate = failing();
     await expect(evaluateAndDraft(ARGS, generate)).rejects.toThrow("Evaluation failed after 2 attempts");
     expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  // A retry would spend the next of the free tier's 15 requests a minute.
+  it("gives up at once on a rate limit, and says so", async () => {
+    const generate = vi.fn(async () => {
+      throw new LlmError("Rate limited (free tier is 15 requests/minute).", true);
+    }) as unknown as typeof generateJson & ReturnType<typeof vi.fn>;
+    await expect(evaluateAndDraft(ARGS, generate)).rejects.toMatchObject({ rateLimited: true });
+    expect(generate).toHaveBeenCalledTimes(1);
   });
 });

@@ -293,6 +293,9 @@ export type Band = (typeof BANDS)[number];
 export const QUESTION_TYPES = ["opening", "deepen", "clarify"] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
+/** A clarify or deepen adds to the question before it; only an opening starts one. */
+export const isFollowUpType = (type: QuestionType) => type !== "opening";
+
 /** Where a question came from, so the policy can alternate like a real screen. */
 export const QUESTION_SOURCES = ["bank", "resume"] as const;
 export type QuestionSource = (typeof QUESTION_SOURCES)[number];

@@ -7,15 +7,19 @@ import { SCORING_FAILED_LINE } from "../engine/notepad";
 import { initState } from "../engine/policy";
 import type { EngineState, Question, ResumeItem, Scores } from "../engine/types";
 import type { QuestionPlan } from "../schemas";
+import { heuristicGap } from "../ai/questions";
 import {
   degradedReasonFor,
   isStaleSubmit,
+  judgeAnswer,
   runTurn,
   staleTurnBody,
   threadHistory,
   turnContextFrom,
   turnResponseBody,
   turnRowFor,
+  submitAnswer,
+  type TurnStore,
   type TurnContext,
   type TurnResult,
 } from "./turn";
@@ -507,5 +511,81 @@ describe("turnResponseBody and staleTurnBody", () => {
   it("tells a stale submit which turn is expected, with the state to resync from", () => {
     const state = { ...freshState(), turnSeq: 4 };
     expect(staleTurnBody(state, 2)).toEqual({ error: "Stale turn sequence", expected: 5, received: 2, state });
+  });
+});
+
+describe("judgeAnswer", () => {
+  const LONG = "I led the rollout across three teams and measured how many tickets we closed each week afterwards.";
+
+  it("bands a short opening weak whatever the scores, but never a short follow-up reply", () => {
+    expect(judgeAnswer({ transcript: "We fixed the bug.", questionType: "opening", kind: "behavioral", scores: flat(4) }).band).toBe("weak");
+    expect(judgeAnswer({ transcript: "I wrote the script.", questionType: "clarify", kind: "behavioral", scores: flat(4) }).band).toBe("great");
+  });
+
+  it("keeps the model's gap only when the scores agree it is one", () => {
+    const scores = { ...flat(3), outcome: 2, ownership: 1 };
+    expect(judgeAnswer({ transcript: LONG, questionType: "opening", kind: "behavioral", scores, modelGap: "outcome" }).primaryGap).toBe("outcome");
+    expect(judgeAnswer({ transcript: LONG, questionType: "opening", kind: "behavioral", scores, modelGap: "relevance" }).primaryGap).toBe("ownership");
+  });
+
+  // runTurn used a separate heuristic gap when the model was down; with no
+  // model gap, judging gives the same answer, so the two paths are one.
+  it("chases the same gap the heuristics would when the model gave none", () => {
+    for (const kind of ["behavioral", "technical", "motivational"] as const) {
+      for (const scores of [flat(2), { ...flat(3), specificity: 1 }, { ...flat(4), reasoning: 2, relevance: 2 }]) {
+        expect(judgeAnswer({ transcript: LONG, questionType: "opening", kind, scores }).primaryGap).toBe(heuristicGap(scores, kind));
+      }
+    }
+  });
+});
+
+describe("submitAnswer", () => {
+  const ANSWER_BODY = { transcript: ANSWER, holdMs: 9000, captureMs: 8000, clientTurnSeq: 1 };
+
+  function memoryStore(patch: Partial<{ status: string; state: EngineState; submitError: { code?: string; message: string } | null; winner: EngineState }> = {}) {
+    const submitted: Record<string, unknown>[] = [];
+    const store: TurnStore = {
+      load: async () => ({
+        session: { engine_state: patch.state ?? freshState(), resume_id: null, status: patch.status ?? "in_progress", role_text: null, question_plan: null },
+        recentTurns: [],
+      }),
+      loadResume: async () => null,
+      submit: async (_state, turn) => {
+        submitted.push(turn);
+        return patch.submitError ?? null;
+      },
+      reloadState: async () => patch.winner ?? null,
+    };
+    return { store, submitted };
+  }
+
+  it("saves an answered turn through the store", async () => {
+    const { store, submitted } = memoryStore();
+    const outcome = await submitAnswer(ANSWER_BODY, store, { runTurn: (c) => runTurn({ ...c, evaluate: async () => raw(flat(3)) }) });
+    expect(outcome.kind).toBe("saved");
+    expect(submitted[0]).toMatchObject({ question_text: FIRST.text, answer_transcript: ANSWER });
+  });
+
+  it("refuses a finished interview, and a turn that isn't the next one", async () => {
+    expect((await submitAnswer(ANSWER_BODY, memoryStore({ status: "completed" }).store)).kind).toBe("finished");
+    const stale = await submitAnswer({ ...ANSWER_BODY, clientTurnSeq: 5 }, memoryStore().store);
+    expect(stale).toMatchObject({ kind: "stale", state: { turnSeq: 0 } });
+  });
+
+  it("hands back the winner's state when another submit got there first", async () => {
+    const winner = { ...freshState(), turnSeq: 1 };
+    const { store } = memoryStore({ submitError: { code: "PT409", message: "stale" }, winner });
+    const outcome = await submitAnswer(ANSWER_BODY, store, { runTurn: (c) => runTurn({ ...c, evaluate: async () => raw(flat(3)) }) });
+    expect(outcome).toEqual({ kind: "stale", state: winner });
+  });
+
+  it("reports a failed save and a failed read, and saves nothing for a nudge", async () => {
+    const failing = memoryStore({ submitError: { message: "rls denied" } });
+    const saved = await submitAnswer(ANSWER_BODY, failing.store, { runTurn: (c) => runTurn({ ...c, evaluate: async () => raw(flat(3)) }) });
+    expect(saved).toEqual({ kind: "save-failed", reason: "rls denied", seq: 1 });
+    expect(await submitAnswer(ANSWER_BODY, { ...failing.store, load: async () => ({ error: "column missing" }) })).toEqual({ kind: "load-failed", reason: "column missing" });
+    const quiet = memoryStore();
+    expect((await submitAnswer({ ...ANSWER_BODY, transcript: "um" }, quiet.store)).kind).toBe("nudge");
+    expect(quiet.submitted).toEqual([]);
   });
 });

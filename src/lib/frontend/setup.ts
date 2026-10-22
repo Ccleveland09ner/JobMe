@@ -7,6 +7,10 @@
 import type { InterviewMode } from "../engine/types";
 import { JobLinkError, resolveJobLink } from "../job-link";
 import { LIMITS } from "../schemas";
+import type { RowReader } from "../supabase/reader";
+
+import { displayNameFor } from "./profile";
+import type { ResumeSummary } from "./types";
 
 export const SETUP_SHEETS = [
   { id: "you", title: "About you" },
@@ -129,5 +133,30 @@ export function sessionBody(values: SetupValues) {
     ...(roleText && { roleText }),
     ...(jobUrl && { jobUrl }),
     ...(resumeId && { resumeId }),
+  };
+}
+
+/** What setup starts from: the name to prefill and the latest resume. Neither read is essential. */
+export async function loadSetup(
+  supabase: RowReader,
+  user: { id: string; email?: string | null },
+): Promise<{ defaultName: string; latestResume: ResumeSummary | null }> {
+  const [profileRes, resumeRes] = await Promise.all([
+    supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
+    supabase.from("resumes").select("id, created_at, page_count, coverage_items").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const resume = resumeRes.data as { id: string; created_at: string; page_count: number | null; coverage_items: unknown } | null;
+  return {
+    defaultName: displayNameFor((profileRes.data as { display_name?: string | null } | null)?.display_name, user.email),
+    latestResume: resume
+      ? {
+          id: resume.id,
+          createdAt: resume.created_at,
+          pageCount: resume.page_count,
+          items: Array.isArray(resume.coverage_items)
+            ? (resume.coverage_items as { kind: "role" | "project"; label: string }[]).map((i) => ({ kind: i.kind, label: i.label }))
+            : [],
+        }
+      : null,
   };
 }

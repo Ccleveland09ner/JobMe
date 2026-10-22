@@ -6,7 +6,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn(), UNAUTHORIZED: { error: "Unauthorized" } }));
+vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn() }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => ({ client: "server" })) }));
 vi.mock("@/lib/ai/embeddings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ai/embeddings")>()),
   embedMany: vi.fn(),
@@ -132,7 +133,8 @@ describe("POST /api/resume", () => {
     expect(body.extractedPreview).not.toContain("kazu@example.com");
     expect(body.redacted).toMatchObject({ email: 1 });
     expect(vi.mocked(distillJobDescription).mock.calls[0][0]).toBe("We build developer tools.");
-    const stored = vi.mocked(storeResume).mock.calls[0][0];
+    const [client, stored] = vi.mocked(storeResume).mock.calls[0];
+    expect(client).toEqual({ client: "server" });
     expect(stored.redaction.text).not.toContain("kazu@example.com");
     expect(stored.vectors).toHaveLength(stored.chunks.length);
   });

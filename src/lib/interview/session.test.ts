@@ -16,6 +16,7 @@ import {
 } from "../engine/types";
 import {
   runReport,
+  type ReportOutcome,
   type ReportStore,
   type ReportTurnRow,
   type StoredReport,
@@ -143,6 +144,13 @@ function reportStore(rows: ReportTurnRow[]): ReportStore {
   };
 }
 
+
+/** A filed report's body; anything else fails the test. */
+function bodyOf(outcome: ReportOutcome) {
+  if (outcome.kind !== "filed") throw new Error(`expected a filed report, got ${outcome.kind}`);
+  return outcome.body;
+}
+
 describe("a whole interview through the pipeline", () => {
   /** With the evaluator down for every turn, a full session still reaches a scorecard. */
   it("finishes and reaches a scorecard with the evaluator down throughout", async () => {
@@ -161,18 +169,18 @@ describe("a whole interview through the pipeline", () => {
     const generateText = vi.fn();
     const outcome = await runReport(reportStore(rows), { generateText });
 
-    expect(outcome.status).toBe(200);
+    expect(outcome.kind).toBe("filed");
     // Nothing was scored, so there is nothing to rewrite — and no call to make.
     expect(generateText).not.toHaveBeenCalled();
-    expect(outcome.body).toMatchObject({ rewrite: null, overallScores: null });
+    expect(bodyOf(outcome)).toMatchObject({ rewrite: null, overallScores: null });
     // Counted per original question: a follow-up is part of the one it followed.
-    expect(outcome.body).toHaveProperty(
+    expect(bodyOf(outcome)).toHaveProperty(
       "stats.answered",
       rows.filter((r) => r.questionType === "opening").length,
     );
 
     // The failure never reaches the candidate, in any response.
-    expect(JSON.stringify([responses, outcome.body])).not.toMatch(
+    expect(JSON.stringify([responses, bodyOf(outcome)])).not.toMatch(
       /rate limit|requests\/minute|EvalError|gemini|stack/i,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -205,7 +213,7 @@ describe("a whole interview through the pipeline", () => {
     }));
     const outcome = await runReport(reportStore(first.rows), { generateText });
     expect(generateText).toHaveBeenCalledTimes(1);
-    expect(outcome.body).toMatchObject({ overallScores: { ...flat(4), overall: 4 } });
+    expect(bodyOf(outcome)).toMatchObject({ overallScores: { ...flat(4), overall: 4 } });
   });
 
   /** Improving mediocre answers: two Clarifies per thread, no bump, a hard stop at the cap. */

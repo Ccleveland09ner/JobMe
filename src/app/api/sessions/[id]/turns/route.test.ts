@@ -11,7 +11,7 @@ import type { EngineState, Question } from "@/lib/engine/types";
 import type { TurnResult } from "@/lib/interview/turn";
 import { fakeSupabase, type FakeQuery, type FakeResult } from "@/lib/testing/fake-supabase";
 
-vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn(), UNAUTHORIZED: { error: "Unauthorized" } }));
+vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/server")>()),
@@ -41,9 +41,9 @@ const BODY = { transcript: "I led the migration and cut merge times by two third
 
 const NOTE = {
   seq: 1,
-  topic: "teamwork",
-  questionType: "opening",
-  source: "bank",
+  topic: "teamwork" as const,
+  questionType: "opening" as const,
+  source: "bank" as const,
   kind: "behavioral" as const,
   scores: null,
   band: null,

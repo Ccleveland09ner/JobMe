@@ -18,11 +18,11 @@
 import { Type } from "@google/genai";
 
 import { LlmError, generateJson } from "./llm";
-import { buildTurnPrompt, evaluatorSystemFor } from "./prompts";
+import { buildTurnPrompt, evaluatorSystemFor, OBSERVATION_MAX_CHARS, type TurnPromptArgs } from "./prompts";
 
 import { gapCandidates } from "../engine/classify";
 import { dimensionsFor } from "../engine/types";
-import type { QuestionKind, Scores } from "../engine/types";
+import type { QuestionKind, QuestionType, Scores } from "../engine/types";
 
 export class EvalError extends Error {
   constructor(
@@ -146,7 +146,7 @@ export function validateEvaluation(
   return {
     scores,
     status,
-    observation: String(v.observation ?? "").slice(0, 90),
+    observation: String(v.observation ?? "").slice(0, OBSERVATION_MAX_CHARS),
     off_topic: status === "off_topic",
     repeats_previous: Boolean(v.repeats_previous),
     clarify_gap: gap && (gapCandidates(kind) as string[]).includes(gap) ? gap : null,
@@ -186,37 +186,14 @@ export function extractEvidence(answer: string, maxWords = 20): string {
 }
 
 /** Retries once on a validation failure, never on a rate limit. */
-export async function evaluateAndDraft(args: {
-  kind: QuestionKind;
-  topic: string;
-  /** The ORIGINAL question of the thread. */
-  questionText: string;
-  questionType: string;
-  answer: string;
-  /** The follow-up `answer` replies to; null for an opening. */
-  followUpQuestion?: string | null;
-  roleText?: string | null;
-  seniority?: string | null;
-  resumeFacts?: string | null;
-  priorThreadTurns?: { question: string; answer: string }[];
-  askedQuestions?: string[];
-  signal?: AbortSignal;
-}, generate: typeof generateJson = generateJson): Promise<RawEvaluation> {
+export async function evaluateAndDraft(
+  args: TurnPromptArgs & { questionType: QuestionType; signal?: AbortSignal },
+  generate: typeof generateJson = generateJson,
+): Promise<RawEvaluation> {
   // Told "the answer below is everything said to the original question" only
   // when it is: without the thread, the reply is scored on its own.
   const asFollowUp = Boolean(args.followUpQuestion && args.priorThreadTurns?.length);
-  const prompt = buildTurnPrompt({
-    kind: args.kind,
-    topic: args.topic,
-    questionText: args.questionText,
-    answer: args.answer,
-    followUpQuestion: args.followUpQuestion,
-    roleText: args.roleText,
-    seniority: args.seniority,
-    resumeFacts: args.resumeFacts,
-    priorThreadTurns: args.priorThreadTurns,
-    askedQuestions: args.askedQuestions,
-  });
+  const prompt = buildTurnPrompt(args);
 
   let lastError: Error | null = null;
 

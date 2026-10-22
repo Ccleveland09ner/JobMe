@@ -52,9 +52,10 @@ const SYSTEM = [
 /** Keeps the prompt prefix small; this is injected into every single turn. */
 export async function distillResume(
   redactedText: string,
+  generate: typeof generateJson = generateJson,
 ): Promise<ResumeFacts | null> {
   try {
-    const { value } = await generateJson<ResumeFacts>({
+    const { value } = await generate<ResumeFacts>({
       systemInstruction: SYSTEM,
       prompt: asUntrustedData("resume", redactedText.slice(0, 12000)),
       responseSchema: FACTS_SCHEMA,

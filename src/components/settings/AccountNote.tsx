@@ -8,6 +8,7 @@ import { useId, useState } from "react";
 import { SignOutButton } from "@/components/building/SignOutButton";
 import { Button } from "@/components/ui/Button";
 import { paperField } from "@/components/ui/Clipboard";
+import { saveDisplayName } from "@/lib/frontend/profile";
 import { LIMITS } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/client";
 
@@ -35,17 +36,12 @@ export function AccountNote({
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const next = name.trim();
-    if (!next) {
-      setStatus({ ok: false, text: "Your name can't be empty." });
-      return;
-    }
     setSaving(true);
     setStatus(null);
-    const { error } = await createClient().from("profiles").update({ display_name: next }).eq("id", userId);
+    const saved = await saveDisplayName(createClient(), userId, name);
     setSaving(false);
-    if (error) {
-      setStatus({ ok: false, text: "We couldn't save that. Try again in a moment." });
+    if (!saved.ok) {
+      setStatus({ ok: false, text: saved.message });
       return;
     }
     setStatus({ ok: true, text: "Saved. The recruiter uses it from your next interview." });

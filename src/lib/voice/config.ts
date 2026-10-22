@@ -13,11 +13,13 @@ export const TTS_FIRST_SOUND_TIMEOUT_MS = 2500;
 
 /** Static acknowledgement clips, played the instant an answer is submitted. */
 export const ACK_CLIP_PATH = "/audio/ack";
-export const ACK_CLIP_COUNT = 10;
+/** None ship yet (public/audio/ack holds only .gitkeep); raise when they do, or each Begin requests missing files. */
+export const ACK_CLIP_COUNT = 0;
 
 /** Played after the ack while the turn is in flight, so there's no dead air. */
 export const FILLER_CLIP_PATH = "/audio/filler";
-export const FILLER_CLIP_COUNT = 4;
+/** None ship yet; see ACK_CLIP_COUNT. */
+export const FILLER_CLIP_COUNT = 0;
 
 /** The aligned voice (for lip-sync) arrives whole, so it gets the first-sound budget. */
 export const TTS_ALIGNED_TIMEOUT_MS = 2500;

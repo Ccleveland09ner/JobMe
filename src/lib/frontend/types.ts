@@ -115,6 +115,10 @@ export interface ResumeUploadResponse {
   role: { title: string; seniority: string } | null;
   layoutSuspect: boolean;
   extractedPreview: string;
+  chunkCount: number;
+  /** How many of each kind of personal detail redaction removed. */
+  redacted: Record<string, number>;
+  hasFacts: boolean;
 }
 
 // Rows the pages read directly (RLS-scoped)

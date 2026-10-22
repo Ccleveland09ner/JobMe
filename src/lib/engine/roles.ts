@@ -16,7 +16,7 @@
  * Ref: docs/Scoring-Rubric.md > Question selection
  */
 
-import type { TopicId } from "./types";
+import { TOPIC_IDS, type TopicId } from "./types";
 
 export const ROLE_FAMILIES = ["software", "product", "data", "general"] as const;
 export type RoleFamily = (typeof ROLE_FAMILIES)[number];
@@ -154,7 +154,7 @@ export function repairTopics(
   chosen: readonly string[],
   defaults: TopicId[],
   family: RoleFamily,
-  known: readonly TopicId[],
+  known: readonly TopicId[] = TOPIC_IDS,
 ): TopicId[] {
   const count = defaults.length;
   const out: TopicId[] = [];

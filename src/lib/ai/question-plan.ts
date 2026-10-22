@@ -34,7 +34,7 @@ import { TOPIC_IDS, type ResumeItem, type TopicId } from "../engine/types";
 import { normaliseQuestion } from "../engine/asked";
 import { checkOpening, MAX_OPENING_WORDS } from "./questions";
 import { usableJobText } from "../plan";
-import type { QuestionPlan } from "../schemas";
+import { LIMITS, type QuestionPlan } from "../schemas";
 import { LlmError, generateJson } from "./llm";
 import { asUntrustedData } from "./prompts";
 
@@ -250,7 +250,7 @@ export function fallbackPlan(inputs: PlanInputs): QuestionPlan {
     version: 1,
     role: title
       ? {
-          title: title.slice(0, 100),
+          title: title.slice(0, LIMITS.targetRole),
           seniority: inputs.seniority ?? "",
           requiredSkills: [],
           responsibilities: [],
@@ -267,8 +267,8 @@ export function fallbackPlan(inputs: PlanInputs): QuestionPlan {
 
 function jobContext(inputs: PlanInputs, generated: boolean): NonNullable<QuestionPlan["job"]> {
   return {
-    title: inputs.targetRole?.trim().slice(0, 100) || null,
-    company: inputs.company?.trim().slice(0, 100) || null,
+    title: inputs.targetRole?.trim().slice(0, LIMITS.targetRole) || null,
+    company: inputs.company?.trim().slice(0, LIMITS.company) || null,
     companyInferred: Boolean(inputs.company && inputs.companyInferred),
     family: inputs.family,
     seniority: inputs.seniority ?? null,
@@ -373,7 +373,7 @@ export function validatePlan(raw: unknown, inputs: PlanInputs): QuestionPlan | n
   const entries = Array.isArray(v.topics) ? (v.topics as Record<string, unknown>[]) : [];
   const chosen = entries.map((e) => String(e?.topic ?? ""));
   const order = withJob
-    ? repairTopics(chosen, inputs.topics, inputs.family, TOPIC_IDS)
+    ? repairTopics(chosen, inputs.topics, inputs.family)
     : [...inputs.topics];
   const modelChoseOrder =
     withJob && chosen.length > 0 && order.join() !== inputs.topics.join();
@@ -426,7 +426,7 @@ export function validatePlan(raw: unknown, inputs: PlanInputs): QuestionPlan | n
   const r = v.role as Record<string, unknown> | undefined;
   if (withJob && r && typeof r.title === "string" && r.title.trim()) {
     role = {
-      title: r.title.trim().slice(0, 100),
+      title: r.title.trim().slice(0, LIMITS.targetRole),
       seniority:
         (typeof r.seniority === "string" ? r.seniority.trim().slice(0, 40) : "") ||
         (inputs.seniority ?? ""),

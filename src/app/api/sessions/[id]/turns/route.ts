@@ -1,6 +1,7 @@
 /**
- * POST /api/sessions/[id]/turns: the hot path. The orchestration is
- * lib/interview/turn.ts; this is auth, validation, idempotency, persistence.
+ * POST /api/sessions/[id]/turns: the hot path. The work is submitAnswer in
+ * lib/interview/turn.ts; this is auth, validation, storage, the HTTP answer
+ * and telemetry.
  */
 
 import { NextResponse, after } from "next/server";
@@ -8,17 +9,13 @@ import { NextResponse, after } from "next/server";
 import { getUserOrNull } from "@/lib/auth";
 import { MAX_FOLLOW_UPS } from "@/lib/engine/policy";
 import type { EngineState } from "@/lib/engine/types";
+import type { TurnResponse } from "@/lib/frontend/types";
 import { isSessionId, notFound, readBody, serverError, unauthorized } from "@/lib/http";
-import {
-  isStaleSubmit,
-  runTurn,
-  staleTurnBody,
-  turnContextFrom,
-  turnResponseBody,
-  turnRowFor,
-} from "@/lib/interview/turn";
+import { runTurn, staleTurnBody, submitAnswer, turnResponseBody, type TurnStore } from "@/lib/interview/turn";
 import { TurnBody } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 export async function POST(
   request: Request,
@@ -35,108 +32,32 @@ export async function POST(
 
   if (!isSessionId(id)) return notFound();
 
-  const supabase = await createClient();
-
-  // Under RLS another user's session is the same 404. The latest turns come in
-  // the same round trip, to score a follow-up in context.
-  const [
-    { data: session, error: sessionError },
-    { data: recentTurns, error: turnsError },
-  ] = await Promise.all([
-    supabase
-      .from("interview_sessions")
-      .select("id, engine_state, resume_id, status, role_text, question_plan")
-      .eq("id", id)
-      .maybeSingle(),
-    supabase
-      .from("turns")
-      .select("seq, question_text, answer_transcript")
-      .eq("session_id", id)
-      .order("seq", { ascending: false })
-      .limit(MAX_FOLLOW_UPS),
-  ]);
-
-  // A failed query isn't a missing row (often an unapplied migration): not a 404.
-  if (sessionError) {
-    return serverError(
-      `[turn] load session ${id}: ${sessionError.message} ` +
-        "(if a column is missing, apply supabase/migrations/20260927110000)",
-      "Couldn't load the interview. Please try again.",
-    );
-  }
-  // History only sharpens follow-up scoring; without it the turn still runs.
-  if (turnsError) {
-    console.warn(`[turn] load history ${id}: ${turnsError.message}`);
-  }
-
-  if (!session) return notFound();
-  if (session.status === "completed") {
-    return NextResponse.json(
-      { error: "This interview has already finished." },
-      { status: 409 },
-    );
-  }
-
-  const state = session.engine_state as EngineState;
-
-  /** Idempotency: a double-fired submit gets the state to resync from, not a second turn. */
-  if (body.clientTurnSeq !== state.turnSeq + 1) {
-    return NextResponse.json(staleTurnBody(state, body.clientTurnSeq), { status: 409 });
-  }
-
-  const resume = session.resume_id
-    ? (await supabase.from("resumes").select("resume_facts, role_profile").eq("id", session.resume_id).maybeSingle()).data
-    : null;
-
-  const turnCtx = turnContextFrom({
-    state,
-    answer: body,
-    storedPlan: session.question_plan,
-    postingText: session.role_text ?? null,
-    resume,
-    recentTurns: recentTurns ?? [],
-  });
-
-  const result = await runTurn(turnCtx);
-
-  if (result.kind === "nudge") {
-    // Not persisted, not counted: a cough must not cost a question.
-    return NextResponse.json({ kind: "nudge", line: result.line });
-  }
-
-  /**
-   * Synchronous and atomic: submit_turn writes the turn and advances
-   * engine_state in one transaction, only from the turnSeq read above.
-   */
-  const saveStarted = performance.now();
-  const { error: submitError } = await supabase.rpc("submit_turn", {
-    p_session_id: id,
-    p_seq: result.state.turnSeq,
-    p_engine_state: result.state,
-    p_turn: turnRowFor(turnCtx, result),
-  });
-  const saveMs = Math.round(performance.now() - saveStarted);
-
-  if (isStaleSubmit(submitError)) {
-    // Lost the race: the other submit counts; the client resyncs.
-    const { data: latest } = await supabase
-      .from("interview_sessions")
-      .select("engine_state")
-      .eq("id", id)
-      .maybeSingle();
-    const current = (latest?.engine_state ?? state) as EngineState;
-    return NextResponse.json(staleTurnBody(current, body.clientTurnSeq), { status: 409 });
-  }
-
-  if (submitError) {
-    return serverError(
-      `[turn] session ${id} seq ${result.state.turnSeq}: ${submitError.message}`,
-      "Couldn't save your answer. Please try again.",
-    );
+  const outcome = await submitAnswer(body, turnStore(await createClient(), id), { runTurn });
+  switch (outcome.kind) {
+    case "load-failed":
+      return serverError(
+        `[turn] load session ${id}: ${outcome.reason} ` +
+          "(if a column is missing, apply supabase/migrations/20260927110000)",
+        "Couldn't load the interview. Please try again.",
+      );
+    case "not-found":
+      return notFound();
+    case "finished":
+      return NextResponse.json({ error: "This interview has already finished." }, { status: 409 });
+    case "stale":
+      return NextResponse.json(staleTurnBody(outcome.state, body.clientTurnSeq), { status: 409 });
+    case "nudge":
+      return NextResponse.json({ kind: "nudge", line: outcome.line });
+    case "save-failed":
+      return serverError(
+        `[turn] session ${id} seq ${outcome.seq}: ${outcome.reason}`,
+        "Couldn't save your answer. Please try again.",
+      );
   }
 
   // Telemetry only (after() runs even on errors): one timing line per turn, no candidate text.
   // TODO(integration): TTS prewarm belongs here once /api/tts has a cache.
+  const { result, saveMs } = outcome;
   const totalMs = Math.round(performance.now() - started);
   after(() => {
     const line = {
@@ -154,5 +75,49 @@ export async function POST(
     else console.info(`[turn] ${JSON.stringify(line)}`);
   });
 
-  return NextResponse.json(turnResponseBody(result));
+  return NextResponse.json(turnResponseBody(result) satisfies TurnResponse);
+}
+
+function turnStore(supabase: Supabase, id: string): TurnStore {
+  return {
+    async load() {
+      // Under RLS another user's session is the same 404. The latest turns come
+      // in the same round trip, to score a follow-up in context.
+      const [{ data: session, error: sessionError }, { data: recentTurns, error: turnsError }] = await Promise.all([
+        supabase
+          .from("interview_sessions")
+          .select("id, engine_state, resume_id, status, role_text, question_plan")
+          .eq("id", id)
+          .maybeSingle(),
+        supabase
+          .from("turns")
+          .select("seq, question_text, answer_transcript")
+          .eq("session_id", id)
+          .order("seq", { ascending: false })
+          .limit(MAX_FOLLOW_UPS),
+      ]);
+      // A failed query isn't a missing row (often an unapplied migration): not a 404.
+      if (sessionError) return { error: sessionError.message };
+      // History only sharpens follow-up scoring; without it the turn still runs.
+      if (turnsError) console.warn(`[turn] load history ${id}: ${turnsError.message}`);
+      return { session: session ?? null, recentTurns: recentTurns ?? [] };
+    },
+    async loadResume(resumeId) {
+      const { data } = await supabase.from("resumes").select("resume_facts, role_profile").eq("id", resumeId).maybeSingle();
+      return data ?? null;
+    },
+    async submit(state, turn) {
+      const { error } = await supabase.rpc("submit_turn", {
+        p_session_id: id,
+        p_seq: state.turnSeq,
+        p_engine_state: state,
+        p_turn: turn,
+      });
+      return error;
+    },
+    async reloadState() {
+      const { data } = await supabase.from("interview_sessions").select("engine_state").eq("id", id).maybeSingle();
+      return (data?.engine_state ?? null) as EngineState | null;
+    },
+  };
 }

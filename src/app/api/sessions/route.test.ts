@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { QuestionPlan } from "@/lib/schemas";
 import { fakeSupabase, type FakeQuery, type FakeResult } from "@/lib/testing/fake-supabase";
 
-vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn(), UNAUTHORIZED: { error: "Unauthorized" } }));
+vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/ai/question-plan", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ai/question-plan")>()),
@@ -161,6 +161,17 @@ describe("POST /api/sessions", () => {
     expect(inputs.family).toBe("software");
     expect(inputs.roleSummary).toContain("Platform Intern");
     expect(inputs.resumeFacts).toContain("Go");
+  });
+
+  it("starts without a resume it can't read, and logs why", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fake = fakeSupabase((q) => (q.table === "resumes" ? { error: { message: "timeout" } } : q.table === "interview_sessions" ? { data: { id: "new-session" } } : {}));
+    vi.mocked(createClient).mockResolvedValue(fake.client as never);
+    const res = await POST(request({ displayName: "Kazu", resumeId: RESUME_ID }));
+    expect(res.status).toBe(200);
+    expect(fake.queries.find((q) => q.table === "interview_sessions")?.payload).toMatchObject({ resume_id: null });
+    expect(warn.mock.calls[0][0]).toContain("timeout");
+    warn.mockRestore();
   });
 
   it("plans only the first few resume items in a quick interview", async () => {
