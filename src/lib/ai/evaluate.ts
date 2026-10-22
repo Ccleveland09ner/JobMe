@@ -201,7 +201,10 @@ export async function evaluateAndDraft(args: {
   priorThreadTurns?: { question: string; answer: string }[];
   askedQuestions?: string[];
   signal?: AbortSignal;
-}): Promise<RawEvaluation> {
+}, generate: typeof generateJson = generateJson): Promise<RawEvaluation> {
+  // Told "the answer below is everything said to the original question" only
+  // when it is: without the thread, the reply is scored on its own.
+  const asFollowUp = Boolean(args.followUpQuestion && args.priorThreadTurns?.length);
   const prompt = buildTurnPrompt({
     kind: args.kind,
     topic: args.topic,
@@ -219,8 +222,8 @@ export async function evaluateAndDraft(args: {
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const { value } = await generateJson<unknown>({
-        systemInstruction: evaluatorSystemFor(args.kind, args.questionType),
+      const { value } = await generate<unknown>({
+        systemInstruction: evaluatorSystemFor(args.kind, asFollowUp ? args.questionType : "opening"),
         prompt,
         responseSchema: evalSchemaFor(args.kind),
         // Was 0.2. Calibration measured the same answer scoring 3.15 on one

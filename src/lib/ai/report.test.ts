@@ -263,7 +263,7 @@ describe("fallbackReport", () => {
   it("names the overall score, the strongest and weakest dimensions, with a tip", () => {
     const { summary } = fallbackReport(rollup());
     expect(summary).toContain("Across 2 questions your overall score was 2.7/4");
-    expect(summary).toContain("strongest area was Your own contribution (3.5/4)");
+    expect(summary).toContain("strongest area was Own contribution (3.5/4)");
     expect(summary).toContain("work on is Outcome (1.5/4)");
   });
 

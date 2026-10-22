@@ -271,7 +271,7 @@ export const BANK: Record<TopicId, TopicEntry> = {
     },
     {
       reasoning: ["What argument did you actually make?"],
-      outcome: ["Did they change their mind? What happened next?"],
+      outcome: ["What happened in the end — did they change their mind?"],
     },
     ["What would have changed your own mind?"],
   ),

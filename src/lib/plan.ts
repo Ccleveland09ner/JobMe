@@ -38,6 +38,12 @@ export function companyLineFor(plan: QuestionPlan | null): string | null {
   return `Company: ${company}${plan?.job?.companyInferred ? " (read from the posting link)" : ""}`;
 }
 
+/** Everything a prompt is told about the job: the role, then the company. Null when nothing is known. */
+export function jobForPrompt(plan: QuestionPlan | null, postingText: string | null): string | null {
+  const lines = [roleTextFor(plan, postingText), companyLineFor(plan)].filter(Boolean);
+  return lines.length ? lines.join("\n") : null;
+}
+
 // Lookups: the turn pipeline falls back to fixed text on null.
 
 /** Planned wording for a bank topic at a difficulty, mirroring `questionFor`. */

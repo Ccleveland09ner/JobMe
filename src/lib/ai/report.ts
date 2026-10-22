@@ -24,7 +24,8 @@ import { Type } from "@google/genai";
 import { z } from "zod";
 
 import type { AnyDimension, QuestionKind, StoredScores } from "../engine/types";
-import type { FeedbackItem, ReportFeedback, SessionRollup } from "../stats";
+import { DIMENSION_LABELS } from "../engine/dimension-names";
+import { rankDimensions, type FeedbackItem, type ReportFeedback, type SessionRollup } from "../stats";
 
 export { pickWeakest, reportStats, type FeedbackItem, type ReportFeedback, type ReportStats } from "../stats";
 import { generateJson } from "./llm";
@@ -305,21 +306,6 @@ export function capWords(text: string, max: number): string {
     : `${clipped}…`;
 }
 
-const LABEL: Record<AnyDimension, string> = {
-  relevance: "Relevance",
-  specificity: "Specific evidence",
-  ownership: "Your own contribution",
-  reasoning: "Reasoning",
-  outcome: "Outcome",
-  accuracy: "Accuracy",
-  communication: "Clarity",
-  situation: "Situation",
-  task: "Task",
-  action: "Action",
-  result: "Result",
-  impact: "Impact",
-};
-
 /** One concrete habit per dimension. None demands a number or a format. */
 const TIP: Record<AnyDimension, string> = {
   relevance: "Answer the question that was asked before adding context.",
@@ -341,10 +327,6 @@ const TIP: Record<AnyDimension, string> = {
   impact: "Say what changed as a result, and how you knew.",
 };
 
-export function dimensionLabelFor(d: string): string {
-  return LABEL[d as AnyDimension] ?? d;
-}
-
 /**
  * The summary and improvements when the model is unavailable. Built from the
  * same figures the scorecard shows, so they can never disagree with the
@@ -352,11 +334,9 @@ export function dimensionLabelFor(d: string): string {
  * verified to quote, and an unquoted strength is just flattery.
  */
 export function fallbackReport(rollup: SessionRollup): Pick<ReportDraft, "summary" | "feedback"> {
-  const dims = (Object.keys(rollup.dimensions) as AnyDimension[]).filter(
-    (d) => d !== "communication" && typeof rollup.dimensions[d] === "number",
-  );
+  const { best: ranked, worst: ascending } = rankDimensions(rollup.dimensions);
 
-  if (rollup.overall === null || dims.length === 0) {
+  if (rollup.overall === null || ranked.length === 0) {
     return {
       summary:
         "These answers couldn't be scored this time, so there are no scores " +
@@ -365,27 +345,25 @@ export function fallbackReport(rollup: SessionRollup): Pick<ReportDraft, "summar
     };
   }
 
-  // Earlier in LABEL wins ties, which keeps the choice deterministic.
   const value = (d: AnyDimension) => rollup.dimensions[d]!;
-  const best = dims.reduce((a, b) => (value(b) > value(a) ? b : a));
-  const ascending = [...dims].sort((a, b) => value(a) - value(b));
-  const worst = ascending[0];
+  const best = ranked[0][0];
+  const worst = ascending[0][0];
   const n = rollup.questionsScored;
 
   return {
     summary:
       `Across ${n} question${n === 1 ? "" : "s"} your overall score was ` +
-      `${rollup.overall.toFixed(1)}/4. Your strongest area was ${LABEL[best]} ` +
-      `(${value(best)}/4) and the one to work on is ${LABEL[worst]} ` +
+      `${rollup.overall.toFixed(1)}/4. Your strongest area was ${DIMENSION_LABELS[best]} ` +
+      `(${value(best)}/4) and the one to work on is ${DIMENSION_LABELS[worst]} ` +
       `(${value(worst)}/4). ${TIP[worst]}`,
     feedback: {
       strengths: [],
       improvements: ascending
-        .filter((d) => value(d) < 3)
+        .filter(([, v]) => v < 3)
         .slice(0, 2)
-        .map((d) => ({
+        .map(([d]) => ({
           question: null,
-          point: `${LABEL[d]} averaged ${value(d)}/4.`,
+          point: `${DIMENSION_LABELS[d]} averaged ${value(d)}/4.`,
           recommendation: TIP[d],
         })),
     },

@@ -9,14 +9,13 @@ import type { RowReader } from "@/lib/supabase/reader";
 
 import { purposeFor } from "../engine/topics";
 import type { AnyDimension, InterviewMode, StoredScores, TopicId } from "../engine/types";
-import { groupIntoQuestions, questionRef, reportFromRow, rollupQuestions, type ReportRow, type ReportStats } from "../stats";
+import { groupIntoQuestions, questionRef, rankDimensions, reportFromRow, rollupQuestions, type ReportRow, type ReportStats } from "../stats";
 import {
   findEvidence,
   modeFromRow,
   pickOverall,
   pickScores,
   reportTurnFromRow,
-  scoreEntries,
   SESSION_JSON_COLUMNS,
   type TurnRow,
 } from "./adapters";
@@ -200,12 +199,13 @@ export function questionCounts(doc: ReportDocument): { answered: number; scored:
   return { answered: doc.questions.length, scored: doc.questions.filter((q) => q.score !== null).length };
 }
 
-/** The two strongest and two weakest averages. */
+/** The two strongest and two weakest averages, ranked as the fallback report ranks them. */
 export function strengths(scores: StoredScores | null): { strongest: [AnyDimension, number][]; weakest: [AnyDimension, number][] } {
-  const ranked = scoreEntries(scores ?? {}).sort((a, b) => b[1] - a[1]);
-  if (ranked.length < 2) return { strongest: ranked, weakest: [] };
-  const n = Math.min(2, Math.floor(ranked.length / 2));
-  return { strongest: ranked.slice(0, n), weakest: ranked.slice(-n).reverse() };
+  const { best, worst } = rankDimensions(scores ?? {});
+  if (best.length < 2) return { strongest: best, weakest: [] };
+  const n = Math.min(2, Math.floor(best.length / 2));
+  const strongest = best.slice(0, n);
+  return { strongest, weakest: worst.filter(([d]) => !strongest.some(([s]) => s === d)).slice(0, n) };
 }
 
 // The sheets

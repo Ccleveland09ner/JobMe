@@ -7,6 +7,7 @@
  */
 
 import { GREAT_FLOOR, WEAK_CEILING } from "../engine/classify";
+import { DIMENSION_LABELS } from "../engine/dimension-names";
 import { TOPICS } from "../engine/topics";
 import {
   TOPIC_IDS,
@@ -19,24 +20,7 @@ import {
   type TopicId,
 } from "../engine/types";
 
-/**
- * Current dimensions, plus the pre-2026-10 STAR ones so an old session's
- * scorecard still reads.
- */
-export const DIMENSION_LABELS: Record<AnyDimension, string> = {
-  relevance: "Relevance",
-  specificity: "Specific evidence",
-  ownership: "Own contribution",
-  reasoning: "Reasoning",
-  outcome: "Outcome",
-  accuracy: "Accuracy",
-  communication: "Clarity",
-  situation: "Situation",
-  task: "Task",
-  action: "Action",
-  result: "Result",
-  impact: "Impact",
-};
+export { DIMENSION_LABELS } from "../engine/dimension-names";
 
 /** One line on what each dimension means, for the scorecard's legend. */
 export const DIMENSION_HINTS: Record<AnyDimension, string> = {

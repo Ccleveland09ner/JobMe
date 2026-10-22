@@ -149,6 +149,14 @@ describe("strengths", () => {
     expect(s.weakest.map(([d]) => d)).toEqual(["outcome", "specificity"]);
     expect(strengths(null)).toEqual({ strongest: [], weakest: [] });
   });
+
+  // Clarity is never a gap: a transcript is too noisy a signal to fault it,
+  // and the fallback report ranks the same way.
+  it("never names Clarity, and breaks ties in display order", () => {
+    const s = strengths({ relevance: 3, ownership: 4, reasoning: 2, outcome: 2, communication: 1 });
+    expect(s.strongest.map(([d]) => d)).toEqual(["ownership", "relevance"]);
+    expect(s.weakest.map(([d]) => d)).toEqual(["reasoning", "outcome"]);
+  });
 });
 
 describe("folderFlow and folderBook", () => {

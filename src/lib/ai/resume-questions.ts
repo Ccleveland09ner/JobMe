@@ -60,7 +60,9 @@ export interface ResumeQuestion {
  */
 export function fallbackResumeQuestion(item: ResumeItem): string {
   if (item.kind === "role") {
-    const where = item.employer?.trim() ? ` at ${item.employer.trim()}` : "";
+    // Labels built from the resume already read "Title at Employer".
+    const employer = item.employer?.trim();
+    const where = employer && !item.label.toLowerCase().includes(employer.toLowerCase()) ? ` at ${employer}` : "";
     return `Walk me through a piece of work you're proud of from your time as ${item.label}${where}.`;
   }
   return `Walk me through ${item.label} — what you built yourself, and the hardest decision you made on it.`;

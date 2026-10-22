@@ -21,6 +21,8 @@ describe("formatRoleForPrompt", () => {
     expect(formatRoleForPrompt(role)).toBe("Target role: Backend Intern (intern)\nWants: Go, SQL\nCompetencies to probe: ownership");
     expect(formatRoleForPrompt({ ...role, requiredSkills: [], competencies: [] })).toBe("Target role: Backend Intern (intern)");
     expect(formatRoleForPrompt(null)).toBe("");
+    // A plan written without the model stores the level as "" when it isn't known.
+    expect(formatRoleForPrompt({ ...role, seniority: "", requiredSkills: [], competencies: [] })).toBe("Target role: Backend Intern");
   });
 
   it("ranks resume items against skills and responsibilities, not just the title", () => {

@@ -41,7 +41,7 @@ import {
 } from "../ai/resume-questions";
 import type { RoleProfile } from "../jd/profile";
 import { formatFactsForPrompt, type ResumeFacts } from "../resume/facts";
-import { companyLineFor, parsePlan, plannedBankOpening, plannedResumeOpening, roleTextFor } from "../plan";
+import { jobForPrompt, parsePlan, plannedBankOpening, plannedResumeOpening } from "../plan";
 import type { QuestionPlan } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
@@ -386,7 +386,6 @@ export function turnContextFrom(args: {
   recentTurns: Parameters<typeof threadHistory>[1];
 }): TurnContext {
   const plan = parsePlan(args.storedPlan);
-  const roleLines = [roleTextFor(plan, args.postingText), companyLineFor(plan)].filter(Boolean);
   return {
     state: args.state,
     transcript: args.answer.transcript,
@@ -395,7 +394,7 @@ export function turnContextFrom(args: {
     // Distilled facts go in every prompt (a fixed prefix).
     resumeFacts: args.resume ? formatFactsForPrompt((args.resume.resume_facts ?? null) as ResumeFacts | null) : null,
     role: args.resume ? ((args.resume.role_profile ?? null) as RoleProfile | null) : null,
-    roleText: roleLines.length ? roleLines.join("\n") : null,
+    roleText: jobForPrompt(plan, args.postingText),
     seniority: plan?.job?.seniority ?? (plan?.role?.seniority || null),
     priorThreadTurns: threadHistory(args.state, args.recentTurns),
     plan,

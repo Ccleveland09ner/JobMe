@@ -105,13 +105,16 @@ describe("POST /api/sessions/[id]/report", () => {
 
   it("judges the answers against the job the turns saw, and keeps the feedback", async () => {
     const role = { title: "Backend Intern", seniority: "intern", requiredSkills: ["Go"], responsibilities: [], competencies: [] };
-    const plan = { version: 1, role, topics: {}, resume: {} };
+    const job = { title: "Backend Intern", company: "Acme", companyInferred: true, family: "software", seniority: "intern", generated: true };
+    const plan = { version: 1, role, topics: {}, resume: {}, job };
     const fake = database({
       session: { status: "in_progress", overall_scores: null, ended_at: null, role_text: "Raw posting", question_plan: plan },
       turns: [{ ...TURN_ROW, topic: "teamwork", question_type: "opening", question_source: "bank" }],
     });
     await POST(request(), ctx(ID));
-    expect(vi.mocked(generateReportText).mock.calls.at(-1)?.[0].roleText).toContain("Backend Intern");
+    expect(vi.mocked(generateReportText).mock.calls.at(-1)?.[0].roleText).toBe(
+      "Target role: Backend Intern (intern)\nWants: Go\nCompany: Acme (read from the posting link)",
+    );
     const insert = fake.queries.find((q) => q.table === "reports" && q.action === "insert");
     expect((insert?.payload as { stats: { feedback: unknown } }).stats.feedback).toEqual(FEEDBACK);
 

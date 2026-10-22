@@ -13,7 +13,7 @@ import {
   type ReportStore,
   type StoredReport,
 } from "@/lib/interview/report";
-import { parsePlan, roleTextFor } from "@/lib/plan";
+import { jobForPrompt, parsePlan } from "@/lib/plan";
 import { reportFromRow } from "@/lib/stats";
 import { createClient } from "@/lib/supabase/server";
 
@@ -56,7 +56,7 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
         status: data.status,
         overallScores: data.overall_scores ?? null,
         // The role as the turns saw it, so feedback is judged against the same job.
-        roleText: roleTextFor(parsePlan(data.question_plan), data.role_text ?? null),
+        roleText: jobForPrompt(parsePlan(data.question_plan), data.role_text ?? null),
       };
     },
 

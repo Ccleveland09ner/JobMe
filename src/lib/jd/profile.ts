@@ -26,7 +26,8 @@ export function roleProfileToQuery(profile: RoleProfile): string {
 /** Renders the role for a turn prompt. Caller wraps in `asUntrustedData`. */
 export function formatRoleForPrompt(profile: RoleProfile | null): string {
   if (!profile) return "";
-  const parts = [`Target role: ${profile.title} (${profile.seniority})`];
+  const level = profile.seniority?.trim();
+  const parts = [`Target role: ${profile.title}${level ? ` (${level})` : ""}`];
   if (profile.requiredSkills.length) {
     parts.push(`Wants: ${profile.requiredSkills.join(", ")}`);
   }

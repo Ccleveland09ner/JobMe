@@ -7,6 +7,7 @@
 
 import {
   DISPLAY_DIMENSIONS,
+  NEVER_A_GAP,
   questionKind,
   weightedScore,
   type AnyDimension,
@@ -190,6 +191,18 @@ export function overallScoresFor(
 export function overallScoresFrom(rollup: SessionRollup): Record<string, number> | null {
   if (rollup.overall === null) return null;
   return { ...rollup.dimensions, overall: rollup.overall } as Record<string, number>;
+}
+
+/**
+ * Dimensions worth naming as strengths and weaknesses: best first, and worst
+ * first. Ties keep display order. NEVER_A_GAP dimensions are left out of both,
+ * since a transcript is too noisy a signal of them to praise or fault.
+ */
+export function rankDimensions(scores: StoredScores): { best: [AnyDimension, number][]; worst: [AnyDimension, number][] } {
+  const named = DISPLAY_DIMENSIONS.flatMap((d): [AnyDimension, number][] =>
+    typeof scores[d] === "number" && !(NEVER_A_GAP as ReadonlySet<string>).has(d) ? [[d, scores[d]!]] : [],
+  );
+  return { best: [...named].sort((a, b) => b[1] - a[1]), worst: [...named].sort((a, b) => a[1] - b[1]) };
 }
 
 /** How the scorecard and its feedback cite the question at `index`: "Q1", "Q2"… */
