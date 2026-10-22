@@ -1,10 +1,6 @@
 /**
- * The gate between model-drafted wording and the candidate. The engine decides
- * the MOVE; this only decides whether the wording for it is usable, and
- * substitutes a bank seed when it is not. Nothing here may change the move —
- * that would put flow control in the AI.
- *
- * Ref: PRD > Adaptive Engine
+ * The gate between drafted wording and the candidate: unusable wording is
+ * replaced by a bank seed. Nothing here may change the move.
  */
 
 import { computePrimaryGap } from "../engine/classify";
@@ -39,8 +35,7 @@ export function checkDraft(draft: string, askedQuestions: string[] = []): DraftC
 
   if (!text.endsWith("?")) return { ok: false, reason: "not_a_question" };
 
-  // Two questions lets the candidate pick which to answer — exactly the
-  // gap-dodging the follow-up exists to close.
+  // Two questions would let the candidate dodge the gap.
   if ((text.match(/\?/g) ?? []).length > 1) {
     return { ok: false, reason: "multi_question" };
   }

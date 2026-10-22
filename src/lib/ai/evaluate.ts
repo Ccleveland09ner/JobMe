@@ -58,10 +58,7 @@ export interface RawEvaluation {
   observation: string;
   /** Derived from `status`, kept for the off-topic gate in classify.ts. */
   off_topic: boolean;
-  /**
-   * Follow-ups only: restated the earlier answer instead of expanding it. A
-   * distinct failure from a weak answer, and it gets different copy.
-   */
+  /** Follow-ups only: restated the earlier answer instead of expanding it. */
   repeats_previous: boolean;
   /** The gap `drafts.clarify` was written against; checked by `resolveGap()`. */
   clarify_gap: string | null;
@@ -188,10 +185,7 @@ export function extractEvidence(answer: string, maxWords = 20): string {
   return words.length <= maxWords ? best : words.slice(0, maxWords).join(" ");
 }
 
-/**
- * Retries once on a validation failure (usually a transient sampling artefact)
- * but never on a rate limit, where retrying burns the next of 15 per minute.
- */
+/** Retries once on a validation failure, never on a rate limit. */
 export async function evaluateAndDraft(args: {
   kind: QuestionKind;
   topic: string;

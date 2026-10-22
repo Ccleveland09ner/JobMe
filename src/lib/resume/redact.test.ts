@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PII_PATTERNS, detectName, redact } from "./redact";
 
-/**
- * A fixture that deliberately mixes PII with the numeric achievements the
- * scoring rubric depends on. Both halves of this test matter equally: a
- * redactor that strips everything passes the privacy half and destroys the
- * product.
- */
+/** Mixes PII with the numeric achievements the rubric needs; both halves matter. */
 const FIXTURE = `Jane Q. Doe
 jane.doe@example.com | +1 (555) 123-4567 | linkedin.com/in/janeqdoe
 742 Evergreen Terrace, Springfield, 62704
@@ -97,11 +92,7 @@ describe("redact — strips identifying data", () => {
 describe("redact — preserves the scoring signal", () => {
   const { text } = redact(FIXTURE);
 
-  /**
-   * These are the assertions that stop the redactor from quietly gutting the
-   * product. Every one of them is a number a phone/ZIP pattern would happily
-   * eat if the protect-first ordering regressed.
-   */
+  /** Numbers a phone/ZIP pattern would eat if the protect-first ordering regressed. */
   it.each([
     ["latency before", "1,200 ms"],
     ["latency after", "340 ms"],

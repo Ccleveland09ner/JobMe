@@ -1,45 +1,12 @@
 "use client";
 
 /**
- * The 3D recruiter: public/models/recruiter.glb, rendered to read as an
- * illustration rather than a game character — flat toon shading, an ink
- * outline, the app's palette, and black (ink) glasses.
- * Ref: docs/PRD-JobMe-MVP.md > Look and Feel ("friendly and intentional, not
- *      photoreal"; one confident accent)
+ * The 3D recruiter (public/models/recruiter.glb): viseme lip-sync, blinks, a
+ * nod when listening, a thinking glance, and the head aimed at the camera.
+ * Reduced motion: mouth only. Keep the model unrotated (it faces +Z).
  *
- * The model is a Ready Player Me avatar re-dressed in a suit with
- * design/tools/dress_recruiter.py, then compressed (meshopt + WebP). It keeps
- * the full skeleton and the ARKit / viseme face shapes, which is what makes
- * it animatable:
- *   - speaking   the 15 viseme shapes follow the words being spoken
- *                (readVisemes(), lib/voice/lipsync.ts): lips close on P/B/M,
- *                round on O/U, and so on. Without a lip-sync timeline, the
- *                jaw follows the voice's loudness (readMouth()) instead.
- *   - listening  a nod as it starts
- *   - thinking   a glance up and to the side, brows lifted
- *   - always     a blink every 3–6s; the idle clip (Mixamo) when the model
- *                carries one
- * Eye contact: the head is aimed at the camera (the candidate) every frame;
- * the clip moves the body, never the gaze. See aimHead().
- * Reduced motion: mouth only — no blink, nod, glance or idle clip.
- *
- * All the per-frame three.js work lives in RecruiterRig, a plain class held
- * in a ref: three.js is imperative (it mutates its scene graph every frame),
- * and keeping that out of React's render data is what the React Compiler's
- * immutability rules ask for.
- *
- * Two ways in:
- *   - <RecruiterModel> is the character alone, a node in someone else's
- *     scene: the building (components/building) seats it in the interview
- *     room and the secretary behind the front desk. The scene owns the
- *     camera and the one ink-outline pass (three/OutlineRenderer.tsx).
- *   - The default export is a self-contained <Canvas> that frames the bust,
- *     for RecruiterStage outside the building and /dev/recruiter.
- *
- * The model must stay unrotated: eye contact assumes it faces world +Z.
- *
- * Loaded only in the browser (imported with `ssr: false`), and only when
- * WebGL is available; the SVG recruiter covers every other case.
+ * <RecruiterModel> is the character alone, for the building's scene; the
+ * default export is a self-contained canvas framing the bust.
  */
 
 import { useGLTF } from "@react-three/drei";
@@ -51,12 +18,12 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { OutlineRenderer } from "@/components/three/OutlineRenderer";
 import { studioEnvironment } from "@/components/three/environment";
 import { INK, toonGradient } from "@/components/three/toon";
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 import { VISEMES, openness, type VisemeWeights } from "@/lib/voice/lipsync";
 
-export const RECRUITER_MODEL = "/models/recruiter.glb";
+import type { Look, RecruiterState, Speaker } from "./types";
 
-export type RecruiterState = "idle" | "listening" | "thinking" | "speaking";
+export const RECRUITER_MODEL = "/models/recruiter.glb";
 
 export interface Recruiter3DProps {
   state: RecruiterState;
@@ -68,52 +35,10 @@ export interface Recruiter3DProps {
   onReady?: () => void;
 }
 
-/**
- * The candidate's microphone, which the room shows twice — the mic button in
- * the panel (room/TableMic.tsx) and the mic on the 3D desk — so both always
- * agree:
- *   disabled   the interviewer is speaking (or an answer is being sent)
- *   ready      the candidate's turn: press to start answering
- *   recording  listening (lit green): press to send
- *   off        typed answers; the mic is not used
- */
-export type MicState = "off" | "disabled" | "ready" | "recording";
-
-export interface MicControl {
-  state: MicState;
-  /** Start recording when ready, send when recording; nothing otherwise. */
-  toggle: () => void;
-}
-
-/** What drives the face, read every frame without re-rendering React. */
-export interface Speaker {
-  state: RecruiterState;
-  readMouth?: () => number | null;
-  readVisemes?: () => VisemeWeights | null;
-  /** The candidate's mic, for the desk mic in the building's interview room. */
-  mic?: MicControl;
-}
-
-/**
- * Recolouring, so one model can play more than one person. Colours replace
- * a material's base colour by material name; the textures stay.
- */
-export interface Look {
-  colors?: Record<string, string>;
-  glasses?: boolean;
-  /**
-   * "rendered" (default): the model's own physically based materials, with
-   * every texture map (normal, roughness, occlusion), soft studio lighting
-   * and no ink outline — a properly 3D character.
-   * "toon": three flat tones and an ink outline, like the scenery.
-   */
-  style?: "rendered" | "toon";
-}
-
 /** How strongly the studio lighting (environment) lights a rendered character. */
 const ENV_INTENSITY = 0.45;
 
-/** The model's speech shapes, by viseme (`viseme_PP`, `viseme_aa`, …). Silence has no shape. */
+/** The model's viseme shapes (silence has none). */
 const SPEECH_SHAPES = VISEMES.filter((v) => v !== "sil").map((v) => `viseme_${v}` as const);
 
 /** Morph targets driven every frame, on every mesh that has them. */
@@ -129,10 +54,7 @@ const MORPHS = [
 ] as const;
 type Morph = (typeof MORPHS)[number];
 
-/**
- * How fast the mouth follows the lip-sync shapes. High, because the shapes
- * already ease in and out (lipsync FADE_SECONDS); this only smooths frames.
- */
+/** How fast the mouth follows lip-sync shapes (already eased; this only smooths frames). */
 const LIPSYNC_RATE = 40;
 
 const NOD_SECONDS = 0.5;
@@ -148,6 +70,15 @@ const THINKING_GAZE = new THREE.Vector3(0.3, 0.3, 0);
 const NO_OFFSET = new THREE.Vector3();
 /** The furthest the head turns toward a target (~20°). */
 const MAX_HEAD_TURN = 0.35;
+/** How quickly the head turns to a new target, per second (eased, never snapped). */
+const HEAD_TURN_RATE = 6;
+/** Frame rate a character requests while animating (the camera still runs at full rate). */
+const MODEL_FPS = 30;
+/** Idle glances: how long one lasts, and the range of gaps between them, in seconds. */
+const GLANCE_SECONDS = 1.1;
+const GLANCE_GAP: [number, number] = [2.5, 6];
+/** Where idle glances go, in metres at the camera: down at the desk, or to either side. */
+const GLANCES = [new THREE.Vector3(0.9, -0.9, 0), new THREE.Vector3(-1.1, -0.4, 0), new THREE.Vector3(1.3, 0.1, 0)];
 
 /** Reused every frame, so aiming the head allocates nothing. */
 const scratch = {
@@ -177,6 +108,12 @@ class RecruiterRig {
   /** Where the gaze sits relative to the camera, eased (thinking glance). */
   private readonly gazeOffset = new THREE.Vector3();
   private lastState: RecruiterState | null = null;
+  /** The head's turn as last applied, eased toward each frame's target. */
+  private headLocal: THREE.Quaternion | null = null;
+  private readonly idleGlances: boolean;
+  private nextGlance = 0;
+  private glanceUntil = 0;
+  private glance = NO_OFFSET;
 
   constructor(
     private readonly scene: THREE.Object3D,
@@ -185,10 +122,10 @@ class RecruiterRig {
     look: Look = {},
     environment: THREE.Texture | null = null,
   ) {
+    this.idleGlances = Boolean(look.idleGlances) && !reduced;
     this.restyle(look, environment);
 
-    // Read the bind pose before the clip moves anything: it is the one pose
-    // where the head is known to be upright and facing straight ahead.
+    // The bind pose, before the clip moves it: head upright, facing ahead.
     scene.updateMatrixWorld(true);
     this.head = scene.getObjectByName("Head") ?? null;
     this.neck = scene.getObjectByName("Neck") ?? null;
@@ -197,15 +134,13 @@ class RecruiterRig {
     if (this.neck) this.neckRestLocal.copy(this.neck.quaternion);
 
     if (clips.length) {
-      // The idle clip (Mixamo, baked in by design/tools). Under reduced
-      // motion it holds its first frame: seated, but still.
+      // The idle clip; reduced motion holds its first frame.
       this.mixer = new THREE.AnimationMixer(scene);
       const action = this.mixer.clipAction(clips[0]);
       action.play();
       if (reduced) action.paused = true;
     } else {
-      // No clip: lower the A-pose arms to the sides. The desk in front
-      // hides everything below the chest.
+      // No clip: lower the A-pose arms.
       scene.getObjectByName("LeftArm")?.rotateZ(0.45);
       scene.getObjectByName("RightArm")?.rotateZ(-0.45);
     }
@@ -238,7 +173,7 @@ class RecruiterRig {
         }
         material.envMap = environment;
         material.envMapIntensity = ENV_INTENSITY;
-        // No ink line: a rendered character's shading already gives its form.
+        // No ink line on a rendered character.
         material.userData.outlineParameters = { visible: false };
         mesh.material = material;
         return;
@@ -247,9 +182,7 @@ class RecruiterRig {
       mesh.material = new THREE.MeshToonMaterial({
         name: old.name,
         map: isGlasses ? null : old.map,
-        // Keep the material colour: the compressor folds 1px colour textures
-        // (hair, skin) into it, so a plain white would bleach them.
-        // Glasses are ink, like the line work around them.
+        // Keep the colour: the compressor folds 1px textures (hair, skin) into it.
         color: recolor ? new THREE.Color(recolor) : isGlasses ? INK.clone() : old.color.clone(),
         gradientMap,
         transparent: old.transparent,
@@ -278,7 +211,7 @@ class RecruiterRig {
     /** Viewport size when this rig frames the camera itself; null when the scene owns it. */
     framing: { width: number; height: number } | null,
     delta: number,
-    { state, readMouth, readVisemes }: Speaker,
+    { state, readMouth, readVisemes, lookAt }: Speaker,
   ) {
     const now = performance.now() / 1000;
     const v = this.values;
@@ -291,10 +224,7 @@ class RecruiterRig {
     this.mixer?.update(delta);
     if (framing) this.frame(camera, framing.width, framing.height);
 
-    // Mouth. Best: the lip-sync shapes for the words being said. Otherwise
-    // the voice's loudness opens the jaw. With neither — before the sound
-    // starts, or between lines — the mouth rests: it never mouths a word
-    // that is not being heard.
+    // Mouth: lip-sync shapes if any, else the voice's loudness, else at rest.
     const visemes = state === "speaking" ? (readVisemes?.() ?? null) : null;
     const damp = this.reduced ? 0.6 : 1;
     if (visemes) {
@@ -343,18 +273,15 @@ class RecruiterRig {
 
     const t = now - this.nodStart;
     const nod = this.nodStart >= 0 && t < NOD_SECONDS ? Math.sin((Math.PI * t) / NOD_SECONDS) : 0;
-    this.aimHead(camera, nod);
+    this.aimHead(camera, nod, delta, now, lookAt ?? null);
   }
 
   /**
-   * Eye contact. The clip keeps the body breathing and swaying, but its
-   * neck and head angles (a relaxed sitter's, looking slightly up and
-   * tilted) are replaced: the neck is held straight on the spine, and the
-   * head turns from its upright rest pose to face the camera — the
-   * candidate. The nod and the thinking glance move WHERE she looks rather
-   * than adding raw bone rotations, so they cannot fight the clip.
+   * Eye contact: the clip moves the body, but the neck is held straight and
+   * the head turns from its rest pose to the target. Nods and glances move
+   * the target, so they never fight the clip.
    */
-  private aimHead(camera: THREE.Camera, nod: number) {
+  private aimHead(camera: THREE.Camera, nod: number, delta: number, now: number, lookAt: readonly [number, number, number] | null) {
     const head = this.head;
     if (!head?.parent) return;
     if (this.neck) this.neck.quaternion.copy(this.neckRestLocal);
@@ -369,19 +296,34 @@ class RecruiterRig {
     } else {
       head.getWorldPosition(from);
     }
-    const target = scratch.target.copy(camera.position).add(this.gazeOffset);
+    // Idle glances, unless there's a point to look at.
+    if (this.idleGlances && !lookAt) {
+      if (this.nextGlance === 0) this.nextGlance = now + GLANCE_GAP[0];
+      if (now >= this.nextGlance) {
+        this.glance = GLANCES[Math.floor(Math.random() * GLANCES.length)];
+        this.glanceUntil = now + GLANCE_SECONDS;
+        this.nextGlance = now + GLANCE_SECONDS + GLANCE_GAP[0] + Math.random() * (GLANCE_GAP[1] - GLANCE_GAP[0]);
+      }
+    }
+    const glancing = !lookAt && now < this.glanceUntil;
+    const target = lookAt
+      ? scratch.target.set(lookAt[0], lookAt[1], lookAt[2])
+      : scratch.target.copy(camera.position).add(this.gazeOffset).add(glancing ? this.glance : NO_OFFSET);
     target.y -= nod * NOD_DROP;
     const dir = target.sub(from).normalize();
 
-    // Turn from straight ahead toward the camera, but never further than a
-    // person comfortably would without moving their shoulders.
+    // Turn toward the target, no further than a person would without their shoulders.
     const look = scratch.look.setFromUnitVectors(FORWARD, dir);
     const angle = 2 * Math.acos(Math.min(1, Math.abs(look.w)));
     if (angle > MAX_HEAD_TURN) look.slerp(IDENTITY, 1 - MAX_HEAD_TURN / angle);
 
     const desired = scratch.desired.copy(look).multiply(this.headRestWorld);
     const parentWorld = head.parent.getWorldQuaternion(scratch.parent);
-    head.quaternion.copy(parentWorld.invert().multiply(desired));
+    const local = parentWorld.invert().multiply(desired);
+    // Ease toward the new aim (a glance, a look back) rather than snapping.
+    if (!this.headLocal || this.reduced) this.headLocal = local.clone();
+    else this.headLocal.slerp(local, 1 - Math.exp(-delta * HEAD_TURN_RATE));
+    head.quaternion.copy(this.headLocal);
   }
 
 }
@@ -401,8 +343,7 @@ export type RecruiterModelProps = Omit<ThreeElements["group"], "ref"> & {
 /** The character alone, as a node in a scene that owns camera and outline. */
 export function RecruiterModel({ speaker, framesCamera = false, animate = true, look, onReady, ...group }: RecruiterModelProps) {
   const { scene: source, animations } = useGLTF(RECRUITER_MODEL);
-  // useGLTF hands every caller the same cached scene; two people in one
-  // building need their own skeletons.
+  // useGLTF shares one cached scene; each character needs its own skeleton.
   const scene = useMemo(() => cloneSkinned(source), [source]);
   const rig = useRef<RecruiterRig | null>(null);
   const reported = useRef(false);
@@ -410,11 +351,24 @@ export function RecruiterModel({ speaker, framesCamera = false, animate = true, 
   useEffect(() => {
     latest.current = { look, onReady };
   });
+  // The next requested frame, at most MODEL_FPS a second (TalkingHead's modelFPS).
+  const nextFrame = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (nextFrame.current) clearTimeout(nextFrame.current);
+    },
+    [],
+  );
 
   useFrame(({ gl, camera, size, invalidate }, delta) => {
     rig.current ??= new RecruiterRig(scene, animations, prefersReducedMotion(), latest.current.look, studioEnvironment(gl));
     rig.current.update(camera as THREE.PerspectiveCamera, framesCamera ? size : null, delta, speaker.current);
-    if (animate) invalidate();
+    if (animate && nextFrame.current === null) {
+      nextFrame.current = setTimeout(() => {
+        nextFrame.current = null;
+        invalidate();
+      }, 1000 / MODEL_FPS);
+    }
     if (!reported.current) {
       reported.current = true;
       latest.current.onReady?.();
@@ -430,8 +384,7 @@ export function RecruiterModel({ speaker, framesCamera = false, animate = true, 
 
 /** The bust in its own canvas: RecruiterStage outside the building. */
 export default function Recruiter3D({ state, readMouth, readVisemes, onReady }: Recruiter3DProps) {
-  // The frame loop reads the latest props through this ref, so a state
-  // change never re-creates the rig or restarts the idle clip.
+  // Read through a ref, so a state change never re-creates the rig.
   const speaker = useRef<Speaker>({ state, readMouth, readVisemes });
   useEffect(() => {
     speaker.current = { state, readMouth, readVisemes };

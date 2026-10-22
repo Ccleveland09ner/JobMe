@@ -1,24 +1,43 @@
 "use client";
 
 /**
- * The objects the user handles, built from the same toon boxes as the rest
- * of the building:
- *
- *   LedgerBook      the performance record, closed on the front desk
- *   ReportsFolder   a manila folder of scorecards on the front desk
- *   NoticeBoard     the settings board on the lobby wall, notes pinned on it;
- *                   its "Settings" header is what the user clicks
- *   TableNotepad    the interviewer's notepad on the interview table
- *
- * Each object is modelled lying flat with its top edge toward −Z, the way
- * Liftable expects (it turns the object's +Y face toward the camera).
+ * The objects the user handles: the desk objects (Liftable, named by floating
+ * labels), the settings notice board (Clickable) and the room's notepad.
+ * Desk objects are modelled lying flat, top edge toward −Z.
  */
 
-import { DESK, NOTEBOARD, TABLE } from "../world";
+import { useMemo } from "react";
+import * as THREE from "three";
+
+import { letteringGeometry, letteringMaterials, letteringWidth, useLetteringFont } from "@/components/three/lettering";
+import { toonMaterial, type PaletteColor } from "@/components/three/toon";
+
+import { useBuilding } from "../BuildingProvider";
+import { BOARD_FRAME, BOARD_NOTES, BOARD_PLANK, DESK, NOTEBOARD, TABLE, type BoardNote } from "../world";
+import { FloatingLabel } from "./FloatingLabel";
 import { Clickable, Liftable } from "./Interactive";
-import { Box } from "./parts";
+import { Box, InkEdges } from "./parts";
+import { ScreenAnchor } from "./ScreenAnchor";
+import { roundedSlab } from "./shapes";
+
+type Vec3 = [number, number, number];
 
 const COUNTER_TOP = DESK.height + 0.06;
+
+/** Where each desk object rests, and where its name floats. */
+const ON_DESK = {
+  ledger: { at: [-1.25, COUNTER_TOP, DESK.z - 0.32] as Vec3, turn: 0.18, label: 0.3 },
+  clipboard: { at: [-0.6, COUNTER_TOP, DESK.z - 0.3] as Vec3, turn: 0.1, label: 0.34 },
+  reports: { at: [0.75, COUNTER_TOP, DESK.z - 0.32] as Vec3, turn: -0.14, label: 0.3 },
+} as const;
+
+/** Where the secretary looks when the user points at something. */
+export const LOOK_POINTS: Record<string, readonly [number, number, number]> = {
+  ledger: [ON_DESK.ledger.at[0], COUNTER_TOP + 0.05, ON_DESK.ledger.at[2]],
+  clipboard: [ON_DESK.clipboard.at[0], COUNTER_TOP + 0.05, ON_DESK.clipboard.at[2]],
+  reports: [ON_DESK.reports.at[0], COUNTER_TOP + 0.05, ON_DESK.reports.at[2]],
+  settings: [(NOTEBOARD.left + NOTEBOARD.right) / 2, (NOTEBOARD.bottom + NOTEBOARD.top) / 2, NOTEBOARD.z],
+};
 
 /** A closed book: leather boards around a block of pages, a brass title plate. */
 function Book() {
@@ -49,6 +68,31 @@ function Folder() {
   );
 }
 
+/** The setup clipboard, matching ui/Clipboard.tsx. Modelled upright, then laid flat. */
+function Clipboard() {
+  const boardH = 0.35;
+  return (
+    <group rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh geometry={roundedSlab({ w: 0.26, h: boardH, r: 0.022, depth: 0.007, bevel: 0.002 })} material={toonMaterial("board")}>
+        <InkEdges threshold={40} />
+      </mesh>
+      <Box size={[0.22, 0.28, 0.002]} at={[0, -0.022, 0.0115]} color="paper" />
+      <Box size={[0.12, 0.009, 0.001]} at={[-0.035, 0.085, 0.013]} color="ink" />
+      {[0.05, 0.015, -0.02, -0.055, -0.09, -0.125].map((y) => (
+        <Box key={y} size={[0.18, 0.004, 0.001]} at={[0, y, 0.013]} color="rule" />
+      ))}
+      <mesh
+        geometry={roundedSlab({ w: 0.11, h: 0.06, r: 0.016, depth: 0.01, bevel: 0.002 })}
+        material={toonMaterial("clipmetal")}
+        position={[0, boardH / 2 - 0.03, 0.011]}
+      >
+        <InkEdges threshold={40} />
+      </mesh>
+      <Box size={[0.085, 0.012, 0.008]} at={[0, boardH / 2 - 0.05, 0.026]} color="clipmetal" />
+    </group>
+  );
+}
+
 /** A spiral-bound notepad: card back, pages, a row of rings along the top. */
 function Notepad() {
   return (
@@ -63,14 +107,24 @@ function Notepad() {
 }
 
 export function DeskObjects() {
+  const { ledger, clipboard, reports } = ON_DESK;
+  const above = (spot: { at: Vec3; label: number }): Vec3 => [spot.at[0], spot.at[1] + spot.label, spot.at[2]];
   return (
     <>
-      <Liftable name="ledger" action="ledger" station="desk" position={[-0.85, COUNTER_TOP, DESK.z - 0.32]} rotation={[0, 0.18, 0]}>
+      <Liftable name="ledger" action="ledger" station="desk" position={ledger.at} rotation={[0, ledger.turn, 0]}>
         <Book />
       </Liftable>
-      <Liftable name="reports" action="reports" station="desk" position={[0.85, COUNTER_TOP, DESK.z - 0.32]} rotation={[0, -0.14, 0]}>
+      <FloatingLabel action="ledger" station="desk" holds="ledger" at={above(ledger)} lines={["LEDGER"]} />
+
+      <Liftable name="clipboard" action="clipboard" station="desk" position={clipboard.at} rotation={[0, clipboard.turn, 0]}>
+        <Clipboard />
+      </Liftable>
+      <FloatingLabel action="clipboard" station="desk" holds="clipboard" at={above(clipboard)} lines={["START", "INTERVIEW"]} />
+
+      <Liftable name="reports" action="reports" station="desk" position={reports.at} rotation={[0, reports.turn, 0]}>
         <Folder />
       </Liftable>
+      <FloatingLabel action="reports" station="desk" holds="reports" at={above(reports)} lines={["REPORTS"]} />
     </>
   );
 }
@@ -89,40 +143,114 @@ export function TableNotepad() {
   );
 }
 
-/** Pinned notes on the board: paper, a coloured pin, a few written lines. */
-const NOTES: { x: number; y: number; w: number; h: number; tilt: number; color: string }[] = [
-  { x: 2.45, y: 1.55, w: 0.95, h: 0.75, tilt: 0.04, color: "paper" },
-  { x: 3.85, y: 1.5, w: 1.0, h: 0.8, tilt: -0.05, color: "noteYellow" },
-];
+/** Painted lettering lying on a surface at z = 0 of its group. */
+function Painted({ text, size, at, color = "ink" }: { text: string; size: number; at: Vec3; color?: PaletteColor }) {
+  const font = useLetteringFont();
+  const geometry = letteringGeometry(font, { text, size, depth: size * 0.08, anchor: "surface" });
+  return <mesh geometry={geometry} material={letteringMaterials(color, color, false)} position={at} />;
+}
 
+const pinGeometry = new THREE.SphereGeometry(0.028, 16, 12);
+
+const NOTE_LOOK: Record<BoardNote, { title: string; paper: PaletteColor }> = {
+  defaults: { title: "INTERVIEW DEFAULTS", paper: "paper" },
+  account: { title: "ACCOUNT", paper: "noteYellow" },
+};
+
+/** Height of a note's title band, above its controls. */
+const NOTE_TITLE_BAND = 0.3;
+
+/** One note pinned on the board: paper, a pin, its title, room for its controls. */
+function PinnedNote({ name, inUse }: { name: BoardNote; inUse: boolean }) {
+  const n = BOARD_NOTES[name];
+  const look = NOTE_LOOK[name];
+  return (
+    <group position={[n.x, n.y, NOTEBOARD.z + 0.034]} rotation={[0, 0, n.tilt]}>
+      <Box size={[n.w, n.h, 0.006]} at={[0, 0, 0.003]} color={look.paper} />
+      <mesh geometry={pinGeometry} material={toonMaterial("pin")} position={[0, n.h / 2 - 0.07, 0.03]} />
+      <Painted text={look.title} size={0.055} at={[0, n.h / 2 - 0.17, 0.0065]} />
+      {/* Pencil lines until the real controls are pinned on. */}
+      {!inUse &&
+        [0.06, -0.06, -0.18, -0.3].map((y, i) => (
+          <Box key={y} size={[n.w * (i % 2 ? 0.55 : 0.72), 0.018, 0.002]} at={[-n.w * 0.06, y, 0.0075]} color="ink" />
+        ))}
+      <ScreenAnchor
+        name={`note:${name}`}
+        width={n.w - 0.08}
+        height={n.h - NOTE_TITLE_BAND - 0.04}
+        position={[0, -NOTE_TITLE_BAND / 2 + 0.02, 0.007]}
+      />
+    </group>
+  );
+}
+
+/** The settings notice board: clicked from the desk; at the board its notes carry the controls. */
 export function NoticeBoard() {
+  const building = useBuilding();
+  const font = useLetteringFont();
   const { left, right, bottom, top, z } = NOTEBOARD;
   const width = right - left;
+  const height = top - bottom;
   const cx = (left + right) / 2;
+  const cy = (bottom + top) / 2;
+  const plankY = top - BOARD_FRAME - BOARD_PLANK / 2;
+
+  const atBoard = building?.state.station === "noteboard" && building.state.target === null;
+  const inUse = atBoard && building.cameraAt === "noteboard";
+  const pointed = building?.hovered === "settings";
+
+  const settingsLetters = letteringGeometry(font, { text: "S E T T I N G S", size: 0.1, depth: 0.012, anchor: "surface" });
+  const back = letteringGeometry(font, { text: "BACK TO DESK", size: 0.034, depth: 0.004, anchor: "surface" });
+  const tagW = letteringWidth(back) + 0.1;
+
+  const frame = useMemo(
+    () =>
+      roundedSlab({
+        w: width,
+        h: height,
+        r: 0.07,
+        depth: 0.05,
+        bevel: 0.008,
+        hole: { w: width - 2 * BOARD_FRAME, h: height - 2 * BOARD_FRAME, r: 0.03 },
+      }),
+    [width, height],
+  );
+
   return (
     <group>
-      {/* Frame and cork. */}
-      <Box size={[width, top - bottom, 0.06]} at={[cx, (top + bottom) / 2, z + 0.03]} color="wood" />
-      <Box size={[width - 0.12, top - bottom - 0.32, 0.02]} at={[cx, (top + bottom) / 2 - 0.1, z + 0.07]} color="cork" />
-
-      {NOTES.map((n) => (
-        <group key={n.x} position={[n.x, n.y, z + 0.09]} rotation={[0, 0, n.tilt]}>
-          <Box size={[n.w, n.h, 0.008]} at={[0, 0, 0]} color={n.color} />
-          {[0.18, 0.06, -0.06, -0.18].map((dy, i) => (
-            <Box key={dy} size={[n.w * (i === 0 ? 0.55 : 0.75), 0.022, 0.004]} at={[-n.w * 0.06, dy, 0.006]} color="ink" />
-          ))}
-          <Box size={[0.05, 0.05, 0.04]} at={[0, n.h / 2 - 0.06, 0.02]} color="pin" />
-        </group>
-      ))}
-
-      {/* The header plank: "Settings". Clicking it walks the user to the board. */}
-      <Clickable action="settings" station="desk" position={[cx, top - 0.13, z + 0.1]}>
-        <Box size={[width - 0.3, 0.2, 0.05]} at={[0, 0, 0]} color="paper" />
-        {/* Hand-lettered "SETTINGS": eight ink strokes, read as a word at a glance. */}
-        {[-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7].map((x) => (
-          <Box key={x} size={[0.11, 0.09, 0.006]} at={[x, 0, 0.028]} color="ink" />
+      {/* Clicked anywhere from the desk: the user goes to the board. */}
+      <Clickable action="settings" station="desk" hoverScale={1}>
+        <mesh geometry={frame} material={toonMaterial("wood")} position={[cx, cy, z]}>
+          <InkEdges threshold={40} />
+        </mesh>
+        <Box size={[width - 2 * BOARD_FRAME + 0.02, height - 2 * BOARD_FRAME + 0.02, 0.02]} at={[cx, cy, z + 0.012]} color="cork" />
+        {/* The header plank, lettered SETTINGS. */}
+        <mesh
+          geometry={roundedSlab({ w: width - 2 * BOARD_FRAME - 0.08, h: BOARD_PLANK - 0.05, r: 0.035, depth: 0.016, bevel: 0.004 })}
+          material={toonMaterial("paper")}
+          position={[cx, plankY, z + 0.022]}
+        >
+          <InkEdges threshold={40} />
+        </mesh>
+        <mesh
+          geometry={settingsLetters}
+          material={letteringMaterials(pointed ? "accent" : "ink", pointed ? "accent" : "ink", false)}
+          position={[cx, plankY, z + 0.046]}
+        />
+        {(Object.keys(BOARD_NOTES) as BoardNote[]).map((name) => (
+          <PinnedNote key={name} name={name} inUse={inUse} />
         ))}
       </Clickable>
+
+      {/* At the board: the way back. */}
+      {atBoard && (
+        <Clickable action="desk" station="noteboard" position={[right - BOARD_FRAME - 0.06 - tagW / 2, plankY, z + 0.046]}>
+          <mesh geometry={roundedSlab({ w: tagW, h: 0.1, r: 0.028, depth: 0.012, bevel: 0.003 })} material={toonMaterial("accent")}>
+            <InkEdges threshold={40} />
+          </mesh>
+          <mesh geometry={back} material={letteringMaterials("paper", "paper", false)} position={[0, 0, 0.018]} />
+        </Clickable>
+      )}
     </group>
   );
 }

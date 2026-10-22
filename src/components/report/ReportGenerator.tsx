@@ -1,15 +1,9 @@
 "use client";
 
 /**
- * First visit to a scorecard: no report row exists yet, so ask the server to
- * build it — once — then re-render the page from the saved row.
- *
- * POST /api/sessions/[id]/report is idempotent (an existing report comes back
- * with no model call, and a concurrent second request loses the insert), so
- * a double mount in development or a retry after an error is safe.
- *
- * 409 means no answered questions: there is nothing to score, so the
- * candidate is sent back to the interview rather than shown an error.
+ * First visit to a scorecard: ask the server to build the report (idempotent),
+ * then hand it over (or re-render the page). A 409 (nothing answered) goes
+ * back to the interview.
  */
 
 import Link from "next/link";
@@ -20,12 +14,24 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { buttonClasses } from "@/components/ui/Button";
-import { friendlyError } from "@/lib/frontend/adapters";
+import { generateReport, OFFLINE_MESSAGE } from "@/lib/frontend/api";
+import type { GeneratedReport } from "@/lib/frontend/report-document";
 
 type Status = { kind: "generating" } | { kind: "empty" } | { kind: "error"; message: string };
 
-export function ReportGenerator({ sessionId }: { sessionId: string }) {
+export function ReportGenerator({
+  sessionId,
+  onGenerated,
+}: {
+  sessionId: string;
+  /** Takes the report as written; without it the page is re-rendered. */
+  onGenerated?: (report: GeneratedReport) => void;
+}) {
   const router = useRouter();
+  const handOver = useRef(onGenerated);
+  useEffect(() => {
+    handOver.current = onGenerated;
+  });
   const [status, setStatus] = useState<Status>({ kind: "generating" });
   const [attempt, setAttempt] = useState(0);
   const [, startRefresh] = useTransition();
@@ -37,18 +43,23 @@ export function ReportGenerator({ sessionId }: { sessionId: string }) {
 
     void (async () => {
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/report`, { method: "POST" });
-        if (res.ok) {
-          startRefresh(() => router.refresh());
+        const result = await generateReport(sessionId);
+        if (result.ok) {
+          if (result.data && handOver.current) handOver.current(result.data);
+          else startRefresh(() => router.refresh());
           return;
         }
-        if (res.status === 409) {
+        if (result.offline) {
+          setStatus({ kind: "error", message: OFFLINE_MESSAGE });
+          return;
+        }
+        if (result.status === 409) {
           setStatus({ kind: "empty" });
           return;
         }
-        setStatus({ kind: "error", message: friendlyError(res.status, await res.json().catch(() => null)) });
+        setStatus({ kind: "error", message: result.message });
       } catch {
-        setStatus({ kind: "error", message: "We couldn't reach the server. Check your connection and try again." });
+        setStatus({ kind: "error", message: OFFLINE_MESSAGE });
       }
     })();
   }, [attempt, sessionId, router]);

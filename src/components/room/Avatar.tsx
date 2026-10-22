@@ -1,33 +1,14 @@
 "use client";
 
 /**
- * The recruiter. Inline SVG, flat 2D line art.
- * Ref: docs/PRD-JobMe-MVP.md > Look and Feel
- *      docs/TechDesign-JobMe-MVP.md > Look and Feel (Motion)
- *      design/mock Inteview session.png  (the drawing this is redrawn from)
- *
- * Layered so it can move: the head is its own group (nod), the eyes are their
- * own shapes (blink), and the mouth is one path whose lower lip follows the
- * voice. Everything else is static scenery: whiteboard, chair, desk, mic.
- *
- * Motion:
- *   - speaking   the mouth opens with the voice, read every animation frame
- *                and written straight to the SVG through refs, so lip-sync
- *                never re-renders React. With no audio graph (e.g. a reload
- *                straight into the room) a gentle synthetic motion stands in.
- *   - listening  a small nod as it starts; the desk mic lights up teal.
- *   - thinking   thought dots.
- *   - idle       a resting smile.
- *   - always     a blink every 3–6s, at random.
- * Reduced motion: mouth only (capped). No blink, no nod — per the tech design.
- *
- * Colours come from the theme tokens (ink line art on the surface, accent for
- * the live mic), never hex values.
+ * The SVG recruiter (flat line art). The head nods, the eyes blink, and the
+ * mouth follows the voice through refs, so lip-sync never re-renders React.
+ * Reduced motion: mouth only.
  */
 
 import { useEffect, useRef } from "react";
 
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
 
@@ -48,10 +29,7 @@ const STATE_TEXT: Record<AvatarProps["state"], string> = {
 const MOUTH_REST = 0.2;
 const EYE_RY = 2.8;
 
-/**
- * The mouth: a fixed upper lip and a lower lip whose curve drops with
- * `open`. At 0 both curves meet, and the stroke reads as a closed smile.
- */
+/** The mouth path: the lower lip drops with `open`; at 0 it's a closed smile. */
 export function mouthPath(open: number): string {
   const o = Math.max(0, Math.min(1, open));
   return `M110 97 Q120 102 130 97 Q120 ${(102 + o * 12).toFixed(2)} 110 97 Z`;
@@ -225,8 +203,7 @@ export function Avatar({ state, readMouth }: AvatarProps) {
 
         <DeskMic listening={listening} />
       </svg>
-      {/* Not a live region: phase changes are already announced through the
-          captions and the answer controls, and repeating them here is noise. */}
+      {/* Not a live region: the captions and controls already announce changes. */}
       <figcaption className="text-xs text-muted">Interviewer · {STATE_TEXT[state]}</figcaption>
     </figure>
   );

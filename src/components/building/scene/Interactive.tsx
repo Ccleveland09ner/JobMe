@@ -1,29 +1,17 @@
 "use client";
 
 /**
- * Things in the building the user can touch.
- *
- *   <Clickable>  stays where it is: hovering lifts it a touch, clicking runs
- *                its action (the notice board's "Settings" header).
- *   <Liftable>   can be picked up (heldMachine.ts): clicking runs its action,
- *                which asks the page to hold it; while held it travels to just
- *                in front of the camera, turned to face the user, then hides
- *                as its DOM self takes over. Put down, it travels back.
- *
- * Both only respond at their own station, with nothing in hand and nothing
- * moving — so two objects can never animate against each other. Their
- * actions are the same ones their DOM twins run (StationLayer, the room), so
- * a click on the object and a click on its button are the same thing.
- *
- * Reduced motion: the object jumps instead of travelling.
+ * Things the user can touch. <Clickable> stays put; <Liftable> is picked up
+ * (heldMachine.ts), travels to the camera, then its DOM self takes over.
+ * Both respond only at their station, with nothing held or moving.
  */
 
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import gsap from "gsap";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import * as THREE from "three";
 
-import { prefersReducedMotion } from "@/lib/voice/audio-graph";
+import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "../BuildingProvider";
 import type { Held } from "../heldMachine";
@@ -36,33 +24,50 @@ const LIFT_SECONDS = 0.55;
 /** How far in front of the camera a held object stops, in metres. */
 const HOLD_DISTANCE = 0.7;
 
-function useCanTouch(station: Station): boolean {
+export function useCanTouch(station: Station): boolean {
   const building = useBuilding();
   if (!building) return false;
   const { state, held } = building;
   return state.station === station && state.target === null && held.phase === "resting";
 }
 
-function useHover(enabled: boolean) {
-  const [hovered, setHovered] = useState(false);
-  const invalidate = useThree((s) => s.invalidate);
-  useEffect(() => {
-    document.body.style.cursor = hovered && enabled ? "pointer" : "";
-    invalidate();
-    return () => {
-      document.body.style.cursor = "";
-    };
-  }, [hovered, enabled, invalidate]);
+/** Pointer handlers for `name`, and whether it is pointed at (pointer or keyboard). */
+export function usePointing(name: string, canTouch: boolean) {
+  const building = useBuilding();
+  const hovered = canTouch && building?.hovered === name;
+  const setHovered = building?.setHovered;
   return {
-    hovered: hovered && enabled,
+    hovered,
     bind: {
       onPointerOver: (e: ThreeEvent<PointerEvent>) => {
         e.stopPropagation();
-        setHovered(true);
+        if (canTouch) setHovered?.(name);
       },
-      onPointerOut: () => setHovered(false),
+      onPointerOut: () => {
+        if (building?.hovered === name) setHovered?.(null);
+      },
     },
   };
+}
+
+/** Lean a pointed-at object toward the viewer a little, eased. */
+function useLean(target: React.RefObject<THREE.Group | null>, on: boolean, scale: number) {
+  const invalidate = useThree((st) => st.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [on, invalidate]);
+  useFrame((_, delta) => {
+    const g = target.current;
+    if (!g) return;
+    const goal = on ? scale : 1;
+    const next = g.scale.x + (goal - g.scale.x) * (1 - Math.exp(-delta * 12));
+    if (Math.abs(next - goal) < 1e-3) {
+      if (g.scale.x !== goal) g.scale.setScalar(goal);
+      return;
+    }
+    g.scale.setScalar(next);
+    invalidate();
+  });
 }
 
 export function Clickable({
@@ -70,22 +75,27 @@ export function Clickable({
   station,
   position,
   rotation,
+  hoverScale = HOVER_SCALE,
   children,
 }: {
   action: string;
   station: Station;
   position?: Vec3;
   rotation?: Vec3;
+  /** 1 for no lean (the wall board). */
+  hoverScale?: number;
   children: ReactNode;
 }) {
   const building = useBuilding();
   const canTouch = useCanTouch(station);
-  const { hovered, bind } = useHover(canTouch);
+  const { hovered, bind } = usePointing(action, canTouch);
+  const lean = useRef<THREE.Group>(null);
+  useLean(lean, hovered, hoverScale);
   return (
     <group
+      ref={lean}
       position={position}
       rotation={rotation}
-      scale={hovered ? HOVER_SCALE : 1}
       {...bind}
       onClick={(e) => {
         e.stopPropagation();
@@ -104,10 +114,7 @@ const scratch = {
   basis: new THREE.Matrix4(),
 };
 
-/**
- * Facing the camera: the object's top (+Y, a book's cover) toward the
- * viewer, its far edge (−Z) up, its right (+X) to the viewer's right.
- */
+/** Facing the camera: top (+Y) toward the viewer, far edge (−Z) up. */
 function facingCamera(camera: THREE.Camera, out: THREE.Quaternion): THREE.Quaternion {
   camera.getWorldDirection(scratch.forward);
   scratch.right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
@@ -133,8 +140,10 @@ export function Liftable({
 }) {
   const building = useBuilding();
   const canTouch = useCanTouch(station);
-  const { hovered, bind } = useHover(canTouch);
+  const { hovered, bind } = usePointing(action, canTouch);
   const group = useRef<THREE.Group>(null);
+  const lean = useRef<THREE.Group>(null);
+  useLean(lean, hovered, HOVER_SCALE);
   const motion = useRef<{ tween: gsap.core.Tween | null; doing: "lift" | "return" | null }>({ tween: null, doing: null });
   const latest = useRef(building);
   useEffect(() => {
@@ -149,8 +158,7 @@ export function Liftable({
 
   useEffect(() => () => void motion.current.tween?.kill(), []);
 
-  // The canvas draws on demand: wake it whenever what is held changes, so the
-  // frame loop below sees the new phase.
+  // Wake the on-demand canvas when the held state changes.
   const invalidate = useThree((st) => st.invalidate);
   const heldName = building?.held.held;
   const heldPhase = building?.held.phase;
@@ -215,7 +223,7 @@ export function Liftable({
   return (
     <group ref={group} position={position} rotation={rotation}>
       <group
-        scale={hovered ? HOVER_SCALE : 1}
+        ref={lean}
         {...bind}
         onClick={(e) => {
           e.stopPropagation();

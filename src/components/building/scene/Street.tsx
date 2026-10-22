@@ -1,11 +1,6 @@
 "use client";
 
-/**
- * Outside: the plaza and the building's front, a low-poly reading of
- * design/Symmetrical Campus Building in Ink.png — a raised central pavilion
- * with an arched window over the entrance, two-storey wings with rows of
- * windows, lamp posts, trees and hedges either side of the path.
- */
+/** Outside: the plaza and the building's front, after the campus drawing. */
 
 import * as THREE from "three";
 

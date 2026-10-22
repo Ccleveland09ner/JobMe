@@ -1,16 +1,11 @@
 "use client";
 
-/**
- * Development only: drive the interview room's mic without an interview, to
- * review both mic controls together — the panel button (TableMic) and the
- * mic on the 3D desk. Pressing either one behaves as in a real turn:
- * ready -> recording (start answering) -> ready (answer "sent").
- */
+/** Dev only: drive the room's mic (panel button and 3D desk mic) without an interview. */
 
 import { useEffect, useMemo, useState } from "react";
 
 import { useBuilding } from "@/components/building/BuildingProvider";
-import type { MicControl, MicState, RecruiterState } from "@/components/room/Recruiter3D";
+import type { MicControl, MicState, RecruiterState } from "@/components/room/types";
 import { TableMic } from "@/components/room/TableMic";
 import { Button } from "@/components/ui/Button";
 

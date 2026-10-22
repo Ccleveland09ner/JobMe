@@ -81,11 +81,7 @@ describe("auto-restart across a silence", () => {
     expect(state.restarts).toBe(1);
   });
 
-  /**
-   * THE duplication test. `event.results` is per-session, so a second session
-   * replaying index 0 would re-commit the first session's text if the reducer
-   * trusted `resultIndex` alone.
-   */
+  /** Results are per session, so replaying index 0 after a restart mustn't re-commit text. */
   it("does not duplicate finals when a new session replays index 0", () => {
     const { transcript } = run([
       { t: "HOLD_START", now: 0 },
@@ -129,11 +125,7 @@ describe("auto-restart across a silence", () => {
 });
 
 describe("release races", () => {
-  /**
-   * Release landed while the session was still opening. `start()` is async, so
-   * a session arrives anyway and must be stopped — otherwise the microphone
-   * indicator stays lit after the user let go.
-   */
+  /** Released while opening: the session still arrives and must be stopped. */
   it("stops a session that arrives after release", () => {
     const { state, effects } = run([
       { t: "HOLD_START", now: 0 },

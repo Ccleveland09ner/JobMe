@@ -1,16 +1,6 @@
 /**
- * View types: what pages and components render.
- *
- * These describe the API responses and table rows the frontend consumes,
- * narrowed to what is safe and useful to show. They deliberately do NOT carry
- * `EngineState` — engine internals stay on the server; pages extract a
- * `ProgressView` and the current question instead (see adapters.ts).
- *
- * Shapes follow the route implementations, not the tech design, where the two
- * disagree:
- *   - POST /api/sessions             src/app/api/sessions/route.ts
- *   - POST /api/sessions/[id]/turns  src/app/api/sessions/[id]/turns/route.ts
- *   - POST /api/sessions/[id]/report src/lib/interview/report.ts (ReportBody)
+ * View types: the API responses and rows the frontend renders, narrowed to
+ * what is safe to show. EngineState stays on the server.
  */
 
 import type {
@@ -24,7 +14,6 @@ import type {
   StoredScores,
   TopicId,
 } from "../engine/types";
-import type { ReportStats } from "../ai/report";
 import type { QuestionGroup } from "../stats";
 
 /** Typed answers, or push-to-talk voice. Chosen on setup, passed as `?input=`. */
@@ -40,11 +29,7 @@ export interface QuestionView {
   lead?: string;
 }
 
-/**
- * Interview progress. Every field past `questionCount` is optional because
- * the create and turn responses expose different subsets, and the component
- * must degrade rather than break when one is missing.
- */
+/** Interview progress; fields past questionCount are optional (the responses differ). */
 export interface ProgressView {
   mode?: InterviewMode;
   /** The number of the question on screen. Starts at 1. */
@@ -57,11 +42,7 @@ export interface ProgressView {
   topicsTotal?: number;
 }
 
-/**
- * One Recruiter's Notepad entry. Mirrors `NotepadEntry` in
- * lib/interview/turn.ts — the shape the turn route actually returns, which
- * has `source` and `degraded` where engine/types.ts's older copy does not.
- */
+/** One notepad entry, as the turn route returns it (NotepadEntry in lib/interview/turn.ts). */
 export interface NoteView {
   seq: number;
   topic: TopicId;
@@ -86,9 +67,7 @@ export interface NoteView {
   degraded: boolean;
 }
 
-// ---------------------------------------------------------------------------
 // API responses
-// ---------------------------------------------------------------------------
 
 export interface CreateSessionResponse {
   sessionId: string;
@@ -138,18 +117,7 @@ export interface ResumeUploadResponse {
   extractedPreview: string;
 }
 
-export interface ReportView {
-  summary: string;
-  weakestTurnId: string | null;
-  rewrite: string | null;
-  stats: ReportStats | null;
-  /** Backend-computed, scored turns only. Never re-averaged on the client. */
-  overallScores: StoredScores | null;
-}
-
-// ---------------------------------------------------------------------------
 // Rows the pages read directly (RLS-scoped)
-// ---------------------------------------------------------------------------
 
 export type SessionStatus = "in_progress" | "completed";
 
@@ -162,6 +130,15 @@ export interface SessionSummary {
   questionCount: number;
   overallScores: StoredScores | null;
   /** The session's headline 1-4 score; null when unscored. */
+  overall: number | null;
+}
+
+/** One completed interview on the trend chart. */
+export interface TrendPoint {
+  id: string;
+  startedAt: string;
+  scores: StoredScores | null;
+  /** The stored headline score; see pickOverall. */
   overall: number | null;
 }
 
@@ -187,7 +164,7 @@ export interface ReportTurnView {
  * that added to it, and the score of the whole answer (the latest cumulative
  * evaluation). `ref` ("Q2") is how the report's feedback cites it.
  */
-export interface ReportQuestionView extends QuestionGroup<ReportTurnView> {
+export interface ReportQuestionView<T extends ReportTurnView = ReportTurnView> extends QuestionGroup<T> {
   ref: string;
   /** The competency, e.g. "Influencing others". */
   label: string;

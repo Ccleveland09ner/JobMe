@@ -1,21 +1,8 @@
 /**
- * Reads a job posting from a link, so the interview can be tailored to it.
- *
- * ALLOWLIST ONLY. The candidate's link never decides which host we contact:
- * it is parsed into a known provider plus ids, and we call that provider's
- * PUBLIC posting API on a fixed host. There is no user-controlled fetch to aim
- * at an internal address, so SSRF is not a class of bug this module can have —
- * the design `src/lib/jd/distill.ts` asked for ("behind an allowlist with a
- * paste fallback").
- *
- * Supported: Greenhouse, Lever, Ashby and SmartRecruiters — the applicant
- * tracking systems behind most startup career pages — plus company-hosted
- * Greenhouse pages (`?gh_jid=`). Response shapes verified live 2026-09-26.
- *
- * Deliberately NOT supported: LinkedIn, Indeed, Handshake, Workday and
- * generic pages. They block server-side fetches or sit behind a login, and
- * scraping them breaks their terms. Those links raise `JobLinkError`, which
- * the route turns into "paste the description instead".
+ * Reads a job posting from a link. Allowlist only: the link is parsed into a
+ * known provider and ids, and only that provider's fixed public API is called
+ * (no SSRF). Greenhouse, Lever, Ashby and SmartRecruiters; anything else
+ * raises JobLinkError ("paste the description instead").
  */
 
 export type JobProvider = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
@@ -148,10 +135,8 @@ export function resolveJobLink(raw: string): Target {
     }
   }
 
-  // A company careers page embedding Greenhouse, e.g.
-  // careers.airbnb.com/positions/123?gh_jid=123. The board token is usually
-  // the company's domain name. Only the fixed Greenhouse host is contacted,
-  // so a wrong guess costs one 404, never a request somewhere else.
+  // A careers page embedding Greenhouse (?gh_jid=). The board is usually the
+  // domain name; only Greenhouse's host is contacted, so a wrong guess is a 404.
   const ghJid = url.searchParams.get("gh_jid");
   const board = ghJid && /^\d+$/.test(ghJid) ? boardTokenFromHost(host) : null;
   if (ghJid && board) return greenhouse(board, ghJid);

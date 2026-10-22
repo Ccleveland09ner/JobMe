@@ -1,9 +1,4 @@
-/**
- * Development-only preview of the recruiter, for reviewing its states and
- * motion without running an interview. 404 in production.
- *
- * `?state=speaking|idle|listening|thinking` opens on that state.
- */
+/** Dev only: preview the recruiter (?state=speaking|idle|listening|thinking). 404 in production. */
 
 import { notFound } from "next/navigation";
 

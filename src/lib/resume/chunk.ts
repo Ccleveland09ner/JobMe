@@ -1,39 +1,15 @@
 /**
- * Splits redacted resume text into embeddable chunks.
- *
- * Pure and estimate-based: `countTokens` is accurate but costs a network call
- * per chunk against a 15 RPM free tier, so 30 chunks would spend two minutes
- * of quota just measuring. A pessimistic chars-per-token ratio is used here
- * and verified once, in the test, against the real tokenizer.
- *
- * Chunks follow resume structure rather than a fixed window — retrieval
- * quality depends on a chunk being about one thing. The 2048-token model limit
- * is hard, so an oversized chunk is an API error, not a quality problem.
- *
- * Ref: TechDesign > Embedding Checks
+ * Splits redacted resume text into chunks along its structure (a chunk should
+ * be about one thing). Tokens are estimated pessimistically, not counted.
  */
 
-/**
- * Pessimistic on purpose: English averages ~4 chars/token and resumes skew
- * lower, so a low ratio over-estimates tokens and fails safe.
- */
+/** Pessimistic chars per token (resumes run below English's ~4), so estimates fail safe. */
 export const CHARS_PER_TOKEN = 3;
 
 /** Hard ceiling per chunk. The API rejects anything past 2048. */
 export const MAX_CHUNK_TOKENS = 1800;
 
-/**
- * Size a chunk is split toward, well below the hard ceiling.
- *
- * Without this, splitting only happened at MAX, so a compact one-page resume
- * produced one enormous chunk per section — a real resume put four separate
- * projects into a single 1822-character chunk, which made every one of them
- * look identical to retrieval.
- *
- * Deliberately NOT a fixed token window: windows cut mid-sentence and split a
- * bullet from the role it belongs to. Splitting on line boundaries toward a
- * target keeps a chunk about one thing while making the count predictable.
- */
+/** Size a chunk is split toward on line boundaries, well below the ceiling. */
 export const TARGET_CHUNK_TOKENS = 240;
 
 /** Below this, a chunk is merged into its neighbour rather than embedded alone. */
@@ -75,10 +51,7 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
-/**
- * A short standalone line, all-caps or a known section word. Shortness stops a
- * bullet beginning "Skills" being read as a heading.
- */
+/** A short standalone line, all caps or a known section word. */
 export function isSectionHeading(line: string): boolean {
   const t = line.trim().replace(/[:\s]+$/, "");
   if (!t || t.length > 40) return false;
@@ -89,19 +62,12 @@ export function isSectionHeading(line: string): boolean {
   return /^[A-Z][A-Z\s&/'-]{2,}$/.test(t) && t.split(/\s+/).length <= 4;
 }
 
-/**
- * Splits an over-long block on line boundaries, never mid-line.
- *
- * `budget` is the caller's ceiling MINUS whatever prefix will be prepended
- * afterwards. Splitting to the full budget and then adding a section prefix
- * puts the chunk back over the limit — by exactly the prefix length.
- */
+/** Splits an over-long block on line boundaries; `budget` already excludes any prefix added later. */
 function splitOversized(block: string, budget: number): string[] {
   const out: string[] = [];
   let current = "";
   for (const line of block.split(/\r?\n/)) {
-    // Pathological: emit alone so the token assertion catches it rather than
-    // silently truncating.
+    // Pathological: emit alone so the token assertion catches it.
     if (line.length > budget) {
       if (current.trim()) out.push(current.trim());
       out.push(line.trim());
@@ -122,8 +88,7 @@ function splitOversized(block: string, budget: number): string[] {
 export function chunkResume(text: string): Chunk[] {
   if (!text.trim()) return [];
 
-  // Walk lines, tracking the current section and accumulating blank-line
-  // separated blocks (one role, one project, one entry).
+  // Walk lines, collecting blank-line-separated blocks per section.
   let section: string | null = null;
   const blocks: { section: string | null; content: string }[] = [];
   let buffer: string[] = [];
@@ -168,8 +133,7 @@ export function chunkResume(text: string): Chunk[] {
   for (const block of merged) {
     // Reserve room for the section prefix added below, plus its newline.
     const prefixCost = block.section ? block.section.length + 1 : 0;
-    // Split toward the target, not the hard ceiling, so sections break into
-    // retrieval-sized pieces instead of one block each.
+    // Split toward the target, not the ceiling.
     const budget = Math.max(
       MIN_CHUNK_CHARS,
       TARGET_CHUNK_CHARS - prefixCost,

@@ -1,19 +1,7 @@
 /**
- * The interview room. Server Component that hydrates the client orchestrator.
- * Ref: docs/PRD-JobMe-MVP.md > Interview Room: Voice Loop
- *      docs/TechDesign-JobMe-MVP.md > The Core Journey (4)
- *
- * Loads the session and its turns server-side. A finished interview (report
- * generated, or the engine already wrapped) goes to ./report, which builds the
- * scorecard on first visit. Otherwise <InterviewRoom> gets the current
- * question and the notepad history.
- *
- * Passing that history down from the server is what makes refresh-resume
- * free. `engine_state` itself never reaches the client: only the question,
- * the turn seq and a ProgressView are extracted from it here.
- *
- * The room is keyed on the server's turnSeq, so router.refresh() after a
- * stale submit remounts it from the authoritative state.
+ * The interview room: loads the session and turns on the server (so a refresh
+ * resumes) and keys the room on turnSeq. A finished interview goes to
+ * ./report. engine_state never reaches the client.
  */
 
 import { notFound, redirect } from "next/navigation";
@@ -51,8 +39,7 @@ export default async function InterviewRoomPage({
     supabase.from("turns").select(NOTE_COLUMNS).eq("session_id", id).order("seq", { ascending: true }),
   ]);
 
-  // A failed query is not a missing interview: let the error boundary offer
-  // a retry instead of telling the candidate their interview is gone.
+  // A failed query isn't a missing interview: let the error boundary offer a retry.
   if (sessionRes.error) throw new Error(`room session: ${sessionRes.error.message}`);
   if (turnsRes.error) throw new Error(`room turns: ${turnsRes.error.message}`);
   if (!sessionRes.data) notFound();
@@ -62,9 +49,7 @@ export default async function InterviewRoomPage({
     redirect(`/interview/${id}/report`);
   }
 
-  // Voice unless setup asked for typed answers. A visit without `?input=`
-  // (Resume on the dashboard, a refresh of an old link) used to start typed;
-  // the room still falls back to typing where the browser cannot listen.
+  // Voice unless setup asked for typed answers; the room falls back where it can't listen.
   const requestedInput: InputMode = input === "typed" ? "typed" : "voice";
   const notes = ((turnsRes.data ?? []) as unknown as TurnRow[]).map(noteFromTurnRow);
 

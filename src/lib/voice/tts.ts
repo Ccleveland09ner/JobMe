@@ -1,19 +1,9 @@
 "use client";
 
 /**
- * Neural voice via the /api/tts proxy, browser synthesis as the fallback that
- * is always there. The interview must never go silent — that outranks voice
- * quality, so every path degrades rather than throws.
- *
- * Ref: TechDesign > Voice Output
- *
- * Lip-sync: whichever path speaks also publishes a live timeline of mouth
- * shapes (lib/voice/lipsync.ts), read every frame through speechFrame():
- *   - neural: ElevenLabs reports every character's time with the audio, so
- *     the timeline runs on the audio element's own clock — exact.
- *   - browser: synthesis reports only when each word starts. The timeline is
- *     estimated from the text, re-anchored at every word event, and the
- *     voice's speaking rate is re-learned after every line.
+ * The recruiter's voice: neural via /api/tts, with browser synthesis as the
+ * fallback, so the interview never goes silent. Either path publishes a
+ * lip-sync timeline, read each frame through speechFrame().
  */
 
 import {
@@ -34,9 +24,7 @@ import {
   type VisemeWeights,
 } from "./lipsync";
 
-// ---------------------------------------------------------------------------
 // The live speech timeline
-// ---------------------------------------------------------------------------
 
 interface LiveSpeech {
   timeline: SpeechTimeline;
@@ -69,21 +57,14 @@ export function speechFrame(): SpeechFrame | null {
   };
 }
 
-/**
- * The browser voice's speaking rate in letters per second, learned from each
- * line it finishes. Starts at a typical English rate.
- */
+/** The browser voice's speaking rate (letters per second), learned from each line. */
 let browserCharsPerSecond = 14;
 
 function letters(text: string): number {
   return (text.match(/[A-Za-z0-9]/g) ?? []).length;
 }
 
-/**
- * Bumped whenever playback is superseded. Without it a slow neural response
- * arriving at 6s plays over the fallback, and the recruiter says the question
- * twice at once.
- */
+/** Bumped when playback is superseded, so a late neural response stays silent. */
 let playbackEpoch = 0;
 
 let sharedAudio: HTMLAudioElement | null = null;
@@ -98,10 +79,7 @@ export function getSharedAudio(): HTMLAudioElement {
   return sharedAudio;
 }
 
-/**
- * `getVoices()` is empty on first call in Chrome; the list arrives via
- * `voiceschanged`. Awaiting it once avoids a silently unspoken first question.
- */
+/** Chrome's getVoices() starts empty: await voiceschanged once. */
 export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   if (voicesReady) return voicesReady;
   voicesReady = new Promise((resolve) => {
@@ -163,8 +141,7 @@ async function playNeural(
 ): Promise<boolean> {
   const audio = getSharedAudio();
 
-  // Probe first: a 503 or a stall then costs the first-byte timeout rather
-  // than the whole audio budget.
+  // Probe first, so a 503 or a stall costs only the first-byte timeout.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TTS_ALIGNED_TIMEOUT_MS);
   options.signal?.addEventListener("abort", () => controller.abort());
@@ -259,8 +236,7 @@ async function playBrowser(
 
   const voices = await loadVoices();
   if (!voices.length) {
-    // Nothing can speak. Captions carry it — which is why they are always
-    // on rather than a setting.
+    // Nothing can speak; the captions carry it.
     options.onFallback?.("no voices available");
     return;
   }
@@ -274,8 +250,7 @@ async function playBrowser(
     utterance.voice = preferred ?? voices.find((v) => v.lang.startsWith("en")) ?? voices[0];
     utterance.rate = 1.0;
 
-    // Lip-sync. The timeline is estimated from the text at the learned rate,
-    // then pinned to the real speech at every word the browser announces.
+    // Lip-sync: estimated at the learned rate, pinned to each announced word.
     const timeline = estimatedTimeline(text, browserCharsPerSecond);
     let startedAt = -1;
     let anchorReal = -1; // performance.now() at the last anchor
@@ -287,8 +262,7 @@ async function playBrowser(
       now: () => {
         if (anchorReal < 0) return -1;
         const t = anchorAt + (performance.now() - anchorReal) / 1000;
-        // With word events, never run past the current word: if the next one
-        // is late, the mouth settles instead of mouthing words not yet said.
+        // Never run past the current word: if the next is late, the mouth settles.
         return wordEvents ? Math.min(t, wordEnd + 0.12) : t;
       },
     };
@@ -296,8 +270,7 @@ async function playBrowser(
     const finish = () => {
       if (live === entry) live = null;
       if (startedAt >= 0) {
-        // Learn this voice's rate: scale by how long the line really took
-        // against how long the estimate thought it would.
+        // Learn this voice's rate from how long the line really took.
         const actual = (performance.now() - startedAt) / 1000;
         if (actual > 0.5 && letters(text) >= 8) {
           const learned = browserCharsPerSecond * (timeline.duration / actual);
@@ -352,10 +325,7 @@ export function stopSpeaking(): void {
 const ackPool: HTMLAudioElement[] = [];
 const fillerPool: HTMLAudioElement[] = [];
 
-/**
- * Must run on the Begin click: the first `play()` also unlocks audio, and if
- * that happens at submit time the 0.3s ack target is unreachable.
- */
+/** Must run on the Begin click: the first play() unlocks audio. */
 export function preloadClips(): void {
   if (typeof window === "undefined") return;
   const fill = (pool: HTMLAudioElement[], path: string, count: number) => {

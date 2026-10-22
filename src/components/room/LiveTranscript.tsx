@@ -1,12 +1,4 @@
-/**
- * The answer as it is being recognised.
- * Ref: docs/TechDesign-JobMe-MVP.md > Components > Interview Room
- *
- * Shown while recording, so a misheard word is visible as it happens and can
- * be corrected out loud — there is no review step after Send. Interim words
- * may render grey and confirmed words in ink; the room currently passes the
- * combined text as `final`.
- */
+/** The answer as it is recognised, so a misheard word can be corrected out loud. */
 
 export function LiveTranscript({ interim, final, bare = false }: { interim: string; final: string; bare?: boolean }) {
   const empty = !interim && !final;

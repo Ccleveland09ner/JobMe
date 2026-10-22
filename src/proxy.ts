@@ -6,16 +6,8 @@ export async function proxy(request: NextRequest) {
 }
 
 /**
- * `api/` is excluded deliberately. `updateSession` calls `getUser()`, a
- * ~100-270ms round trip to Supabase, and in the matcher it ran on every route
- * handler — spending that on each turn (1.5s budget) and each TTS request
- * (0.6s first byte) to refresh a cookie the route authenticates anyway.
- *
- * Route handlers authenticate themselves via `lib/auth.ts`; pages still get
- * session refresh here.
- *
- * This only skips the middleware, NOT the transport-level body cap from
- * `proxyClientMaxBodySize`, so /api/resume still validates its own size.
+ * Skips api/: route handlers authenticate themselves (lib/auth.ts), and a
+ * session refresh there costs a Supabase round trip on every request.
  */
 export const config = {
   matcher: [

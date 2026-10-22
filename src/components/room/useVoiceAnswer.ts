@@ -1,22 +1,8 @@
 "use client";
 
 /**
- * One voice answer: tap to start, live transcript, and an idle timer that
- * sends the answer IDLE_SEND_MS after the last recognised word.
- *
- * Built on lib/voice/stt.ts (unchanged). Two details of that adapter shape
- * this hook:
- *   - `stop()` only resolves if the recognizer is still running. When it has
- *     already ended on its own (a fatal mic error, or the silence budget),
- *     calling it would never settle, so the transcript is read from the last
- *     machine state instead.
- *   - Chrome restarts recognition sessions under us; the machine stitches
- *     them, and `captureMs` is summed across them. That is the duration the
- *     server computes words-per-minute over.
- *
- * Idle is measured from the last change in the recognised text (interim or
- * final), not from microphone volume: a noisy room cannot hold the window
- * open, and a cough does not count as an answer.
+ * One voice answer: start, live transcript, and an idle timer that sends it
+ * IDLE_SEND_MS after the last change in the recognised text (not volume).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -120,8 +106,7 @@ export function useVoiceAnswer(handlers: {
       setSecondsLeft(status.secondsLeft);
       if (status.expired) {
         const hasText = Boolean(lastText.current.trim());
-        // Nothing heard: stop here. With text, the room sends, and finish()
-        // collects the final transcript.
+        // Nothing heard: stop. With text, the room sends and finish() collects it.
         if (!hasText) abort();
         else stopTicker();
         latest.current.onIdle(hasText);
@@ -138,6 +123,7 @@ export function useVoiceAnswer(handlers: {
     const holdMs = Math.round(performance.now() - startedAt.current);
 
     const s = machine.current;
+    // stop() never settles once the recognizer has ended: use the last state.
     if (!r || !s || s.phase === "idle") {
       return {
         transcript: (s ? transcriptOf(s) : "") || lastText.current,
@@ -147,8 +133,7 @@ export function useVoiceAnswer(handlers: {
     }
     const result = await r.stop();
     return {
-      // stop() usually flushes the last words as a final; if it did not,
-      // the interim text on screen is the best record of what was said.
+      // Fall back to the interim text if stop() didn't flush a final.
       transcript: result.transcript || lastText.current,
       holdMs,
       captureMs: Math.round(result.captureMs),

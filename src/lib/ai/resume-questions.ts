@@ -1,15 +1,6 @@
 /**
- * Generates an opening question about one specific resume item.
- *
- * This is the other half of the question mix: some threads open with a fixed
- * bank question and only become personal in the follow-ups, others open
- * directly on something the candidate listed. Alternating the two is what a
- * real screen sounds like — the interviewer has read your resume, but is also
- * working through their own list.
- *
- * The engine still decides WHEN a resume-led opening happens and WHICH item it
- * is about. This module only produces the wording, and every result goes
- * through the same `checkDraft` gate as a model-drafted follow-up.
+ * An opening question about one resume item. The engine decides when and
+ * which item; this only writes the wording, through the checkDraft gate.
  */
 
 import { Type } from "@google/genai";
@@ -120,8 +111,7 @@ export async function generateResumeQuestion(args: {
     const check = checkDraft(value.question, args.askedQuestions);
     const text = check.ok
       ? value.question.trim()
-      : // Repair rather than discard: the model named the right item, and a
-        // slightly long question beats a generic one that ignores the resume.
+      : // Repair rather than discard: the model named the right item.
         repairDraft(value.question);
 
     // If repair could not save it, fall back to the deterministic opening.

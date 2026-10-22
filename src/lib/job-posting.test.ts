@@ -86,10 +86,7 @@ describe("fetchJobPosting — only ever the four fixed API hosts", () => {
     expect(calls).toHaveLength(0);
   });
 
-  /**
-   * An arbitrary host in a gh_jid link only ever becomes a PATH SEGMENT of a
-   * request to Greenhouse's own API — never a request to that host.
-   */
+  /** An arbitrary host in a gh_jid link only becomes a path segment on Greenhouse's API. */
   it("never contacts the host in the link, even an internal one", async () => {
     const { fetcher, calls } = stubFetch({ title: "x", content: LONG });
     await fetchJobPosting("http://169.254.169.254/latest?gh_jid=1", fetcher);

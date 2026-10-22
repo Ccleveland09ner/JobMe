@@ -1,13 +1,8 @@
 "use client";
 
 /**
- * Behind every page: the 3D building, or the illustrated one.
- *
- * The illustrated building is what the server renders, what shows before
- * hydration, what WebGL-less browsers keep, and what covers a lost WebGL
- * context — the same role the SVG recruiter plays for the 3D one. The
- * canvas stays mounted while its context is lost, so the browser can
- * restore it.
+ * Behind every page: the 3D building, or the illustrated one (server render,
+ * before hydration, no WebGL, or a lost context).
  */
 
 import dynamic from "next/dynamic";
@@ -21,11 +16,7 @@ import { stationForPath } from "./stations";
 
 const BuildingCanvas = dynamic(() => import("./BuildingCanvas"), { ssr: false });
 
-/**
- * A canvas that cannot start (a GPU blocklist, WebGL refused after the
- * feature check passed) or a scene that throws: show the illustrated
- * building, and stay that way for the visit.
- */
+/** If the canvas can't start or the scene throws, keep the illustrated building. */
 class CanvasErrorBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {

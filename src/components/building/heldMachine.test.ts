@@ -33,6 +33,12 @@ describe("heldReducer", () => {
     expect(run(next, LIFTED)).toMatchObject({ held: "reports", phase: "open" });
   });
 
+  it("puts the ledger down before picking up the clipboard", () => {
+    const closing = run(initialHeld(), request("ledger"), LIFTED, request("clipboard"));
+    expect(closing).toMatchObject({ held: "ledger", phase: "closing", queued: "clipboard" });
+    expect(run(closing, DOM_CLOSED, RETURNED, LIFTED)).toMatchObject({ held: "clipboard", phase: "open" });
+  });
+
   it("ignores asking for what is already open", () => {
     const open = run(initialHeld(), request("reports"), LIFTED);
     expect(run(open, request("reports"))).toBe(open);

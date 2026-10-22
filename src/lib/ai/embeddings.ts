@@ -1,16 +1,6 @@
 /**
- * Embedding calls and vector maths.
- *
- * MEASURED against the live API: `gemini-embedding-001` with an array of
- * strings returns one vector per input (3 in, 3 out), honours
- * `outputDimensionality: 768`, costs ~523ms for a batch of 3, and scores 0.78
- * cosine between unrelated chunks — usefully spread rather than all alike.
- *
- * Do NOT switch to `gemini-embedding-2`: it aggregates multiple inputs into
- * one vector and dropped `taskType`. The failure is silent — one vector back,
- * and a retrieval feature that quietly does nothing.
- *
- * Ref: TechDesign > Embedding Checks
+ * Embedding calls and vector maths. Do NOT switch to gemini-embedding-2: it
+ * merges multiple inputs into one vector and drops taskType, silently.
  */
 
 import type { AnchorSimilarity } from "../engine/classify";
@@ -19,11 +9,7 @@ import { EMBED_DIMS, EMBED_MODEL, genai } from "./llm";
 /** Conservative: the API's item limit is undocumented, not measured. */
 export const EMBED_BATCH_SIZE = 16;
 
-/**
- * The asymmetry is the point: the model embeds a question and a passage into
- * the same space differently, and using one task type for both degrades
- * retrieval measurably.
- */
+/** Queries and passages embed differently; one task type for both hurts retrieval. */
 export type EmbedTask = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY";
 
 export class EmbeddingError extends Error {
@@ -33,10 +19,7 @@ export class EmbeddingError extends Error {
   }
 }
 
-/**
- * One vector per input, in order — asserted rather than assumed, because the
- * aggregation trap above fails silently and is hard to notice downstream.
- */
+/** One vector per input, in order: asserted, because the failure is silent. */
 export async function embedMany(
   texts: string[],
   task: EmbedTask = "RETRIEVAL_DOCUMENT",
@@ -78,10 +61,7 @@ export async function embed(
   return vector;
 }
 
-/**
- * The only vector maths we need: retrieval is always scoped to one user's
- * handful of chunks, so an exact scan beats a database round trip.
- */
+/** An exact scan: retrieval is scoped to one user's few chunks. */
 export function cosine(a: number[], b: number[]): number {
   if (a.length !== b.length) {
     throw new EmbeddingError(
@@ -115,10 +95,7 @@ export function rankBySimilarity<T>(
 
 /**
  * Similarity -> 1-4 relevance.
- *
- * TODO(slice 7): CALIBRATE against the bank exemplars first. These thresholds
- * are a guess, and an uncalibrated value blended into `relevance` can flip a
- * band, and therefore the next move.
+ * TODO(slice 7): calibrate against the bank exemplars; these thresholds are a guess.
  */
 export const SIM_THRESHOLDS = { s2: 0.55, s3: 0.65, s4: 0.75 };
 

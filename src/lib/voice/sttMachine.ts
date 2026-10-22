@@ -1,17 +1,7 @@
 /**
- * Speech recognition as a pure reducer. Split from the browser adapter because
- * every capture bug is a state bug, and a reducer is the only part testable
- * without a microphone.
- *
- * Web Speech is less forgiving than it looks:
- *   - Recognition ends on its own at no documented interval, so long answers
- *     must be stitched from several sessions.
- *   - `onend` fires for your own `stop()` too.
- *   - `event.resultIndex` resets per session, so re-walking from 0 after a
- *     restart duplicates the transcript.
- *   - Interim results are not guaranteed and are frequently revised.
- *
- * Ref: TechDesign > Speech Input
+ * Speech recognition as a pure reducer (testable without a microphone). Web
+ * Speech ends sessions on its own, fires onend for stop() too, resets
+ * resultIndex per session, and revises interim results.
  */
 
 export type Phase = "idle" | "starting" | "running" | "restarting" | "stopping";
@@ -131,8 +121,7 @@ export function reduce(
     }
 
     case "STARTED": {
-      // Released while opening. The session arrives regardless, so stop it
-      // now — otherwise the mic indicator stays lit after release.
+      // Released while opening: stop it now, or the mic indicator stays lit.
       if (s.phase === "stopping") {
         return { state: s, effects: [{ e: "STOP" }] };
       }
@@ -162,8 +151,7 @@ export function reduce(
       let interim = "";
       let highWater = s.finalHighWater;
 
-      // Max of the event index and our high-water mark: walking from 0
-      // across a restart is what duplicates transcripts.
+      // The higher of the event index and our high-water mark (no duplicates after a restart).
       for (let i = Math.max(ev.resultIndex, s.finalHighWater); i < ev.results.length; i++) {
         const r = ev.results[i];
         if (!r) continue;
@@ -197,9 +185,7 @@ export function reduce(
     }
 
     case "ERROR": {
-      // ERROR never restarts: it records and arms a watchdog in case `onend`
-      // never comes. Closes the InvalidStateError window structurally, rather
-      // than catching an error the spec does not actually promise.
+      // ERROR never restarts: it records, and arms a watchdog in case onend never comes.
       const fatal = FATAL.includes(ev.code);
       return {
         state: {
@@ -322,8 +308,7 @@ export function reduce(
     }
 
     case "STOP_DEADLINE": {
-      // `stop()` should flush a final. If it never does, resolve anyway so
-      // the promise settles exactly once.
+      // If stop() never flushes a final, resolve anyway (exactly once).
       if (s.phase !== "stopping") return { state: s, effects: [] };
       return {
         state: { ...s, phase: "idle", endedBy: s.endedBy ?? "user" },

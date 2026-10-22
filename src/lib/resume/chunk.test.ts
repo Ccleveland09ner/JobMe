@@ -96,12 +96,7 @@ describe("chunkResume", () => {
 });
 
 describe("estimateTokens", () => {
-  /**
-   * The estimate must never UNDER-count, or a chunk sails past the API's hard
-   * 2048-token limit and the embed call fails. A separate probe checks the
-   * ratio against the real tokenizer; this just pins the direction of the
-   * safety margin.
-   */
+  /** The estimate must never under-count, or a chunk exceeds the 2048-token limit. */
   it("is pessimistic relative to typical English", () => {
     expect(CHARS_PER_TOKEN).toBeLessThan(4);
   });

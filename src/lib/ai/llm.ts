@@ -1,12 +1,6 @@
 /**
- * Gemini adapter — the only file that knows which provider we use, so swapping
- * one stays a one-file change. Server-only: GEMINI_API_KEY never reaches the
- * browser.
- *
- * Uses legacy `generateContent`, not Interactions: @google/genai 2.24 exposes
- * no `interactions` namespace at all. Switchable via LLM_SURFACE.
- *
- * Ref: TechDesign > External Services
+ * The Gemini adapter: the only file that knows the provider. Server-only.
+ * Uses generateContent (@google/genai 2.24 has no interactions namespace).
  */
 
 import { GoogleGenAI } from "@google/genai";
@@ -46,10 +40,7 @@ export interface GenerateJsonResult<T> {
   ms: number;
 }
 
-/**
- * One structured-output call. Sends no `thinkingConfig` — see the table below.
- * Re-run `npm run probe` if you change LLM_MODEL; accepted modes differ.
- */
+/** One structured-output call, with no thinkingConfig. Re-run `npm run probe` if LLM_MODEL changes. */
 export async function generateJson<T>(args: {
   systemInstruction: string;
   prompt: string;
@@ -104,32 +95,15 @@ export async function generateJson<T>(args: {
 }
 
 /**
- * MEASURED by `npm run probe`, not assumed:
- *
- *   gemini-3.5-flash-lite  default      0 thoughts   964ms  <- chosen
- *   gemini-3.5-flash-lite  budget 0     REJECTED (400)
- *   gemini-3.5-flash-lite  MINIMAL      0 thoughts  1090ms
- *   gemini-3.1-flash-lite  default      0 thoughts  7785ms
- *   gemini-3.8-flash       default    651 thoughts  5637ms
- *   gemini-3.8-flash       budget 0     0 thoughts  3476ms
- *   gemini-3.8-flash       MINIMAL      REJECTED
- *
- * Which modes are accepted is per-model and not in the docs. On flash-lite,
- * send no thinkingConfig at all: already zero thoughts, and fastest.
+ * Measured (npm run probe): flash-lite with no thinkingConfig is fastest (~1 s,
+ * 0 thoughts); a thinking budget of 0 is rejected. Accepted modes vary by model.
  */
 export const LLM_MODEL = process.env.LLM_MODEL ?? "gemini-3.5-flash-lite";
 
-/**
- * Measured: 15 requests/minute per model, a burst limit rather than a daily
- * cap. Fine for one call per turn; rehearsal loops WILL hit 429, which is what
- * the degraded-turn path exists for.
- */
+/** Measured: 15 requests/minute per model; a 429 takes the degraded-turn path. */
 export const FREE_TIER_RPM = 15;
 
-/**
- * NOT `gemini-embedding-2`: it aggregates multiple inputs into one vector and
- * dropped `taskType`, both wrong for chunked retrieval. Max 2048 tokens/item.
- */
+/** Not gemini-embedding-2 (merges inputs, drops taskType). Max 2048 tokens per item. */
 export const EMBED_MODEL = process.env.EMBED_MODEL ?? "gemini-embedding-001";
 
 /** Embedding width. Configurable on this model via `outputDimensionality`. */

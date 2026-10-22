@@ -32,9 +32,7 @@ import {
   type TopicId,
 } from "./types";
 
-// ---------------------------------------------------------------------------
 // Fixtures
-// ---------------------------------------------------------------------------
 
 const flat = (n: number): Scores => ({
   relevance: n,
@@ -92,9 +90,7 @@ const input = (
   ...over,
 });
 
-// ---------------------------------------------------------------------------
 // classifyBand
-// ---------------------------------------------------------------------------
 
 describe("classifyBand", () => {
   it("is weak at exactly the ceiling boundary", () => {
@@ -124,10 +120,7 @@ describe("classifyBand", () => {
       expect(classifyBand({ ...GREAT, relevance: 1 }, "behavioral", true)).toBe("weak");
     });
 
-    /**
-     * Observed live: a strong answer averaging 3.60 was flagged off-topic and
-     * banded weak. One model boolean must not outrank eight scores.
-     */
+    /** One model boolean must not outrank eight scores. */
     it("ignores an off-topic claim that relevance contradicts", () => {
       expect(classifyBand({ ...GREAT, relevance: 4 }, "behavioral", true)).toBe("great");
       expect(isOffTopic({ ...GREAT, relevance: 4 }, true)).toBe(false);
@@ -215,9 +208,7 @@ describe("noDimensionRose", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Topic resolution
-// ---------------------------------------------------------------------------
 
 describe("shouldResolveTopic", () => {
   it("resolves after two follow-ups", () => {
@@ -281,9 +272,7 @@ describe("isPlateau", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // step()
-// ---------------------------------------------------------------------------
 
 describe("step — move selection", () => {
   it("clarifies a weak answer, aimed at the primary gap", () => {
@@ -361,9 +350,7 @@ describe("step — the cap", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Coverage — the promise of full mode
-// ---------------------------------------------------------------------------
+// Coverage: the promise of full mode
 
 describe("coverage enforcement", () => {
   const items = [item("role-a"), item("role-b"), item("project-c")];
@@ -413,10 +400,7 @@ describe("coverage enforcement", () => {
     expect(uncovered(result.state)).toHaveLength(items.length);
   });
 
-  /**
-   * The mode's entire promise: run a full session to completion and every
-   * listed role and project must have been asked about.
-   */
+  /** Every listed role and project is asked about in a full session. */
   it("covers every resume item before finishing", () => {
     let state = fullState();
     let guard = 0;
@@ -469,9 +453,7 @@ describe("coverage enforcement", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Scripted sessions — the regression harness
-// ---------------------------------------------------------------------------
+// Scripted sessions: the regression harness
 
 describe("scripted sessions", () => {
   function run(band: Band, scores: Scores, mode: "quick" | "full" = "quick") {
@@ -523,16 +505,13 @@ describe("scripted sessions", () => {
   });
 
   it("makes no network calls", () => {
-    // `step` is pure; if it ever gained I/O this import-time assertion is the
-    // cheapest place to notice.
+    // step() is pure; this catches it gaining I/O.
     expect(typeof step).toBe("function");
     expect(step.length).toBe(2);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Pacing — full mode must be able to keep its coverage promise
-// ---------------------------------------------------------------------------
+// Pacing: full mode must be able to keep its coverage promise
 
 describe("full-mode pacing", () => {
   const BANDS: Band[][] = [
@@ -580,11 +559,7 @@ describe("full-mode pacing", () => {
     return state;
   }
 
-  /**
-   * The regression this whole section exists for. Six items previously needed
-   * 36 turns against a cap of 16, and anything past the bank topic count was
-   * never covered at all because running out of VARIETY ended the interview.
-   */
+  /** Every item is covered within the cap, even past the bank topic count. */
   it.each([1, 2, 3, 4, 6, 8, 10])(
     "covers all %i items within the cap, whatever the answers",
     (count) => {

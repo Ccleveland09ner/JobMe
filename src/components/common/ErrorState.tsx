@@ -1,7 +1,4 @@
-/**
- * Something failed. Always friendly copy written by us — callers pass a
- * message through `friendlyError()` first, never a raw API body or stack.
- */
+/** Something failed. Pass messages through friendlyError() first, never raw API bodies. */
 
 import type { ReactNode } from "react";
 

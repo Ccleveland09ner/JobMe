@@ -1,13 +1,6 @@
 /**
- * The building: one place the user walks through, instead of a set of pages.
- * Ref: docs/reverse-engineering/implementation-plan.md
- *
- * A layout rather than a component on each page because layouts persist
- * across navigation — the canvas, the camera and the characters live for the
- * whole visit, and each route only says where in the building it is
- * (components/building/stations.ts).
- *
- * The single <main> landmark is StationLayer's; pages render content only.
+ * The building. A layout so the canvas, camera and characters persist across
+ * navigation; each route only says where in the building it is (stations.ts).
  */
 
 import { Suspense, type ReactNode } from "react";
@@ -27,8 +20,7 @@ export default function BuildingLayout({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <BuildingBackdrop />
-      {/* StationLayer reads the query string (?open=ledger), which Next.js
-          requires to sit under a Suspense boundary. */}
+      {/* StationLayer reads search params, which needs a Suspense boundary. */}
       <Suspense>
         <StationLayer>{children}</StationLayer>
       </Suspense>

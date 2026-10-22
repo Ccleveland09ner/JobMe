@@ -1,19 +1,14 @@
 /**
- * POST /api/resume — ingest a resume PDF.
- *
- * A Route Handler rather than a Server Action: actions cap bodies at 1MB and
- * dispatch one-at-a-time per client, while a handler has no documented cap.
- *
- * guard -> parse -> redact -> chunk -> embed + distill -> store.
- * Redaction runs before anything leaves this server.
- *
- * Ref: TechDesign > Security
+ * POST /api/resume: guard -> parse -> redact -> chunk -> embed + distill ->
+ * store. Redaction runs before anything leaves this server. A route handler,
+ * not a server action (actions cap bodies at 1 MB).
  */
 
 import { NextResponse } from "next/server";
 
 import { embedMany } from "@/lib/ai/embeddings";
-import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { getUserOrNull } from "@/lib/auth";
+import { serverError, unauthorized } from "@/lib/http";
 import { MAX_JD_CHARS, distillJobDescription } from "@/lib/jd/distill";
 import { chunkResume } from "@/lib/resume/chunk";
 import { distillResume } from "@/lib/resume/distill";
@@ -26,8 +21,7 @@ import { ResumeStoreError, storeResume } from "@/lib/resume/store";
 const MAX_BYTES = 4 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  const user = await getUserOrNull();
-  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+  if (!(await getUserOrNull())) return unauthorized();
 
   // Reject on the declared size BEFORE reading the body.
   const declared = Number(request.headers.get("content-length") ?? 0);
@@ -39,19 +33,9 @@ export async function POST(request: Request) {
   }
 
   /**
-   * THE SILENT-TRUNCATION GUARD. `proxyClientMaxBodySize` does not reject an
-   * oversized body — it buffers to the limit, logs a warning, and lets the
-   * request through TRUNCATED. A half-read PDF parses, embeds cleanly, and
-   * quietly loses the candidate's most recent role, so comparing what was
-   * declared against what arrived is the only way to notice.
-   *
-   * The comparison MUST be against the whole request body, not the file part:
-   * `content-length` covers the entire multipart envelope — boundaries, part
-   * headers and the roleText field — so the file alone is always smaller and
-   * comparing the two rejects every legitimate upload.
-   *
-   * A body can only be read once, hence the clone. Bounded by MAX_BYTES above,
-   * so buffering twice is at most 8MB.
+   * Truncation guard: proxyClientMaxBodySize lets an oversized body through
+   * truncated, so compare content-length with the whole body received (the
+   * multipart envelope, not just the file). Cloned, as a body reads once.
    */
   let received: number;
   try {
@@ -103,7 +87,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // ---- parse -------------------------------------------------------------
+  // Parse.
   let parsed;
   try {
     parsed = await parseResumePdf(bytes);
@@ -117,7 +101,7 @@ export async function POST(request: Request) {
     throw err;
   }
 
-  // ---- redact, before anything leaves this server -------------------------
+  // Redact, before anything leaves this server.
   const redaction = redact(parsed.text);
 
   const chunks = chunkResume(redaction.text);
@@ -128,13 +112,10 @@ export async function POST(request: Request) {
     );
   }
 
-  /**
-   * Changes the ORDER of coverage, never what gets covered: every role and
-   * project still gets a question, the relevant ones just come first.
-   */
+  /** Reorders coverage by relevance; every role and project is still covered. */
   const jdText = String(form?.get("roleText") ?? "").slice(0, MAX_JD_CHARS);
 
-  // ---- embed and distill, in parallel ------------------------------------
+  // Embed and distill, in parallel.
   let vectors: number[][];
   let facts;
   let role;
@@ -159,15 +140,14 @@ export async function POST(request: Request) {
     );
   }
 
-  // Reuses the chunk vectors just computed: one extra embedding call for the
-  // role query, not a second pass over the resume.
+  // Reuses the chunk vectors: one extra embedding call, for the role query.
   const items = await rankItemsAgainstRole(
     buildResumeItems(facts, chunks),
     chunks,
     role,
   );
 
-  // ---- store -------------------------------------------------------------
+  // Store.
   try {
     const stored = await storeResume({
       parsed,
@@ -191,11 +171,7 @@ export async function POST(request: Request) {
         relevance: Number(i.relevanceToRole.toFixed(3)),
       })),
       role: role ? { title: role.title, seniority: role.seniority } : null,
-      /**
-       * When set, the client must show the extracted text for confirmation: a
-       * flattened two-column layout parses into plausible nonsense, and only
-       * the candidate can tell.
-       */
+      /** When set, the client must confirm the extracted text (some layouts parse into nonsense). */
       layoutSuspect: stored.layoutSuspect,
       extractedPreview: redaction.text.slice(0, 600),
       /** Diagnostics so the user can see redaction actually happened. */
@@ -204,7 +180,7 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     if (err instanceof ResumeStoreError) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
+      return serverError(`[resume] store: ${err.message}`, "Couldn't save your resume. Please try again.");
     }
     throw err;
   }

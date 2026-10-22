@@ -64,10 +64,7 @@ const draftWith = (over: Record<string, unknown>) => ({
 });
 
 describe("guardFabricatedNumbers — the rewrite invents nothing", () => {
-  /**
-   * The brief's required fixture: an answer with no numbers at all. Any number
-   * in the rewrite is therefore invented, and must not reach the candidate.
-   */
+  /** An answer with no numbers: any number in the rewrite is invented. */
   it("replaces every number when the answer contained none", () => {
     const rewrite =
       "I profiled the checkout page and added an index, cutting load time " +

@@ -118,8 +118,7 @@ export async function runReport(
   const overallScores = overallScoresFor(turns);
 
   if (existing) {
-    // A crash between insert and completion would leave the session "in
-    // progress" with a report; heal it rather than regenerate.
+    // A crash mid-way left a report on an in-progress session: heal it.
     if (session.status !== "completed" || !session.overallScores) {
       await store.completeSession(overallScores);
     }

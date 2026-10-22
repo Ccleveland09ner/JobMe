@@ -1,12 +1,4 @@
-/**
- * Development only: stand at any station in the building without signing in,
- * to review the scene and its characters. 404 in production.
- *
- *   /dev/building/street | entrance | desk | corridor | room
- *
- * stationForPath (components/building/stations.ts) maps these paths; this
- * page only supplies the panel's heading.
- */
+/** Dev only: stand at any station without signing in (/dev/building/<station>). 404 in production. */
 
 import { notFound } from "next/navigation";
 

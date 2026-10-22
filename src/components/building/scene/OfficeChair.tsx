@@ -1,15 +1,8 @@
 "use client";
 
 /**
- * An ergonomic office chair, after design/Modern Ergonomic Office Chair.png:
- * a padded seat and a padded, slightly reclined back with two horizontal
- * seams, T-shaped armrests, a gas-lift column and a five-star base on castors.
- *
- * Rendered in full 3D (three/rendered.ts) rather than toon, because the
- * characters who sit in it are; black fabric over black plastic.
- *
- * Faces +Z (rotate the group to turn it). Seat top at 0.52 m, the height the
- * seated characters' animation expects.
+ * An office chair, rendered in full 3D like the characters who sit in it.
+ * Faces +Z; seat top at 0.52 m, as the seated animation expects.
  */
 
 import { RoundedBox } from "@react-three/drei";

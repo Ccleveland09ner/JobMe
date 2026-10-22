@@ -461,3 +461,14 @@ export function questionFor(topicId: TopicId, difficulty: number): string {
   if (difficulty === 2) return entry.harder;
   return entry.opening;
 }
+
+/**
+ * What a topic assesses for this job: the plan's purpose, else the bank's.
+ * Here rather than beside the plan so the scorecard can call it in the browser.
+ */
+export function purposeFor(
+  plan: { topics: Partial<Record<TopicId, { purpose?: string }>> } | null | undefined,
+  topic: TopicId,
+): string {
+  return plan?.topics[topic]?.purpose ?? BANK[topic]?.purpose ?? "";
+}

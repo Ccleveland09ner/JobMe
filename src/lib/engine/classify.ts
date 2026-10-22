@@ -33,12 +33,7 @@ export const GREAT_FLOOR = 3.5;
 /** No gating dimension may be below this for `great`. */
 export const GREAT_MIN_DIMENSION = 3;
 
-/**
- * How far past a threshold a score must land to leave last turn's band.
- * Observed: one borderline answer scored 2.00 then 1.55, flipping
- * mediocre/weak. Both clarify, but the resolution rules differ, so a flicker
- * can end a topic early for no perceptible reason.
- */
+/** How far past a threshold a score must land to leave last turn's band (no borderline flicker). */
 export const HYSTERESIS = 0.15;
 
 /**
@@ -77,11 +72,7 @@ export interface ClassifyOptions {
   /** The band of the previous answer in this thread, for hysteresis. */
   previousBand?: Band | null;
   anchor?: AnchorSimilarity;
-  /**
-   * Uncalibrated 0.05 threshold over embeddings that shift with the exemplar
-   * bank or model. Off by default: a false downgrade turns a Deepen into a
-   * Clarify on stage.
-   */
+  /** Uncalibrated, so off by default (a false downgrade turns a Deepen into a Clarify). */
   anchorDowngradeEnabled?: boolean;
 }
 

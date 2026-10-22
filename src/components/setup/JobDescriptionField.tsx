@@ -1,28 +1,15 @@
 /**
- * The target job: a title, then EITHER a pasted description OR a posting
- * link. The API rejects both at once (CreateSessionBody), so the toggle makes
- * that impossible to submit rather than an error to explain afterwards.
- *
- * Links are read only from Greenhouse, Lever, Ashby and SmartRecruiters
- * (lib/job-posting.ts); anything else comes back with a paste-instead
- * message, shown by the form.
+ * The target job: a title and company, then a pasted description or a posting
+ * link (never both). Links are read only from supported boards (lib/job-posting.ts).
  */
 
 import { useId } from "react";
 
 import { paperArea, paperField } from "@/components/ui/Clipboard";
+import type { JobValue, SetupErrors } from "@/lib/frontend/setup";
 import { LIMITS } from "@/lib/schemas";
 
-export type JobSource = "paste" | "link";
-
-export interface JobValue {
-  targetRole: string;
-  /** Optional. A posting link usually supplies it; a stated one wins. */
-  company: string;
-  source: JobSource;
-  roleText: string;
-  jobUrl: string;
-}
+export type { JobSource, JobValue } from "@/lib/frontend/setup";
 
 // Written on the desk clipboard: a ruled line per field, ruled paper for the posting.
 const INPUT = paperField;
@@ -30,18 +17,20 @@ const INPUT = paperField;
 export function JobDescriptionField({
   value,
   onChange,
+  errors = {},
 }: {
   value: JobValue;
   onChange: (next: JobValue) => void;
+  errors?: Pick<SetupErrors, "targetRole" | "company" | "roleText" | "jobUrl">;
 }) {
   const id = useId();
   const set = (patch: Partial<JobValue>) => onChange({ ...value, ...patch });
+  const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(" ") || undefined;
 
   return (
     <fieldset className="flex flex-col gap-4">
-      <legend className="mb-2 text-sm font-medium text-ink">
-        Target job <span className="font-normal text-muted">(optional)</span>
-      </legend>
+      {/* The sheet's heading says this; the legend names the group for screen readers. */}
+      <legend className="sr-only">Target job (optional)</legend>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-role`} className="text-sm text-ink">
@@ -54,8 +43,11 @@ export function JobDescriptionField({
           value={value.targetRole}
           onChange={(e) => set({ targetRole: e.target.value })}
           placeholder="e.g. Software Engineering Intern"
+          aria-invalid={errors.targetRole ? true : undefined}
+          aria-describedby={describedBy(!!errors.targetRole && `${id}-role-error`)}
           className={INPUT}
         />
+        <FieldError id={`${id}-role-error`} message={errors.targetRole} />
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -69,9 +61,11 @@ export function JobDescriptionField({
           autoComplete="organization"
           value={value.company}
           onChange={(e) => set({ company: e.target.value })}
-          aria-describedby={`${id}-company-help`}
+          aria-invalid={errors.company ? true : undefined}
+          aria-describedby={describedBy(!!errors.company && `${id}-company-error`, `${id}-company-help`)}
           className={INPUT}
         />
+        <FieldError id={`${id}-company-error`} message={errors.company} />
         <p id={`${id}-company-help`} className="text-xs text-muted">
           Used by name only. Questions about the company draw on the job description, never on guesses.
         </p>
@@ -102,16 +96,18 @@ export function JobDescriptionField({
           </label>
           <textarea
             id={`${id}-text`}
-            rows={5}
+            rows={4}
             maxLength={LIMITS.roleText}
             value={value.roleText}
             onChange={(e) => set({ roleText: e.target.value })}
-            aria-describedby={`${id}-count`}
-            className={`${paperArea} resize-y`}
+            aria-invalid={errors.roleText ? true : undefined}
+            aria-describedby={describedBy(`${id}-count`, !!errors.roleText && `${id}-text-error`)}
+            className={`${paperArea} resize-none`}
           />
           <p id={`${id}-count`} className="text-right text-xs text-muted tabular-nums">
             {value.roleText.length} / {LIMITS.roleText}
           </p>
+          <FieldError id={`${id}-text-error`} message={errors.roleText} />
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -126,14 +122,26 @@ export function JobDescriptionField({
             value={value.jobUrl}
             onChange={(e) => set({ jobUrl: e.target.value })}
             placeholder="https://boards.greenhouse.io/…"
-            aria-describedby={`${id}-url-help`}
+            aria-invalid={errors.jobUrl ? true : undefined}
+            aria-describedby={describedBy(!!errors.jobUrl && `${id}-url-error`, `${id}-url-help`)}
             className={INPUT}
           />
+          <FieldError id={`${id}-url-error`} message={errors.jobUrl} />
           <p id={`${id}-url-help`} className="text-xs text-muted">
             Greenhouse, Lever, Ashby and SmartRecruiters links work. For other sites, paste the description instead.
           </p>
         </div>
       )}
     </fieldset>
+  );
+}
+
+/** A field's problem, under it; the sheet announces them together. */
+export function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} className="text-sm font-medium text-danger">
+      {message}
+    </p>
   );
 }

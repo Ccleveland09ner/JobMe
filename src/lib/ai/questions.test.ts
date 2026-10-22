@@ -86,11 +86,7 @@ describe("extractEvidence", () => {
     "I rewrote the conflict detection to bucket by day, which cut p99 from 1200ms to 340ms. " +
     "The team was happy about it.";
 
-  /**
-   * The verbatim guarantee is what makes the scorecard's highlight reliable —
-   * the tech design has a whole fallback path for when the quote cannot be
-   * found in the transcript. Computing it locally removes that failure mode.
-   */
+  /** Evidence is always a verbatim substring, so the scorecard highlight is reliable. */
   it("returns an exact substring of the answer", () => {
     expect(ANSWER).toContain(extractEvidence(ANSWER));
   });
@@ -193,11 +189,7 @@ describe("repairDraft", () => {
 });
 
 describe("preClassify — demo insurance", () => {
-  /**
-   * The scripted weak answer from the demo script. It MUST land weak without
-   * the model getting a vote, or the weak-vs-strong contrast on stage becomes
-   * a coin flip.
-   */
+  /** The demo's scripted weak answer must land weak without the model. */
   it("forces weak for the scripted weak answer", () => {
     expect(preClassify("We worked as a team and fixed the bug.")).toBe("weak");
   });

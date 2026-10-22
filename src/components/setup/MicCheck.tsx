@@ -1,18 +1,8 @@
 "use client";
 
 /**
- * Live mic level meter, so nobody finds out their mic is dead mid-interview.
- * Ref: docs/PRD-JobMe-MVP.md > Interview Setup
- *
- * getUserMedia + AnalyserNode -> a level bar. Started by a click, not on
- * load: a permission prompt the moment the page opens is hostile, and the
- * click is also the user gesture some browsers want before audio.
- *
- * Denied permission: explain how to re-enable it AND offer typed answers.
- * Unsupported browser: "Best in Chrome or Edge" plus the same typed
- * fallback. Neither case is a dead end.
- *
- * Reports the resulting input mode upward; the room reads it from `?input=`.
+ * A live mic level meter, started by a click (no permission prompt on load).
+ * Every failure offers typed answers. Reports the input mode upward.
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -31,8 +21,7 @@ function browserSupportsVoice(): boolean {
 }
 
 export function MicCheck({ onInputModeChange }: { onInputModeChange: (mode: InputMode) => void }) {
-  // null on the server: speech support is a browser fact, and guessing it
-  // there would mismatch on hydration.
+  // null on the server, to match on hydration.
   const speechSupported = useSyncExternalStore(neverChanges, browserSupportsVoice, () => null);
   const [status, setStatus] = useState<MicStatus>("idle");
   const [preferTyped, setPreferTyped] = useState(false);
@@ -41,10 +30,7 @@ export function MicCheck({ onInputModeChange }: { onInputModeChange: (mode: Inpu
 
   useEffect(() => () => cleanup.current?.(), []);
 
-  // Voice unless there is a reason not to: the browser cannot recognise
-  // speech, the test found a problem, or the candidate chose to type. Not
-  // running the test is NOT a reason — it used to be, and skipping the test
-  // silently started every interview in typed mode.
+  // Voice unless there's a reason not to. Skipping the test is not one.
   const micProblem = status === "denied" || status === "no-device" || status === "error";
   const voiceReady = speechSupported === true && !micProblem && !preferTyped;
   useEffect(() => {

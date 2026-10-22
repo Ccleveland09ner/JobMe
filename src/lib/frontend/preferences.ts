@@ -1,12 +1,6 @@
 /**
- * The user's interview defaults, kept in this browser (the settings board's
- * "Interview defaults" note). Read by the setup clipboard to pre-fill its
- * choices; the user can still change them per interview.
- *
- * Per device by design (user decision, 2026-10-18): no table, no migration.
- * Storage can be unavailable or hold anything — every read is validated and
- * every access is guarded, so a broken value means "no defaults", never a
- * crash.
+ * The user's interview defaults, stored in this browser (per device by design).
+ * Every read is validated: a broken value means no defaults.
  */
 
 import { useSyncExternalStore } from "react";
@@ -62,10 +56,7 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-/**
- * The stored defaults as React state: null on the server, before hydration,
- * and when none are saved. Re-renders when they change, in this tab or another.
- */
+/** The stored defaults as React state; null on the server and when none are saved. */
 export function useDefaults(): InterviewDefaults | null {
   // The raw string is the snapshot: a primitive, so React can compare it.
   const raw = useSyncExternalStore(subscribe, rawDefaults, () => null);

@@ -1,33 +1,15 @@
 "use client";
 
 /**
- * The answer controls.
- *
- * Voice (user decision, 2026-10-07):
- *   - While the interviewer speaks, the mic button is shown but DISABLED.
- *   - Then it enables: tap "Start answering" (or press Space) to record.
- *   - While recording: live transcript, and "Send" (or Space) to send at once.
- *     After IDLE_SEND_MS without a new word it sends by itself; the last
- *     IDLE_WARN_MS show a countdown so it never surprises anyone.
- *   - No review step. Once sent, it goes to the interviewer.
- *
- * Typed: the same turn-taking with a text box — disabled while the
- * interviewer speaks, then type and Send (Ctrl+Enter).
- *
- * Space is ignored on key repeat, and whenever focus is in a text field or on
- * another control, so it never hijacks typing or a focused button.
- *
- * In the room (user decision, 2026-10-18) the controls are laid out as the
- * candidate sees them: the microphone at the centre bottom of the frame, as
- * if they are speaking into it, and their own words in a speech bubble above
- * it. Typed answers are written straight into that bubble. The behaviour
- * above is unchanged; only where things sit has moved. Rendered inside the
- * room's full-screen overlay, which is positioned and click-through.
+ * The answer controls. Voice: the mic is disabled while the interviewer
+ * speaks; press it (or Space) to record and again to send, or it sends after
+ * IDLE_SEND_MS of silence. Typed: a text box, Ctrl+Enter to send.
  */
 
 import { useEffect, useId, useRef } from "react";
 
 import { Button } from "@/components/ui/Button";
+import { isTextEntry } from "@/lib/frontend/dom";
 import type { InputMode } from "@/lib/frontend/types";
 
 import { LiveTranscript } from "./LiveTranscript";
@@ -35,11 +17,9 @@ import { SpeechBubble } from "./SpeechBubble";
 import { TableMic } from "./TableMic";
 import type { Phase } from "./roomMachine";
 
-/** True when a key event belongs to something the user is typing into or operating. */
+/** True when a key event belongs to something the user is typing into or operating (Space presses a button). */
 export function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName);
+  return isTextEntry(target) || (target instanceof HTMLElement && ["BUTTON", "A"].includes(target.tagName));
 }
 
 export function PushToTalk({
@@ -166,8 +146,7 @@ export function PushToTalk({
         </div>
       )}
 
-      {/* The microphone, centred in front of the candidate. The mic itself is
-          the control: press to start, press again to send. */}
+      {/* The mic, centred in front of the candidate: press to start, again to send. */}
       <div className="pointer-events-auto absolute inset-x-0 bottom-3 flex flex-col items-center gap-1 px-3">
         <div className="flex items-center gap-3">
           <TableMic

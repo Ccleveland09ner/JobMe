@@ -292,11 +292,7 @@ const NUMBER_RE = /(?<![A-Za-z\d.,])\d+(?:[.,]\d+)*(?:\s?%)?/g;
 const normaliseNumber = (token: string) =>
   token.replace(/[,\s%]/g, "").replace(/\.$/, "");
 
-/**
- * Replaces every number the candidate never said with `[metric]`. Digits only:
- * a fabricated "three teammates" is beyond a regex, and that is what the prompt
- * is for — this catches the fabrication that matters most, an invented metric.
- */
+/** Replaces every number the candidate never said with [metric] (digits only). */
 export function guardFabricatedNumbers(rewrite: string, answer: string): string {
   const said = new Set((answer.match(NUMBER_RE) ?? []).map(normaliseNumber));
   return rewrite.replace(NUMBER_RE, (token) =>
@@ -304,10 +300,7 @@ export function guardFabricatedNumbers(rewrite: string, answer: string): string 
   );
 }
 
-/**
- * Trims to `max` words, preferring the last sentence end inside the limit so a
- * capped rewrite does not stop mid-thought.
- */
+/** Trims to `max` words, ending at a sentence where possible. */
 export function capWords(text: string, max: number): string {
   const words = text.trim().split(/\s+/);
   if (words.length <= max) return text.trim();
@@ -325,9 +318,7 @@ export function capWords(text: string, max: number): string {
     : `${clipped}…`;
 }
 
-// ---------------------------------------------------------------------------
-// Pure helpers for the report pipeline (lib/interview/report.ts)
-// ---------------------------------------------------------------------------
+// Pure helpers for the report pipeline (lib/interview/report.ts).
 
 /**
  * Lowest score among SCORED questions; ties go to the earliest. An unscored

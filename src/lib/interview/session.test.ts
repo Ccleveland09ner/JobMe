@@ -1,12 +1,6 @@
 /**
- * Whole interviews through the pipeline the routes actually call — every
- * answer via `runTurn`, every row via `turnRowFor`, the scorecard via
- * `runReport` — against an in-memory database, with the network forbidden.
- *
- * The engine's own tests prove `step()`. These prove the brief's end-to-end
- * guarantees at the level a candidate experiences them (Backend brief §5.5,
- * §8): a session with the evaluator down still reaches a scorecard, and a
- * scripted session is bounded, deterministic and makes no network call.
+ * Whole interviews through the routes' pipeline (runTurn, turnRowFor,
+ * runReport) against an in-memory database, with the network forbidden.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -150,10 +144,7 @@ function reportStore(rows: ReportTurnRow[]): ReportStore {
 }
 
 describe("a whole interview through the pipeline", () => {
-  /**
-   * Brief §8: "with the evaluator forced to fail, a full session still
-   * completes and reaches a scorecard". The model is down for every turn.
-   */
+  /** With the evaluator down for every turn, a full session still reaches a scorecard. */
   it("finishes and reaches a scorecard with the evaluator down throughout", async () => {
     const evaluate = vi.fn(async () => {
       throw new EvalError("Rate limited (free tier is 15 requests/minute).", true);
@@ -217,10 +208,7 @@ describe("a whole interview through the pipeline", () => {
     expect(outcome.body).toMatchObject({ overallScores: { ...flat(4), overall: 4 } });
   });
 
-  /**
-   * Mediocre answers that keep improving: two Clarifies per thread (never
-   * three), no difficulty bump, and a hard stop at the cap even mid-thread.
-   */
+  /** Improving mediocre answers: two Clarifies per thread, no bump, a hard stop at the cap. */
   it("caps a long mediocre session at the question limit", async () => {
     let n = 0;
     // Outcome climbs 1 -> 2 -> 3 within each thread, so no follow-up plateaus;

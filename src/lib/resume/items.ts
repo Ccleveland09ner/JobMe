@@ -1,10 +1,6 @@
 /**
- * Builds the coverage list the interview works through. Two jobs: enumerate
- * every role and project so full mode can guarantee each gets a question, and
- * order them by match against the job applied for, so an interview that runs
- * out of budget still covered what mattered most.
- *
- * Ref: EngineState.resumeItems
+ * Builds the coverage list: every role and project (so full mode can ask about
+ * each), ranked by match against the job applied for.
  */
 
 import { cosine, embedMany } from "@/lib/ai/embeddings";
@@ -39,12 +35,7 @@ function slug(prefix: string, label: string, i: number): string {
   return `${prefix}-${i}-${base || "item"}`;
 }
 
-/**
- * Backed by chunk indices, so a question about an item can retrieve the
- * underlying text. Items with no matching chunk are kept, not dropped — the
- * candidate listed the role, so it still gets asked about; it just falls back
- * to resume order for ranking.
- */
+/** Items with their chunk indices; one without a matching chunk is kept, not dropped. */
 export function buildResumeItems(
   facts: ResumeFacts | null,
   chunks: Chunk[],
@@ -84,15 +75,7 @@ export function buildResumeItems(
   return items;
 }
 
-/**
- * Weights for the blended relevance score. Sum to 1, so a score is 0..1 and
- * comparable across resumes.
- *
- * Semantic carries the most because it is the only signal that understands
- * "built a REST API" and "backend service development" are the same thing.
- * Lexical is the counterweight: embeddings blur exact technology names, and a
- * posting asking for PostgreSQL should rank the item that says PostgreSQL.
- */
+/** Weights for the relevance score (sum to 1). Semantic leads; lexical catches exact tech names. */
 export const RANK_WEIGHTS = {
   semantic: 0.55,
   lexical: 0.25,
@@ -100,13 +83,7 @@ export const RANK_WEIGHTS = {
   recency: 0.1,
 } as const;
 
-/**
- * How the two semantic vectors are blended.
- *
- * The item vector is the whole experience, which is what discriminates
- * between items; the best chunk keeps the property that one strongly matching
- * bullet makes an item worth asking about, instead of being averaged away.
- */
+/** Blend of the item's own vector and its best chunk (one strong bullet still counts). */
 const ITEM_VECTOR_WEIGHT = 0.6;
 const BEST_CHUNK_WEIGHT = 0.4;
 
@@ -132,12 +109,7 @@ export function tokenize(text: string): Set<string> {
   return out;
 }
 
-/**
- * Share of what the posting asks for that this item evidences.
- *
- * Containment rather than Jaccard: a long item should not be penalised for
- * mentioning things the posting never asked about.
- */
+/** Share of what the posting asks for that this item evidences (containment, not Jaccard). */
 export function lexicalOverlap(roleTokens: Set<string>, itemText: string): number {
   if (roleTokens.size === 0) return 0;
   const itemTokens = tokenize(itemText);
@@ -146,15 +118,7 @@ export function lexicalOverlap(roleTokens: Set<string>, itemText: string): numbe
   return hits / roleTokens.size;
 }
 
-/**
- * Resume order as a 1..0 ramp, computed WITHIN each kind.
- *
- * A resume lists roles newest-first and projects newest-first as two separate
- * sequences, so a single global index conflates them: the first project would
- * outscore the second role on recency even though they are not comparable.
- * Ranking within the kind keeps recency a tie-break among peers and leaves
- * the role-versus-project call to KIND_SCORE, where it belongs.
- */
+/** Resume order as a 1..0 ramp within each kind (roles and projects are separate lists). */
 function recencyByKind(items: ResumeItem[]): number[] {
   const seen: Record<string, number> = {};
   const counts: Record<string, number> = {};
@@ -187,20 +151,9 @@ export function itemDocument(item: ResumeItem, chunks: Chunk[]): string {
 }
 
 /**
- * Sorts most relevant to the target role first.
- *
- * Previously this took the maximum cosine across an item's chunks, which
- * produced IDENTICAL scores for every item sharing a chunk — observed live as
- * 0.618, 0.618, 0.597, 0.597, 0.597, 0.597, making "most relevant first"
- * effectively arbitrary. A resume routinely has more items than chunks, so
- * that collision is the normal case, not an edge case.
- *
- * Now each item is embedded as its own document, blended with its best chunk,
- * and combined with a lexical, a kind and a recency signal. Ties break
- * deterministically, so the same resume always produces the same order.
- *
- * Falls back to metadata-only ordering if embedding fails, and to the same if
- * there is no job description — still deterministic, never unordered.
+ * Sorts most relevant to the target role first: each item embedded on its own,
+ * blended with its best chunk and lexical, kind and recency signals; ties break
+ * deterministically. Falls back to metadata-only ordering.
  */
 export async function rankItemsAgainstRole(
   items: ResumeItem[],
@@ -275,9 +228,7 @@ function finalise(
     const kind = KIND_SCORE[item.kind];
     const recency = recencies[i];
 
-    // Without a semantic signal the two content weights have nothing to score,
-    // so metadata is renormalised to span the full range rather than capping
-    // every item at 0.2 and flattening the thing we just fixed.
+    // Without a semantic signal, renormalise metadata to span the full range.
     const relevance = part
       ? RANK_WEIGHTS.semantic * part.semantic +
         RANK_WEIGHTS.lexical * part.lexical +
@@ -299,8 +250,7 @@ function finalise(
 
   return scored.map(({ item, relevance }) => ({
     ...item,
-    // Rounded so a float that differs in the 15th decimal cannot reorder two
-    // items between runs; the tie-break then decides, which is reproducible.
+    // Rounded, so float noise can't reorder items; the tie-break decides.
     relevanceToRole: Math.round(relevance * 1e6) / 1e6,
   }));
 }

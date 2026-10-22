@@ -1,16 +1,7 @@
 /**
  * Strips identifying details from resume text before it leaves the server.
- *
- * ORDER MATTERS: PROTECT metric spans -> REDACT identity -> RESTORE metrics.
- * To a regex, `1,200 ms` and `555 123 4567` are both digit runs with
- * separators, so redacting first eats the evidence `impact` and `specificity`
- * are built on — invisibly, producing only blander questions.
- *
- * This is defence-in-depth and token reduction, NOT compliance. "Senior SRE,
- * 2021-2024, cut p99 40%" still resolves to one person, and spoken answers are
- * richer PII that cannot be redacted at all. The real fix is a paid tier.
- *
- * Ref: TechDesign > Security
+ * Order matters: protect metric spans, redact identity, restore metrics (or
+ * "1,200 ms" is eaten as a phone number). Defence in depth, not compliance.
  */
 
 /** A span temporarily swapped out so identity patterns cannot match inside it. */
@@ -59,10 +50,7 @@ export interface RedactionResult {
   removed: Record<string, number>;
 }
 
-/**
- * Resumes almost always open with the name on its own line. Requires a short,
- * digit-free line so a heading or job title is not mistaken for it.
- */
+/** The name is usually alone on the first line: a short, digit-free line. */
 export function detectName(text: string): string | null {
   for (const raw of text.split(/\r?\n/).slice(0, 6)) {
     const line = raw.trim();
@@ -71,11 +59,7 @@ export function detectName(text: string): string | null {
     const words = line.split(/\s+/);
     if (words.length < 2 || words.length > 4) continue;
     if (/^(curriculum vitae|resume|cv)$/i.test(line)) continue;
-    /**
-     * Capitalised, allowing an initial's trailing period ("Jane Q. Doe"), or a
-     * lowercase particle ("van", "de"). Forgetting the period silently
-     * disables the redactor: an undetected name is never stripped.
-     */
+    /** Capitalised words, allowing initials ("Jane Q. Doe") and particles ("van", "de"). */
     const titleCase = words.every(
       (w) =>
         /^[A-Z][\w'’-]*\.?$/.test(w) ||
@@ -93,7 +77,7 @@ export function redact(raw: string): RedactionResult {
     if (n > 0) removed[key] = (removed[key] ?? 0) + n;
   };
 
-  // ---- 1. Protect metric spans -------------------------------------------
+  // 1. Protect metric spans.
   const protectedSpans: string[] = [];
   let text = raw;
   for (const pattern of PROTECTED_PATTERNS) {
@@ -104,7 +88,7 @@ export function redact(raw: string): RedactionResult {
     });
   }
 
-  // ---- 2. Redact identity ------------------------------------------------
+  // 2. Redact identity.
   const candidateName = detectName(raw);
 
   // Structural blocks first, so their contents are not partially rewritten.
@@ -141,7 +125,7 @@ export function redact(raw: string): RedactionResult {
     }
   }
 
-  // ---- 3. Restore metrics ------------------------------------------------
+  // 3. Restore metrics.
   text = text.replace(
     new RegExp(`${PROTECT_PREFIX}(\\d+)${PROTECT_SUFFIX}`, "g"),
     (_m, i: string) => protectedSpans[Number(i)] ?? "",

@@ -1,10 +1,6 @@
 "use client";
 
-/**
- * The short hall from the lobby to the interview room, ending at the room's
- * door — the wooden one with the narrow window from the room drawing. The
- * door opens as the user is shown in.
- */
+/** The hall from the lobby to the interview room, ending at the room's door. */
 
 import { CORRIDOR, ROOM } from "../world";
 import { CeilingLight, Slab } from "./parts";

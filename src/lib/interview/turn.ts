@@ -1,27 +1,7 @@
 /**
- * The turn pipeline: one answer in, one next question out.
- *
- * Separate from the route handler so the HTTP path and the rehearsal harness
- * run identical code — a rehearsal exercising different logic proves nothing.
- *
- * The order is load-bearing:
- *   1. pre-classifier (deterministic, no model call)
- *   2. evaluate, aborting at EVAL_TIMEOUT_MS
- *   3. band, with hysteresis against this thread's previous answer
- *   4. gap recomputed in code, overriding the model
- *   5. evidence extracted locally, guaranteeing a verbatim substring
- *   6. step() — the engine, and the only thing that picks the move
- *   7. wording resolved, validated, with a bank fallback
- *
- * Wording never costs a model call here. Follow-ups use the drafts the
- * evaluator already returned; thread openings come from the question plan
- * written at session start (lib/ai/question-plan.ts), falling back to the
- * bank's fixed text or `fallbackResumeQuestion()`.
- *
- * Ref: TechDesign > The Core Journey (8)
- *
- * Imports are relative, not `@/`: vitest has no path alias, and this is the
- * module the hot-path tests need to load.
+ * The turn pipeline: one answer in, one next question out, shared by the route
+ * and the rehearsal harness. In order: pre-classify, evaluate (with a timeout),
+ * band, gap and evidence in code, step() picks the move, then the wording.
  */
 
 import { classifyBand, resolveGap } from "../engine/classify";
@@ -59,27 +39,16 @@ import {
   fallbackResumeQuestion,
   type generateResumeQuestion,
 } from "../ai/resume-questions";
-import type { RoleProfile } from "../jd/distill";
-import type { QuestionPlan } from "../schemas";
+import { formatRoleForPrompt, type RoleProfile } from "../jd/distill";
+import { formatFactsForPrompt } from "../resume/distill";
+import type { ResumeFacts } from "../resume/store";
+import { QuestionPlan } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
 /**
- * Aborts a slow evaluation so the turn degrades instead of hanging.
- *
- * MEASURED LIVE, against a real resume and a real job description: successful
- * evaluations ran 1227-2045ms, and the previous 2200ms abort clipped the tail
- * of that distribution — 4 of 22 turns came back `degraded: timeout` with
- * `evalMs` of 2202-2218, i.e. cut off rather than failed. An 18% unscored rate
- * on answers the model was about to score.
- *
- * The bare-prompt figure this was originally sized against (964ms p50) is not
- * the live prompt: a turn now carries distilled resume facts, a role summary
- * and the question plan, which is most of the difference.
- *
- * Set well clear of the observed tail. A slow scored turn beats a fast
- * unscored one — an unscored turn loses the notepad entry, the band and the
- * trend point, which is the product's whole claim — and the ack plus filler
- * clip already cover several seconds of perceived latency.
+ * Aborts a slow evaluation so the turn degrades instead of hanging. Measured
+ * live at 1.2-2.0 s; set well clear of that tail, as a slow scored turn beats
+ * a fast unscored one.
  */
 export const EVAL_TIMEOUT_MS = 4000;
 
@@ -91,34 +60,23 @@ export interface TurnContext {
   /** Distilled resume facts, injected into every turn prompt. */
   resumeFacts?: string | null;
   role?: RoleProfile | null;
-  /**
-   * The target job for the evaluator — the session's own job description.
-   * Falls back to the resume's distilled role title when absent.
-   */
+  /** The target job for the evaluator; falls back to the resume's role title. */
   roleText?: string | null;
   /** The candidate's level ("intern", "senior"…), which "solid" is judged against. */
   seniority?: string | null;
   /**
-   * Earlier answers in THIS thread, oldest first (see `threadHistory`). A
-   * follow-up adds to the original question, so it is scored as the whole
-   * answer so far — impossible without these — and its drafts build on what
-   * was already said. `[0]` is the original question and first answer.
+   * Earlier answers in this thread, oldest first. A follow-up adds to the
+   * original question, so it is scored as the whole answer so far; `[0]` is
+   * the original question and first answer.
    */
   priorThreadTurns?: { question: string; answer: string }[];
-  /**
-   * Openings prepared at session start. Null or absent: every opening uses
-   * the fixed bank text or `fallbackResumeQuestion()`.
-   */
+  /** Openings prepared at session start; absent means the fixed text. */
   plan?: QuestionPlan | null;
-  /**
-   * Test seam. The rehearsal harness scripts this so a 20-turn session costs
-   * nothing against a 15/minute free tier; everything downstream is identical.
-   */
+  /** Test seam: the rehearsal harness scripts the evaluator. */
   evaluate?: typeof evaluateAndDraft;
   /**
-   * @deprecated Unused: resume-led openings are pre-generated in the question
-   * plan rather than generated mid-turn. Kept so `scripts/rehearse.ts`, which
-   * still passes it, typechecks. TODO(integration): drop once it stops.
+   * @deprecated Unused: openings are pre-generated in the question plan.
+   * TODO(integration): drop once scripts/rehearse.ts stops passing it.
    */
   excerptFor?: (itemId: string) => Promise<string>;
   /** @deprecated As `excerptFor`. */
@@ -142,10 +100,7 @@ export interface NotepadEntry {
   degraded: boolean;
 }
 
-/**
- * Why the evaluator was unavailable. Persisted for diagnosis only — the
- * notepad shows the same neutral line whatever the cause.
- */
+/** Why the evaluator was unavailable; persisted for diagnosis only. */
 export type DegradedReason = "timeout" | "rate_limited" | "unavailable";
 
 export function degradedReasonFor(
@@ -181,8 +136,7 @@ export type TurnResult =
 export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   const { state, transcript } = ctx;
 
-  // ---- 1. too short to score --------------------------------------------
-  // No scoring, no cap increment, no turnSeq. A cough must not cost a question.
+  // Too short to score: not counted (a cough mustn't cost a question).
   if (wordCount(transcript) < MIN_ANSWER_WORDS) {
     return { kind: "nudge", line: NUDGE_LINE, state };
   }
@@ -201,7 +155,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   const prior = ctx.priorThreadTurns ?? [];
   const isFollowUp = current.type !== "opening" && prior.length > 0;
 
-  // ---- 2. evaluate ------------------------------------------------------
+  // Evaluate.
   let scores: Scores;
   let observation: string;
   let modelOffTopic = false;
@@ -239,8 +193,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     modelGap = evaluation.clarify_gap;
     drafts = evaluation.drafts;
   } catch (err) {
-    // The degraded path: latency fallback, quota fallback, and a live proof
-    // that the engine runs an interview with the model unavailable.
+    // Degraded: the engine runs on without the model (timeout or quota).
     degraded = true;
     degradedReason = degradedReasonFor(err, signal);
     scores = heuristicScores(transcript, kind);
@@ -251,33 +204,26 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   }
   const evalMs = Math.round(performance.now() - evalStarted);
 
-  // ---- 3. band ----------------------------------------------------------
+  // Band.
   const band =
     forcedBand ??
     classifyBand(scores, kind, modelOffTopic, {
       previousBand: state.threadScores.length ? state.lastBand : null,
     });
 
-  // ---- 4/5. gap and evidence, both computed in code ----------------------
-  // The model's clarify draft targets the gap it named; resolveGap keeps that
-  // gap only when the scores agree it is one, so the reason line always
+  // Gap and evidence, computed in code. resolveGap keeps the gap the model's
+  // clarify draft targets only when the scores agree, so the reason line
   // describes the question actually asked.
   const primaryGap = degraded
     ? heuristicGap(scores, kind)
     : resolveGap(scores, kind, modelGap).gap;
   const evidence = extractEvidence(transcript);
 
-  // ---- 6. the engine decides -------------------------------------------
-  const stepInput: StepInput = {
-    scores,
-    band,
-    primaryGap,
-    repeatsPrevious,
-    noExperience,
-  };
+  // The engine decides.
+  const stepInput: StepInput = { scores, band, primaryGap, repeatsPrevious, noExperience };
   const result = step(state, stepInput);
 
-  // ---- 7. wording for the next question ---------------------------------
+  // Wording for the next question.
   let nextQuestion: Question | null = null;
   let nextState = result.state;
   let lead: string | undefined;
@@ -289,8 +235,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     let topic = spec.topic;
 
     if (spec.type === "opening" && spec.source === "resume" && spec.resumeItem) {
-      // Prepared at session start. The deterministic opening still names the
-      // item, so a missing plan costs polish, never coverage.
+      // Prepared at session start; the fallback still names the item.
       const planned = plannedResumeOpening(ctx.plan, spec.resumeItem.id, asked);
       text = planned?.text ?? fallbackResumeQuestion(spec.resumeItem);
       // The competency the question actually lands on, so follow-up seeds match.
@@ -300,8 +245,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
         plannedBankOpening(ctx.plan, spec.topic, spec.difficulty, asked) ??
         questionFor(spec.topic, spec.difficulty);
     } else {
-      // Prefer the draft, fall back to a seed for the same gap. Either way
-      // the ENGINE chose the move.
+      // The draft, else a seed for the same gap; the engine chose the move.
       const chosen = chooseQuestionText({
         draft: spec.type === "deepen" ? drafts?.deepen : drafts?.clarify,
         seeds:
@@ -329,9 +273,7 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     nextState = commitQuestion(nextState, nextQuestion);
   }
 
-  // Over capture time only (brief §2.8). Hold time includes thinking pauses
-  // and under-reports pace by 20-40%, so an answer without a capture time
-  // (typed mode) gets no rate rather than a misleadingly slow one.
+  // Over capture time only (hold time includes pauses); typed answers get no rate.
   const speakingRate =
     ctx.captureMs && ctx.captureMs > 0 ? wpm(transcript, ctx.captureMs) : null;
 
@@ -371,16 +313,9 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Persistence helpers — pure, so the route stays a thin shell
-// ---------------------------------------------------------------------------
+// Persistence helpers (pure, so the route stays a thin shell)
 
-/**
- * This thread's earlier answers, oldest first, picked from the most recent
- * turn rows. `threadScores` holds one entry per answer already given in the
- * current thread, so those are exactly the last `threadScores.length` turns —
- * at most MAX_FOLLOW_UPS, which is all the route needs to fetch.
- */
+/** This thread's earlier answers, oldest first: the last threadScores.length turns. */
 export function threadHistory(
   state: EngineState,
   recent: {
@@ -399,11 +334,7 @@ export function threadHistory(
     }));
 }
 
-/**
- * The `turns` row for an answered turn, keyed by column name — the shape
- * `submit_turn` expands with `jsonb_populate_record`. Describes the question
- * that was ANSWERED (`ctx.state.currentQuestion`), not the next one.
- */
+/** The turns row for the answered question, keyed by column (for submit_turn). */
 export function turnRowFor(
   ctx: TurnContext,
   result: Extract<TurnResult, { kind: "turn" }>,
@@ -431,12 +362,76 @@ export function turnRowFor(
   };
 }
 
-/**
- * `submit_turn` refused because another submit of this same turn got there
- * first: PT409 from its turnSeq guard, or 23505 from unique(session_id, seq).
- */
+/** submit_turn lost to another submit of the same turn (PT409 or 23505). */
 export function isStaleSubmit(
   error: { code?: string } | null | undefined,
 ): boolean {
   return error?.code === "PT409" || error?.code === "23505";
+}
+
+/**
+ * Everything runTurn needs, from the stored session, its resume (null without
+ * one) and its latest turns. The stored plan is parsed, not trusted: a
+ * malformed one means the fixed openings, not a 500. This session's job
+ * outranks the resume's, the plan's summary beats the raw posting, and every
+ * plan written since 2026-10 carries the job even when the model failed.
+ */
+export function turnContextFrom(args: {
+  state: EngineState;
+  answer: { transcript: string; holdMs: number; captureMs?: number };
+  storedPlan: unknown;
+  /** The session's posting text, `role_text`. */
+  postingText: string | null;
+  resume: { resume_facts?: unknown; role_profile?: unknown } | null;
+  recentTurns: Parameters<typeof threadHistory>[1];
+}): TurnContext {
+  const parsed = QuestionPlan.safeParse(args.storedPlan);
+  const plan = parsed.success ? parsed.data : null;
+  const company = plan?.job?.company;
+  const roleLines = [
+    plan?.role ? formatRoleForPrompt(plan.role) : args.postingText,
+    company
+      ? `Company: ${company}${plan?.job?.companyInferred ? " (read from the posting link)" : ""}`
+      : null,
+  ].filter(Boolean);
+  return {
+    state: args.state,
+    transcript: args.answer.transcript,
+    holdMs: args.answer.holdMs,
+    captureMs: args.answer.captureMs,
+    // Distilled facts go in every prompt (a fixed prefix).
+    resumeFacts: args.resume ? formatFactsForPrompt((args.resume.resume_facts ?? null) as ResumeFacts | null) : null,
+    role: args.resume ? ((args.resume.role_profile ?? null) as RoleProfile | null) : null,
+    roleText: roleLines.length ? roleLines.join("\n") : null,
+    seniority: plan?.job?.seniority ?? (plan?.role?.seniority || null),
+    priorThreadTurns: threadHistory(args.state, args.recentTurns),
+    plan,
+  };
+}
+
+/** The answer to an answered turn: the note, what comes next, and progress. */
+export function turnResponseBody(result: Extract<TurnResult, { kind: "turn" }>) {
+  const { state } = result;
+  return {
+    kind: "turn" as const,
+    move: result.move,
+    notepad: result.notepad,
+    // `lead` (a new thread only) is spoken before `text`, never shown alone.
+    next: result.next ? { ...result.next, lead: result.lead } : null,
+    done: result.done,
+    wrapLine: result.wrapLine,
+    progress: {
+      questionCount: state.questionCount,
+      questionCap: state.questionCap,
+      topicIndex: state.topicIndex,
+      topicsTotal: state.topics.length,
+      coverageDone: state.resumeItems.filter((i) => i.covered).length,
+      coverageTotal: state.resumeItems.length,
+    },
+  };
+}
+
+/** The 409 for a submit that isn't the next turn: the state to resync from. */
+export function staleTurnBody(state: EngineState, received: number) {
+  return { error: "Stale turn sequence", expected: state.turnSeq + 1, received, state };
 }

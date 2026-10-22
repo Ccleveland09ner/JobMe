@@ -1,6 +1,4 @@
-/**
- * The band the backend assigned. Displayed, never derived here.
- */
+/** The band the server assigned; never derived here. */
 
 import type { Band } from "@/lib/engine/types";
 import { BAND_LABELS } from "@/lib/frontend/labels";

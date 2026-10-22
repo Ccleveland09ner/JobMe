@@ -1,18 +1,12 @@
 "use client";
 
 /**
- * The Web Audio graph driving the avatar's mouth. Three hazards, all of which
- * fail loudly on stage:
- *
- *   1. `createMediaElementSource` may be called ONCE per element — a second
- *      call throws, so the source is cached against the element.
- *   2. Once routed through a node you MUST connect onward to `destination`,
- *      or the page goes silent: audio flows through the graph, not to speakers.
- *   3. `AudioContext` starts suspended and resumes only inside a user gesture,
- *      which is why this is created on the Begin click.
- *
- * Ref: TechDesign > Voice Output
+ * The Web Audio graph driving the avatar's mouth. createMediaElementSource works
+ * once per element (cached); the graph must connect to destination or the page
+ * goes silent; the context only resumes in a user gesture.
  */
+
+import { prefersReducedMotion } from "../frontend/motion";
 
 import { getSharedAudio } from "./tts";
 
@@ -27,11 +21,6 @@ export interface AudioGraph {
 
 let context: AudioContext | null = null;
 const sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
-
-export function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 /** Call from the Begin click handler, once per session. */
 export function createAudioGraph(
@@ -80,8 +69,7 @@ export function createAudioGraph(
 
     let target: number;
     if (synthetic) {
-      // The browser-voice path exposes no stream, so the analyser would read
-      // silence and the mouth would freeze mid-sentence.
+      // The browser voice has no stream to analyse.
       target = 0.35 + 0.3 * Math.abs(Math.sin(performance.now() / 90));
     } else {
       analyser.getByteTimeDomainData(buffer);

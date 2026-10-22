@@ -1,10 +1,6 @@
 "use client";
 
-/**
- * The way in from the street: a real link to /login, so it works with no
- * JavaScript and no WebGL. With the 3D building it walks the user up the
- * steps to the door first; the sign-in page arrives as the walk does.
- */
+/** The way in: a real link to /login; with the 3D building it walks to the door first. */
 
 import Link from "next/link";
 import type { ReactNode } from "react";

@@ -1,14 +1,6 @@
 /**
- * Interview setup - name, interview type, resume, target job, mic check.
- * Ref: docs/PRD-JobMe-MVP.md > Interview Setup
- *      docs/TechDesign-JobMe-MVP.md > Components > Interview Setup
- *
- * Server shell: reads the profile name and the latest resume under RLS, then
- * hands both to <SetupForm> (client). The display name defaults to the part
- * of the email before the @, per the PRD.
- *
- * The track is fixed (Behavioral · SWE internship) and shown as a label, not
- * a one-option dropdown - the PRD is explicit about no dead controls.
+ * Interview setup: reads the profile name and the latest resume, then renders
+ * <SetupForm>. The track is fixed (Behavioral · SWE internship).
  */
 
 import { SetupForm } from "@/components/setup/SetupForm";
@@ -30,8 +22,7 @@ export default async function NewInterviewPage() {
       .maybeSingle(),
   ]);
 
-  // Neither read is essential: a failure falls back to the email name and to
-  // "no resume on file", and the candidate can still upload one.
+  // Neither read is essential: fall back to the email name and no resume.
   const profileName = (profileRes.data?.display_name as string | null | undefined)?.trim();
   const defaultName = profileName || user.email?.split("@")[0] || "";
 

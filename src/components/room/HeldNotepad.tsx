@@ -1,13 +1,6 @@
 "use client";
 
-/**
- * The interviewer's notepad, picked up off the table: one page per answered
- * question, newest on top, flipped like a notepad.
- *
- * Shows only `notes` — the entries the server has already returned for this
- * interview, exactly what the old always-on notepad showed — so picking it up
- * never reveals anything early. Each page is the existing NotepadEntry.
- */
+/** The interviewer's notepad, picked up off the table: one page per answer, newest first. */
 
 import { useState } from "react";
 

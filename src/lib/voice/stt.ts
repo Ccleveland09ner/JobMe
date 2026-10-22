@@ -1,9 +1,6 @@
 "use client";
 
-/**
- * Browser adapter. All decisions live in `sttMachine.ts`; this only translates
- * DOM events into machine events and runs the effects that come back.
- */
+/** Browser adapter for sttMachine.ts: DOM events in, effects out. */
 
 import {
   initialState,
@@ -69,10 +66,7 @@ function ctor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-/**
- * Necessary but not sufficient: Firefox preview builds expose the constructor
- * and throw on `start()`. Probe inside a user gesture for certainty.
- */
+/** Necessary but not sufficient (Firefox previews expose the constructor, then throw). */
 export function isSttSupported(): boolean {
   return ctor() !== null;
 }
@@ -80,12 +74,8 @@ export function isSttSupported(): boolean {
 const LANG = "en-US";
 
 /**
- * Recognise on-device only once Chrome says the language pack is INSTALLED.
- *
- * `processLocally = true` with the pack merely "downloadable" makes every
- * start() fail with `language-not-supported` — which is fatal, so voice
- * answers never record. Until the probe below says "available" (or where it
- * cannot ask), the remote recogniser is used, as before Chrome 139.
+ * Recognise on-device only once Chrome reports the language pack installed
+ * ("downloadable" makes every start() fail fatally). Remote until then.
  */
 let recogniseLocally = false;
 let localProbe: Promise<void> | null = null;
@@ -143,8 +133,7 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
           send({ t: "ERROR", code: "not-allowed" });
           return;
         }
-        // Fresh instance per session: a wedged recognizer refuses to
-        // restart, a new object never does.
+        // A fresh instance per session: a wedged one won't restart.
         detach(current);
         const recognition = new Ctor();
         current = recognition;
@@ -153,9 +142,7 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         recognition.interimResults = true;
         recognition.lang = LANG;
         recognition.maxAlternatives = 1;
-        // Chrome 139+ desktop only, and only with the language pack
-        // installed (probeLocalRecognition). On-device removes the `network`
-        // error class entirely, and is a real privacy answer.
+        // Chrome 139+ with the pack installed: no network errors, better privacy.
         const local = recogniseLocally;
         if (local) {
           try {
@@ -177,13 +164,10 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         recognition.onend = guard(() => send({ t: "ENDED", now: now() }));
         recognition.onerror = guard((e: { error?: string }) => {
           const code = (e?.error as SttErrorCode) ?? "unknown";
-          // On-device refused after all (pack removed, or the probe was
-          // wrong): not fatal — fall back to remote for this and every later
-          // session, and let the machine restart as after any end.
+          // On-device refused after all: use remote from now on, and restart.
           if (local && (code === "language-not-supported" || code === "service-not-allowed")) {
             recogniseLocally = false;
-            // Silence the refused instance first, so its own onend cannot
-            // end the session a second time.
+            // Silence the refused instance so its onend can't end the session twice.
             detach(recognition);
             try {
               recognition.abort();
@@ -208,8 +192,7 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         try {
           recognition.start();
         } catch {
-          // Phase already guards this; if it still throws, treat it as an
-          // end and let the machine decide whether to retry.
+          // If it still throws, treat it as an end and let the machine decide.
           send({ t: "ENDED", now: now() });
         }
         return;
@@ -281,11 +264,7 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
       send({ t: "HOLD_START", now: now() });
     },
 
-    /**
-     * pointerup, and ALSO blur, visibilitychange->hidden, pointercancel and
-     * contextmenu: a lost keyup (alt-tab mid-answer) otherwise leaves the
-     * microphone open indefinitely.
-     */
+    /** pointerup, and blur, hidden, pointercancel, contextmenu: a lost keyup mustn't leave the mic open. */
     stop(): Promise<SttResult> {
       return new Promise<SttResult>((settle) => {
         resolve = settle;

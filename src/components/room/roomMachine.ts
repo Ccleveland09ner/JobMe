@@ -1,27 +1,11 @@
 /**
- * The interview room's UI phase machine. A pure reducer, so every transition
- * is unit-tested without a browser (roomMachine.test.ts).
+ * The interview room's UI phase machine (a pure reducer).
  *
  *   speaking -> awaitingAnswer -> recording -> submitting -> speaking ... -> done
  *
- * The answer flow (user decision, 2026-10-07):
- *   - While the interviewer speaks the mic is DISABLED — the candidate cannot
- *     start recording over the question.
- *   - When the interviewer finishes, the mic is enabled; the candidate taps
- *     Start answering to record.
- *   - The answer is sent when they press Send, or automatically after
- *     IDLE_SEND_MS without a new word. No review step: once sent, it goes
- *     straight to the interviewer, as in a real interview.
- * Typed mode is the same loop with a text box: type, then Send.
- *
- * It sequences the SCREEN, never the interview. Whether an answer was weak,
- * what the next move is, when to wrap — all of that arrives in the turn
- * response and is applied here verbatim. There is no branch on band, gap or
- * move anywhere in this file, and there must never be.
- *
- * `speech` is the queue of lines the recruiter says on entering `speaking`
- * (intro, transition lead, question, nudge). The room plays it, then sends
- * SPEECH_DONE.
+ * The mic is disabled while the interviewer speaks; an answer is sent on Send
+ * or after IDLE_SEND_MS of silence. It sequences the screen, never the
+ * interview: nothing here branches on scores.
  */
 
 import type { InputMode, NoteView, ProgressView, QuestionView } from "@/lib/frontend/types";
@@ -123,8 +107,7 @@ function spokenQuestion(q: QuestionView): string[] {
 export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
   switch (event.type) {
     case "INTRO":
-      // Only meaningful before the first answer; a refresh mid-interview has
-      // no greeting to repeat.
+      // Only before the first answer.
       if (state.turnSeq > 0 || state.phase !== "speaking") return state;
       return { ...state, intro: event.line, speech: [event.line, ...state.speech] };
 
@@ -137,8 +120,7 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
       return { ...state, draft: event.text };
 
     case "RECORD_START":
-      // The mic is disabled unless it is the candidate's turn — this guard is
-      // what stops recording over the interviewer.
+      // The guard that stops recording over the interviewer.
       if (state.inputMode !== "voice" || state.phase !== "awaitingAnswer") return state;
       return { ...state, phase: "recording", draft: "", error: null, notice: null };
 
@@ -151,9 +133,7 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
       return { ...state, phase: "awaitingAnswer", draft: "", notice: event.notice };
 
     case "SUBMIT":
-      // Voice: Send (or the idle timer) while recording; the final transcript
-      // is collected on the way out. Typed, or a voice retry after a failed
-      // send: whatever is in the draft.
+      // Recording: the transcript is collected on the way out. Otherwise: the draft.
       if (state.phase === "recording") {
         return { ...state, phase: "submitting", error: null, notice: null };
       }
@@ -161,8 +141,7 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
       return { ...state, phase: "submitting", error: null, notice: null };
 
     case "NUDGE":
-      // Not scored, not counted: the same question stands. A typed draft is
-      // kept to build on; a voice answer is re-recorded from scratch.
+      // Not scored: the question stands. A typed draft is kept; voice re-records.
       if (state.phase !== "submitting") return state;
       return {
         ...state,
@@ -197,8 +176,7 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
     }
 
     case "SUBMIT_FAILED":
-      // The draft (typed text or the voice transcript) is kept so the
-      // candidate can send it again without re-answering.
+      // Keep the draft so it can be sent again.
       if (state.phase !== "submitting") return state;
       return { ...state, phase: "awaitingAnswer", error: event.message };
 
@@ -239,11 +217,7 @@ export function avatarState(phase: Phase): "idle" | "listening" | "thinking" | "
   }
 }
 
-/**
- * Where the idle window stands, from the time of the last recognised word.
- * `secondsLeft` is set only inside the warning window, so the UI shows a
- * countdown for the last few seconds and nothing before.
- */
+/** The idle window's state; `secondsLeft` is set only during the final warning. */
 export function idleStatus(
   now: number,
   lastActivityAt: number,

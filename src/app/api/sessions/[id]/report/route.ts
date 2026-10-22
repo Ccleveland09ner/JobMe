@@ -1,29 +1,20 @@
 /**
- * POST /api/sessions/[id]/report — generate the scorecard once, then serve it.
- *
- * The pipeline lives in `lib/interview/report.ts`; this is the HTTP shell:
- * auth, the id check, and a Supabase-backed store. Every query goes through
- * the cookie client, so RLS scopes rows to the caller.
- *
- * Response: { summary, weakestTurnId, rewrite | null, stats, overallScores }
- * Errors:   401, 404, 409 (no answers yet)
- *
- * Also the target of End early, so it works from a single answered turn.
- *
- * Ref: TechDesign > Report Generator; Backend brief §6.4
+ * POST /api/sessions/[id]/report: generate the scorecard once, then serve it
+ * (pipeline: lib/interview/report.ts). 409 when nothing is answered yet.
  */
 
 import { NextResponse } from "next/server";
 
-import { getUserOrNull, UNAUTHORIZED } from "@/lib/auth";
+import { getUserOrNull } from "@/lib/auth";
 import type { StoredScores } from "@/lib/engine/types";
+import { isSessionId, notFound, serverError, unauthorized } from "@/lib/http";
 import {
   runReport,
   type ReportStore,
   type StoredReport,
 } from "@/lib/interview/report";
 import { formatRoleForPrompt } from "@/lib/jd/distill";
-import { QuestionPlan, SessionId } from "@/lib/schemas";
+import { QuestionPlan } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
 /** One model call plus a few queries; the default can be too tight on Vercel. */
@@ -37,23 +28,14 @@ export async function POST(
 ) {
   const { id } = await ctx.params;
 
-  const user = await getUserOrNull();
-  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-
-  if (!SessionId.safeParse(id).success) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!(await getUserOrNull())) return unauthorized();
+  if (!isSessionId(id)) return notFound();
 
   try {
     const outcome = await runReport(reportStore(await createClient(), id));
     return NextResponse.json(outcome.body, { status: outcome.status });
   } catch (err) {
-    // The detail is for the server log only — never the candidate's screen.
-    console.error(`[report] session ${id}: ${(err as Error).message}`);
-    return NextResponse.json(
-      { error: "Couldn't build your scorecard. Please try again." },
-      { status: 500 },
-    );
+    return serverError(`[report] session ${id}: ${(err as Error).message}`, "Couldn't build your scorecard. Please try again.");
   }
 }
 

@@ -6,10 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
 
-/**
- * Sign in or create an account, at the front door: the clipboard beside the
- * door in the building. Email and password; see login-form.tsx.
- */
+/** Sign in or create an account, on the clipboard at the front door. */
 export default async function LoginPage() {
   const supabase = await createClient();
   const {

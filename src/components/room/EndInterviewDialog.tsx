@@ -1,12 +1,8 @@
 "use client";
 
 /**
- * End early: confirm, then go to the scorecard for the answered questions.
- *
- * The report route needs at least one answer. With none, the button stays
- * enabled (a disabled button cannot be focused, so its reason would be
- * invisible to keyboard and screen-reader users) and the dialog explains
- * instead of offering an action that would fail.
+ * End early: confirm, then go to the scorecard. With no answers yet the
+ * dialog explains instead (the report needs one).
  */
 
 import { useState } from "react";

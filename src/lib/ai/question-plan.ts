@@ -315,15 +315,9 @@ export async function generateQuestionPlan(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Validation — every entry stands or falls alone
-// ---------------------------------------------------------------------------
+// Validation: every entry stands or falls alone.
 
-/**
- * Mechanical checks for an opening, in the spirit of `checkDraft` — but an
- * opening may be a "Tell me about a time..." statement, and runs a little
- * longer than a follow-up.
- */
+/** Mechanical checks for an opening (like checkDraft, but statements and a little more length are fine). */
 export function checkOpening(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
@@ -343,10 +337,7 @@ const GENERIC_WORDS = new Set([
   "member", "associate", "consultant", "volunteer", "the", "and", "for",
 ]);
 
-/**
- * A resume-led opening must name its item — otherwise coverage is marked for
- * a question that was never really about it.
- */
+/** A resume-led opening must name its item, or coverage is marked falsely. */
 export function namesItem(text: string, item: ResumeItem): boolean {
   const haystack = text.toLowerCase();
   // A role is named by where it was — "backend intern" alone fits anyone.
@@ -490,9 +481,7 @@ export function validatePlan(raw: unknown, inputs: PlanInputs): QuestionPlan | n
   };
 }
 
-// ---------------------------------------------------------------------------
-// Lookups — the turn pipeline asks, and falls back to fixed text on null
-// ---------------------------------------------------------------------------
+// Lookups: the turn pipeline falls back to fixed text on null.
 
 const alreadyAsked = (text: string, asked: string[]) =>
   asked.some((q) => normalise(q) === normalise(text));
@@ -521,13 +510,7 @@ export function plannedResumeOpening(
   return entry && !alreadyAsked(entry.text, asked) ? entry : null;
 }
 
-/** What a topic assesses for this job: the plan's purpose, else the bank's. */
-export function purposeFor(
-  plan: QuestionPlan | null | undefined,
-  topic: TopicId,
-): string {
-  return plan?.topics[topic]?.purpose ?? BANK[topic]?.purpose ?? "";
-}
+export { purposeFor } from "../engine/bank";
 
 /**
  * Resume items in the plan's order for THIS job. Items were ranked against

@@ -1,16 +1,11 @@
 /**
- * Settings, as the notice board on the lobby wall. Server Component.
- * Ref: docs/reverse-engineering/interaction-flow.md > 6. The noteboard
- *
- * Two notes: Interview defaults (stored in this browser) and Account
- * (username and member code, read-only; display name, editable).
- * The profile read is not essential: without it the account note shows what
- * it can, and the defaults note works regardless.
+ * Settings: what is written on the 3D notice board's notes (interview
+ * defaults, account). The profile read is not essential.
  */
 
 import { AccountNote } from "@/components/settings/AccountNote";
+import { BoardNotes } from "@/components/settings/BoardNotes";
 import { DefaultsNote } from "@/components/settings/DefaultsNote";
-import { NoticeBoard } from "@/components/settings/NoticeBoard";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,20 +21,12 @@ export default async function SettingsPage() {
   const displayName = profile?.display_name?.trim() || user.email?.split("@")[0] || "";
 
   return (
-    <NoticeBoard
+    <BoardNotes
       notes={[
+        { name: "defaults", title: "Interview defaults", content: <DefaultsNote /> },
         {
-          id: "defaults",
-          title: "Interview defaults",
-          summary: "Quick or Full, and whether you speak or type your answers.",
-          content: <DefaultsNote />,
-          tint: "paper",
-          tilt: -2.5,
-        },
-        {
-          id: "account",
+          name: "account",
           title: "Account",
-          summary: profile?.username ? `@${profile.username} · the name the recruiter uses · sign out` : "Your name, member code, and sign out.",
           content: (
             <AccountNote
               userId={user.id}
@@ -49,8 +36,6 @@ export default async function SettingsPage() {
               email={user.email ?? null}
             />
           ),
-          tint: "yellow",
-          tilt: 2,
         },
       ]}
     />

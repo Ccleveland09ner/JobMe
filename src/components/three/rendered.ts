@@ -1,10 +1,6 @@
 /**
- * Physically based materials for props rendered in full 3D, like the
- * characters (room/Recruiter3D.tsx, Look.style "rendered"): the chairs and
- * the desk mic sit right next to them, so they share the same studio
- * lighting (environment.ts) and skip the ink outline.
- *
- * Cached per renderer and spec; never mutate a result — it is shared.
+ * Physically based materials for props beside the characters (chairs, desk
+ * mic): studio lit, no ink outline. Cached per renderer and spec; never mutate.
  */
 
 import * as THREE from "three";

@@ -1,176 +1,53 @@
 /**
- * Dashboard - home and history, as the performance ledger on the front desk.
- * Server Component.
- * Ref: docs/PRD-JobMe-MVP.md > Dashboard and Progress
- *      docs/TechDesign-JobMe-MVP.md > Components > Dashboard
- *
- * Reads interview_sessions via createClient() from lib/supabase/server. RLS
- * scopes the rows to the signed-in user, so no explicit user_id filter is
- * needed - but requireUser() still gates the page.
- *
- * History is paged on the server by `?page=` with a Supabase range, so the
- * page never loads every session at once. The trend chart has its own
- * lightweight query over completed sessions only.
- *
- * In the building this page IS the ledger (components/desk/Ledger.tsx): the
- * desk shows it closed until the user picks it up (?open=ledger), and its
- * spreads are the sections below. History page links keep the book open on
- * the History spread.
+ * The dashboard, shown as the ledger on the front desk: the user's interviews
+ * in volumes (`?page=`), newest first, each with its questions, answer
+ * excerpts and notes (lib/frontend/ledger.ts loads them). Without
+ * `?open=ledger` the desk is shown and the ledger stays shut, so nothing is
+ * fetched.
  */
 
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Pagination } from "@/components/common/Pagination";
-import { DashboardSummary } from "@/components/dashboard/DashboardSummary";
-import { EmptyState } from "@/components/dashboard/EmptyState";
-import { SessionList } from "@/components/dashboard/SessionList";
-import { TrendChart, type TrendPoint } from "@/components/dashboard/TrendChart";
-import { Ledger, type LedgerSection } from "@/components/desk/Ledger";
-import { buttonClasses } from "@/components/ui/Button";
+import { Ledger } from "@/components/desk/Ledger";
 import { requireUser } from "@/lib/auth";
-import {
-  pickOverall,
-  pickScores,
-  sessionSummaryFromRow,
-  type SessionRowData,
-} from "@/lib/frontend/adapters";
+import { ledgerVolumeHref, loadLedgerShelf, loadLedgerVolume, VOLUME_SIZE } from "@/lib/frontend/ledger";
 import { clampPage, pageCount, rowRange } from "@/lib/frontend/pagination";
 import { createClient } from "@/lib/supabase/server";
 
-/** A history page, with the ledger open on its History spread. */
-function historyHref(page: number): string {
-  return `/dashboard?open=ledger&section=history${page === 1 ? "" : `&page=${page}`}`;
-}
-
-/** Sessions per history page. */
-const PAGE_SIZE = 8;
-
-/** Completed sessions plotted on the trend chart, most recent. */
-const TREND_LIMIT = 20;
-
-const SESSION_COLUMNS =
-  "id, status, question_count, overall_scores, started_at, ended_at, mode:engine_state->>mode";
+const one = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const user = await requireUser();
-  const { page: pageParam, section } = await searchParams;
+  const { open, page: pageParam, section, entry } = await searchParams;
+  if (one(open) !== "ledger") return null;
   const supabase = await createClient();
 
-  const [totalRes, trendRes, profileRes] = await Promise.all([
-    supabase.from("interview_sessions").select("id", { count: "exact", head: true }),
-    supabase
-      .from("interview_sessions")
-      .select("id, started_at, overall_scores", { count: "exact" })
-      .eq("status", "completed")
-      .order("started_at", { ascending: false })
-      .limit(TREND_LIMIT),
-    // Not essential: without it the desk just doesn't show who is signed in.
-    supabase.from("profiles").select("username, member_code").eq("id", user.id).maybeSingle(),
-  ]);
-  const profile = profileRes.error ? null : (profileRes.data as { username: string | null; member_code: string } | null);
-  if (totalRes.error) throw new Error(`dashboard count: ${totalRes.error.message}`);
-  if (trendRes.error) throw new Error(`dashboard trend: ${trendRes.error.message}`);
+  const shelf = await loadLedgerShelf(supabase, user.id);
+  const volumes = pageCount(shelf.total, VOLUME_SIZE);
+  const volume = clampPage(one(pageParam), volumes);
 
-  const total = totalRes.count ?? 0;
-  const completed = trendRes.count ?? 0;
-  const totalPages = pageCount(total, PAGE_SIZE);
-  const page = clampPage(Array.isArray(pageParam) ? pageParam[0] : pageParam, totalPages);
-
-  // Normalise the URL when it named a page that no longer exists, e.g. after
-  // deleting the only row on the last page.
-  if (pageParam !== undefined && String(page) !== String(pageParam)) {
-    redirect(historyHref(page));
+  // Normalise a volume that no longer exists (e.g. after a delete).
+  if (pageParam !== undefined && String(volume) !== String(one(pageParam))) {
+    redirect(ledgerVolumeHref(volume));
   }
 
-  const [from, to] = rowRange(page, PAGE_SIZE);
-  const { data: rows, error } = total
-    ? await supabase
-        .from("interview_sessions")
-        .select(SESSION_COLUMNS)
-        .order("started_at", { ascending: false })
-        .range(from, to)
-    : { data: [], error: null };
-  if (error) throw new Error(`dashboard sessions: ${error.message}`);
+  const range = rowRange(volume, VOLUME_SIZE);
+  const entries = shelf.total ? await loadLedgerVolume(supabase, range) : [];
 
-  const sessions = ((rows ?? []) as unknown as SessionRowData[]).map(sessionSummaryFromRow);
-
-  const trendRows = (trendRes.data ?? []) as { id: string; started_at: string; overall_scores: unknown }[];
-  const trend: TrendPoint[] = trendRows
-    .map((r) => ({
-      id: r.id,
-      startedAt: r.started_at,
-      scores: pickScores(r.overall_scores),
-      overall: pickOverall(r.overall_scores),
-    }))
-    .reverse();
-
-  const startCta = (
-    <Link href="/interview/new" className={buttonClasses()}>
-      Start an interview
-    </Link>
+  return (
+    <Ledger
+      owner={shelf.owner}
+      volume={{ number: volume, count: volumes, offset: range[0], total: shelf.total }}
+      entries={entries}
+      progress={{
+        completed: shelf.completed,
+        inProgress: Math.max(0, shelf.total - shelf.completed),
+        latestScores: shelf.trend.at(-1)?.scores ?? null,
+        latestOverall: shelf.trend.at(-1)?.overall ?? null,
+      }}
+      trend={shelf.trend}
+      // A volume link (?page=) opens at the contents.
+      link={{ section: one(section) ?? (pageParam !== undefined ? "history" : undefined), entry: one(entry) }}
+    />
   );
-
-  const kicker = profile ? (
-    <>
-      {profile.username && <>@{profile.username} · </>}
-      <span className="font-mono tracking-wider">{profile.member_code}</span>
-    </>
-  ) : undefined;
-
-  const sections: LedgerSection[] =
-    total === 0
-      ? [{ id: "history", label: "History", content: <EmptyState /> }]
-      : [
-          {
-            id: "trends",
-            label: "Trends",
-            content: (
-              <div className="flex flex-col gap-4">
-                <p className="text-sm text-muted">How your scores have moved, interview by interview.</p>
-                <TrendChart points={trend} />
-              </div>
-            ),
-          },
-          {
-            id: "history",
-            label: "History",
-            content: (
-              <section aria-labelledby="history-title" className="flex min-w-0 flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 id="history-title" className="text-base font-semibold text-ink">
-                    Every interview
-                  </h2>
-                  {startCta}
-                </div>
-                <p className="text-sm text-muted">Open a finished interview to read its report in the reports folder.</p>
-                <SessionList sessions={sessions} />
-                <Pagination
-                  page={page}
-                  pageSize={PAGE_SIZE}
-                  totalItems={total}
-                  label="Interview history pages"
-                  hrefForPage={historyHref}
-                />
-              </section>
-            ),
-          },
-          {
-            id: "summary",
-            label: "Summary",
-            content: (
-              <DashboardSummary
-                completed={completed}
-                inProgress={Math.max(0, total - completed)}
-                latestScores={trend.at(-1)?.scores ?? null}
-                latestOverall={trend.at(-1)?.overall ?? null}
-              />
-            ),
-          },
-        ];
-
-  // A history page link (?page=) lands on the History spread.
-  const initialSection = typeof section === "string" ? section : pageParam !== undefined ? "history" : undefined;
-
-  return <Ledger kicker={kicker} sections={sections} initialSection={initialSection} />;
 }

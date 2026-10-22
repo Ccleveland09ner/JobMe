@@ -1,205 +1,412 @@
-# JobMe — Adaptive Mock Interview Room
+<a id="readme-top"></a>
 
-**A voice mock interview where the recruiter actually listens.** Every follow-up targets the weakest part of your last answer, and a live **recruiter's notepad** shows you why.
+<!-- PROJECT HEADER -->
+<br />
+<div align="center">
+  <h1 align="center">JobMe</h1>
+  <p align="center">
+    An adaptive mock interview room where the recruiter listens.
+    <br />
+    Voice and text practice, résumé-aware questions, and feedback you can follow.
+    <br />
+    <br />
+    <a href="#documentation"><strong>Explore the docs »</strong></a>
+    <br />
+    <br />
+    <a href="#getting-started">Get Started</a>
+    &middot;
+    <a href="https://github.com/Ccleveland09ner/JobMe/issues/new?labels=bug">Report Bug</a>
+    &middot;
+    <a href="https://github.com/Ccleveland09ner/JobMe/issues/new?labels=enhancement">Request Feature</a>
+  </p>
+</div>
 
-Built for Devpost *Build With AI: Basics* as a 24-hour solo sprint. One track: **Behavioral · SWE internship**.
+<!-- TABLE OF CONTENTS -->
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+      <ul>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#built-with">Built With</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+        <li><a href="#environment-variables">Environment Variables</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#usage">Usage</a>
+      <ul>
+        <li><a href="#interview-modes-and-scoring">Interview Modes and Scoring</a></li>
+        <li><a href="#how-an-interview-works">How an Interview Works</a></li>
+        <li><a href="#data-handling">Data Handling</a></li>
+        <li><a href="#routes-and-api">Routes and API</a></li>
+        <li><a href="#current-limits">Current Limits</a></li>
+      </ul>
+    </li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li>
+      <a href="#contributing">Contributing</a>
+      <ul>
+        <li><a href="#checks-and-developer-tools">Checks and Developer Tools</a></li>
+        <li><a href="#code-layout">Code Layout</a></li>
+        <li><a href="#documentation">Documentation</a></li>
+      </ul>
+    </li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+  </ol>
+</details>
 
-> **Status: scaffold.** The structure, types, schema and design tokens are in place. Almost every function body is a `TODO(slice N)` stub that throws. Nothing runs end-to-end yet. See [Where things stand](#where-things-stand).
+<!-- ABOUT THE PROJECT -->
+## About The Project
 
----
+<p align="center">
+  <img src="./public/images/campus.png" alt="JobMe campus illustration" width="820" />
+  <br />
+  <em>Campus illustration used in the application.</em>
+</p>
 
-## The idea
+JobMe is a voice and text mock interview app for **behavioral SWE internship practice**. A recruiter asks follow-up questions based on your answers, while a live notepad explains the feedback and the next move.
 
-Mock interview tools ask a fixed list of questions. A vague answer and a sharp answer get the same next question, so you never practice the follow-up that exposes a gap — which is the moment that actually sinks behavioral rounds.
+The application includes authentication, résumé ingestion, adaptive interviews, saved sessions, scorecards, and progress tracking. Its interface is a stylized 3D office: enter from the street, pick up a setup clipboard at the front desk, sit down with the recruiter, and review your reports in a folder.
 
-JobMe scores every answer on five dimensions (Structure, Specificity, Impact, Ownership, Relevance), then adapts:
+### Features
 
-| Your answer | What happens |
-|---|---|
-| Vague — "we worked as a team and fixed the bug" | **Clarify**: "You said the team fixed it. What did *you* change?" |
-| Strong — STAR, with a number in it | **Deepen**: "What trade-off did you weigh?" |
-| Resolved | Next topic, one difficulty level harder if the thread ended strong |
+- **Accounts:** email/password sign-in and sign-up with a unique username and an assigned member code. Settings let you edit your display name and save interview/input defaults in the current browser.
+- **Personalized setup:** choose Quick or Full, optionally upload or reuse a PDF résumé, and supply a target role, pasted job description, or supported job-posting link. Link import supports Greenhouse, Lever, Ashby, and SmartRecruiters.
+- **Adaptive interviews:** questions come from an 11-topic behavioral bank and résumé roles/projects. The engine chooses whether to clarify, deepen, move to another topic, or wrap up.
+- **Voice and typed answers:** browser speech recognition, an optional microphone check, editable typed input, live transcripts/captions, and recruiter speech with animated lip-sync. Recognition failures fall back to typed input.
+- **Live feedback:** the recruiter's notepad shows scores, an answer-quality band, the main gap, quoted evidence, an observation, and the reason for the next question.
+- **Saved progress:** return to an unfinished interview, retry an answer after a failed request, or end early after at least one answer. The desk ledger lists sessions and supports deletion.
+- **Reports and trends:** overall and per-answer scores, a summary, a STAR rewrite of the weakest scored answer, highlighted transcripts, approximate filler counts, voice speaking rate, and trends across the latest 20 completed interviews.
+- **3D presentation and fallbacks:** a persistent Three.js building, animated camera transitions, a seated recruiter, and interactive paper objects. Keyboard-accessible controls, reduced-motion handling, and illustrated/SVG fallbacks support use without the full 3D scene.
 
-The differentiator is that this is **visible during the interview**, not just in a report afterwards. The notepad shows the five scores, the detected gap, a verbatim quote from what you said, and one line explaining the next move.
+### Built With
 
-## How it works
+[![Next.js][next-shield]][next-url]
+[![React][react-shield]][react-url]
+[![TypeScript][typescript-shield]][typescript-url]
+[![Tailwind CSS][tailwind-shield]][tailwind-url]
+[![Three.js][three-shield]][three-url]
+[![Supabase][supabase-shield]][supabase-url]
 
-One Next.js app. The browser does the hearing and speaking; the server scores and decides.
+- Next.js **16.3.5**, React **19.2.8**, TypeScript, and Tailwind CSS 4.
+- Three.js, React Three Fiber, Drei, and GSAP for the building and recruiter.
+- Supabase Auth and Postgres, with row-level security and pgvector résumé embeddings.
+- Google Gemini through `@google/genai` for evaluation, question planning, résumé processing, and report text.
+- Web Speech APIs for recognition and browser speech; optional ElevenLabs speech through a server proxy.
+- `unpdf` for PDF text extraction, Zod for validation, and Vitest for tests.
 
-```
-Browser (Chrome/Edge)              Next.js on Vercel            Services
----------------------              -----------------            --------
-Web Speech API --transcript-->  POST /api/.../turns
-                                  |- evaluateAndDraft ------->  Gemini (1 call)
-                                  |- embed(answer)   --------->  Gemini embeddings
-                                  |     (both in parallel)
-                                  |- engine.step()  <- pure TS, no AI
-                                  '- UPDATE engine_state ---->  Supabase (RLS)
-Notepad + captions  <--notepad, next question--'
-<audio> + SVG avatar -->  GET /api/tts  -------------------->  ElevenLabs
-                                                               (or browser voice)
-```
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-**The invariant that everything else depends on:** the deterministic state machine owns the flow, and the LLM only scores and phrases. The AI never picks the next move. That is what keeps sessions bounded (4-10 questions), testable with scripted answers, and reproducible on stage.
+<!-- GETTING STARTED -->
+## Getting Started
 
-Two consequences worth knowing before you change anything:
+Follow these steps to run JobMe against your own Supabase project and AI service credentials.
 
-- **Nothing can leave the interview silent or stuck.** TTS fails, browser `speechSynthesis` takes over. Scoring fails, you get a seed Clarify and an honestly-unscored turn. No mic or wrong browser, you get typed mode with the same engine and the same notepad. Report generation fails, the scorecard renders without the rewrite.
-- **Audio is never uploaded or stored.** Only transcripts, scores and reports. (Chrome's own speech recognition does send audio to Google — that is disclosed to the user on the setup screen.)
+### Prerequisites
 
-## Quick start
+Use **Node.js 24.x** and npm. The current test toolchain also supports Node 22.12+ in the 22.x release line, but Node 20 does not satisfy all installed dependencies. Voice input targets Chrome/Edge; typed answers are available when speech recognition is unsupported. Microphone access needs localhost or HTTPS and browser permission.
 
-Requires **Node 20+** and **Chrome or Edge** for the voice path.
+You will also need Git, a Supabase project, and a Gemini API key. ElevenLabs credentials are optional.
 
-```bash
-npm install
-```
+### Installation
 
-Then add the packages the build needs. They are deliberately not pre-pinned, because two of them need a peer-dependency check against React 19:
-
-```bash
-npm i zod @google/genai recharts
-npm i -D vitest tsx
-npx shadcn@latest init   # verify Tailwind v4 + React 19 support at init
-```
-
-Set up Supabase (your own project — do not share one):
-
-1. Create a free project at [supabase.com/dashboard](https://supabase.com/dashboard).
-2. `cp .env.example .env.local` and fill in the values — see [Environment](#environment).
-3. Swap the email template so sign-in sends a **6-digit code** instead of a magic link: **Authentication → Emails → Magic Link**, subject `Your sign-in code`, body from [`supabase/templates/magic_link.html`](./supabase/templates/magic_link.html). The part that matters is that it uses `{{ .Token }}` rather than `{{ .ConfirmationURL }}`.
-4. Apply the schema:
-   ```bash
-   npx supabase login
-   npx supabase link --project-ref <your-project-ref>
-   npx supabase db push --linked
-   ```
-   Or paste [the migration](./supabase/migrations/) into the SQL Editor.
-
-```bash
-npm run dev    # http://localhost:3000, in Chrome
-```
-
-### Environment
-
-| Variable | Notes |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Settings, API, Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the `anon` `public` key |
-| `SUPABASE_SERVICE_ROLE_KEY` | starter only — **JobMe never uses it**, every route goes through RLS |
-| `GEMINI_API_KEY` | server-side only |
-| `LLM_MODEL` | verify the current fast-model ID in hour 1, and keep "thinking" off |
-| `EMBED_MODEL` | `gemini-embedding-001` |
-| `TTS_PROVIDER` | `browser` while developing, `elevenlabs` for demo takes only |
-| `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | server-side only |
-
-Only the two `NEXT_PUBLIC_*` values ever reach the browser. A session is roughly 1.5k characters of TTS, so leave `TTS_PROVIDER=browser` unless you are recording.
-
-## Structure
-
-```
-docs/                      PRD + Technical Design - read these first
-devpost/                   scope.md, prd.md, spec.md (generated by the skill pack)
-data/bank-embeddings.json  precomputed bank vectors, committed
-public/audio/ack/          static acknowledgment clips
-scripts/                   latency-probe, embed-bank, gen-ack-clips
-
-src/lib/engine/            THE KERNEL - pure TypeScript, no AI, unit-tested
-  types.ts                 EngineState, Band, Move, Dimension  (written)
-  bank.ts                  5 topics x 3 difficulties + seed follow-ups
-  classify.ts              classifyBand(), computePrimaryGap()
-  policy.ts                step() - every next-move decision lives here
-  notepad.ts               deterministic reason lines
-  policy.test.ts           scripted weak/strong sessions - the regression harness
-
-src/lib/ai/                llm (Gemini adapter), evaluate, report, embeddings, prompts
-src/lib/voice/             stt (Web Speech), tts (+ fallback), audio-graph (lip-flap)
-src/lib/                   auth.ts, stats.ts, schemas.ts
-
-src/app/
-  page.tsx                 landing
-  dashboard/               history + trends
-  interview/new/           setup + mic check
-  interview/[id]/          the room
-  interview/[id]/report/   scorecard
-  api/sessions/            create, delete, turns, report
-  api/tts/                 voice proxy (key hiding + same-origin for AnalyserNode)
-
-src/components/            dashboard, setup, room, report, ui
-supabase/migrations/       4 tables, RLS on all of them
-```
-
-`src/lib/ai/llm.ts` is the only file that knows which LLM provider we use. Keep it that way — switching providers should stay a one-file change.
-
-## Where things stand
-
-**Written for real:** the directory tree, `lib/engine/types.ts`, the schema migration (4 tables, RLS, profile trigger), design tokens in `globals.css`, `.env.example`, and page and route shells.
-
-**Stubbed**, each with its contract and spec reference in the file header: everything else. Every stub is tagged `TODO(slice N)` matching the build plan below, so `grep -rn "TODO(slice" src scripts` is your worklist.
-
-### Before you start slice 1
-
-- [ ] **`git init`** — this is not a git repository yet. The hackathon rules want a project started from an empty folder during the submission period, and there is currently no history at all.
-- [ ] **Resolve the starter-repo question** (Open Question #1). The rules require an empty-folder start; this tree is the `hackathon-app` starter with JobMe scaffolded on top. Either confirm with the organizers in Discord that using the starter as a template is acceptable, or follow the recovery sequence in *Tech Design, Hackathon Compliance*: empty folder, run the skills, then pull the starter in during slice 1.
-- [ ] **Generate `devpost/scope.md`, `prd.md` and `spec.md`** — hard submission requirements, and not present yet. Run the Learn Skill Pack interviews using `docs/` as your answers; both documents map their headings to the skill templates for exactly that.
-- [ ] **Delete the starter's todos demo.** [`supabase/migrations/20260911211800_create_todos.sql`](./supabase/migrations/) is still here, and its RLS policies are wide open by design, so it must not survive into the submission. The page that read from it is already gone. It was left in place rather than deleted because there is no git history to recover it from.
-- [ ] **Run the latency probe.** `npm run probe` answers the one genuine unknown in the design.
-
-## Build plan
-
-24 hours, thin vertical slices. Each one ends in something you can actually use.
-
-| # | Slice | Hours |
-|---|---|---|
-| 0 | Planning docs committed | 0-2 |
-| 1 | Signed-in user lands on a branded dashboard, **plus the latency probe** | 2-4 |
-| 2 | **Typed interview adapts, with notepad** — kernel first | 4-9 |
-| 3 | It is a voice interview | 9-13 |
-| 4 | The recruiter is on screen | 13-15 |
-| 5 | Scorecard | 15-18 |
-| 6 | Progress over time | 18-20 |
-| 7 | Polish and ship | 20-24 |
-
-Slice 2 is the kernel and comes before any voice work, because a typed interview that adapts correctly is the product. The voice is presentation.
-
-**Cut order if behind:** trend chart becomes a plain averages table; then embedding checks go; then avatar lip-flap becomes a state-only avatar. **Never cut** the engine, the notepad, or the weak-versus-strong demo contrast.
-
-### Verify in hour 1
-
-The design has one genuine unknown: *can a full turn fit in 2.5s on free tiers?* `npm run probe` needs to show eval p50 at or under 1.5s and TTS first byte at or under 0.6s. If not, drop to a lighter model tier or shorten the prompt — now, not in hour 20.
-
-Also confirm the current Gemini fast-model ID and how to disable thinking, the ElevenLabs free-tier credits, and whether `after()` behaves as documented on Next 16 and Vercel. If it does not, just `await` the turn insert, which costs about 80ms.
-
-## Testing
+#### 1. Clone the repository
 
 ```bash
-npm test          # vitest - lib/engine
+git clone https://github.com/Ccleveland09ner/JobMe.git
+cd JobMe
+```
+
+#### 2. Install and configure
+
+```bash
+npm ci
+```
+
+Copy [`.env.example`](./.env.example) to `.env.local` and fill in the Supabase connection values and Gemini API key. On PowerShell:
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+All application dependencies are already declared in `package.json`; no extra package installation or UI initialization step is needed. If PowerShell blocks `npm.ps1`, use `npm.cmd` (and `npx.cmd`) for the commands below.
+
+#### 3. Prepare Supabase
+
+Create a Supabase project and apply **all** files in [`supabase/migrations/`](./supabase/migrations/) in timestamp order. Using the [Supabase CLI](https://supabase.com/docs/reference/cli/supabase-db-push):
+
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push --linked
+```
+
+These commands apply the migrations to the linked project. The latest migration, `20261016120000_usernames_and_member_codes.sql`, supplies the username/member-code fields and availability check used by sign-up; applying only the original schema is insufficient.
+
+Enable email/password authentication and configure the Auth Site URL for your app (`http://localhost:3000` during development). If email confirmation is enabled, users confirm their email and then return to sign in. See [Supabase password authentication](https://supabase.com/docs/guides/auth/passwords) for the project settings. The checked-in magic-link template is a legacy artifact; the current login screen does not use OTP codes.
+
+The migrations create six application tables: `profiles`, `interview_sessions`, `turns`, `reports`, `resumes`, and `resume_chunks`, with RLS, grants, and the required database functions. No Supabase Storage bucket is needed for résumé PDFs.
+
+#### 4. Start the app
+
+```bash
+npm run check:db
+npm run dev
+```
+
+Open [localhost:3000](http://localhost:3000), create an account, and start an interview from the front desk. `check:db` checks Auth connectivity and table access; it does not validate every column or database function.
+
+For a production build:
+
+```bash
+npm run build
+npm start
+```
+
+Configure the same environment variables on the deployment host and update the Supabase Site URL. Font loading uses `next/font/google`, so builds need access to the Google font downloads. The committed recruiter model runs as-is; Blender is only needed to rebuild that asset.
+
+### Environment Variables
+
+| Variable | Use |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Required Supabase project URL. |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Required public client key. `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as a legacy alternative; set one of them. |
+| `GEMINI_API_KEY` | Server-side key for scoring, personalization, résumé processing, and report text. |
+| `LLM_MODEL` | Defaults in code to `gemini-3.5-flash-lite`. Override for the model available to your project and verify it with the probe scripts. |
+| `EMBED_MODEL` | Defaults to `gemini-embedding-001`; résumé embeddings use 768 dimensions. |
+| `TTS_PROVIDER` | Use `browser` for browser speech, or `elevenlabs` to enable the neural voice proxy. |
+| `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | Required only for ElevenLabs speech. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Used only by privileged live verification/cleanup scripts. Normal application requests use the signed-in user's client and RLS. |
+| `LLM_SURFACE` | Present in the example environment, but not an active switch: the adapter currently always calls `generateContent`. |
+
+Only the `NEXT_PUBLIC_*` values belong in the browser. Keep service-role, Gemini, and ElevenLabs keys server-side. Some comments in `.env.example` predate the current auth and maintenance scripts; the table above describes actual usage.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- USAGE -->
+## Usage
+
+1. Enter the building and create an account or sign in with your email and password.
+2. At the front desk, open the setup clipboard and choose Quick or Full. Add your résumé and target job if you want personalized questions.
+3. Complete the optional microphone check, or choose typed answers, then start the interview.
+4. Answer the recruiter and open the notepad to review feedback. You can leave and continue the saved session later, or end early after one answer.
+5. Read your scorecard in the reports folder. Return to the desk ledger to resume sessions, compare trends, or delete an interview.
+
+### Interview Modes and Scoring
+
+| Mode | Current behavior |
+| --- | --- |
+| Quick | Up to 10 questions, starting from four selected bank topics, with résumé questions mixed in when available. |
+| Full | A résumé-derived budget capped at 30 questions. Prioritizes coverage of up to 10 ranked résumé items, with a limited bank-question budget. Without a résumé, uses general behavioral questions. |
+
+Full mode trims résumé items beyond its coverage budget; it does not promise to cover every item on an arbitrarily long résumé. Sessions can finish before their cap, and users can end early.
+
+Answers are scored from 1–4 on **Situation, Task, Action, Result, Specificity, Impact, Ownership, and Relevance**. The interface displays all eight dimensions. Answer banding uses the average of the four STAR components alongside Specificity, Impact, Ownership, and Relevance. Feedback is for practice, not a prediction of a hiring outcome.
+
+### How an Interview Works
+
+The deterministic engine owns the conversation flow. Gemini scores answers and supplies wording; it does not choose the next move.
+
+1. **Prepare context.** A résumé upload is parsed, redacted, chunked, embedded, and distilled into facts and coverage items. A pasted job description can inform résumé ranking at upload time. A supported posting URL is fetched when the session starts; reusing a résumé or importing a link does not rerank its stored coverage items.
+2. **Plan openings.** Session creation selects bank topics and, when context is available, makes a bounded model call to prepare personalized openings. Those openings are saved with the session; fixed bank/résumé prompts are the fallback.
+3. **Capture an answer.** Click the microphone or press Space to start and send. Voice input also submits after 10 seconds without recognized-text changes. Typed input supports Ctrl/Cmd+Enter. The microphone is disabled while the recruiter speaks.
+4. **Evaluate and decide.** The turn pipeline normally makes one evaluation call with the current question, answer, and thread context, with a bounded retry for some failures. Code computes the band, primary gap, and quoted evidence; the pure engine decides the next move and enforces follow-up and session limits.
+5. **Persist before replying.** The `submit_turn` database function writes the answer and updated engine state atomically. Sequence checks reject stale or duplicate submissions. `after()` is used for timing telemetry, not answer persistence.
+6. **Review.** Report generation computes aggregates from scored turns, generates a summary/rewrite when possible, and saves the report for subsequent visits.
+
+If evaluation times out or fails, heuristics keep the conversation moving, but the turn is saved as **unscored** and excluded from averages. Failed question planning uses fixed openings. Failed report text generation still produces a scorecard without a rewrite. ElevenLabs failures fall back to browser speech, with captions available in the room.
+
+Embeddings currently support résumé processing/retrieval helpers; the active turn pipeline does not embed every answer or perform per-turn résumé retrieval.
+
+### Data Handling
+
+JobMe sends answer transcripts to Gemini and stores transcripts, scores, engine state, and reports in Supabase. It does not upload or store candidate microphone audio itself; the browser's speech-recognition service may process audio remotely, as disclosed during setup.
+
+Résumé PDFs are uploaded for server-side extraction but are not retained. The app applies pattern-based redaction before sending extracted résumé text to AI services or storing it, and retains redacted text, facts, coverage items, and vectors. This redaction is not a guarantee of anonymity, and answer transcripts do not pass through the résumé redactor. Deleting a session also deletes its turns and report; saved résumés are separate records.
+
+### Routes and API
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Street landing; signed-in users continue to the desk. |
+| `/login` | Sign-in and account creation. |
+| `/dashboard` | Front desk; `?open=ledger` opens session history and trends. |
+| `/interview/new` | Setup clipboard, résumé/job context, and microphone check. |
+| `/interview/[id]` | Current interview and live notepad. |
+| `/interview/[id]/report` | A session's scorecard and transcript. |
+| `/reports` | Latest completed report, with navigation between reports. |
+| `/settings` | Account details and browser-saved defaults. |
+
+API handlers authenticate their own requests:
+
+| Method and endpoint | Purpose |
+| --- | --- |
+| `POST /api/resume` | Ingest a PDF résumé. |
+| `POST /api/sessions` | Create an interview and its question plan. |
+| `POST /api/sessions/[id]/turns` | Evaluate and atomically save an answer. |
+| `POST /api/sessions/[id]/report` | Generate or return the saved report; supports ending early. |
+| `DELETE /api/sessions/[id]` | Delete a session and its dependent turns/report. |
+| `GET /api/tts` | ElevenLabs proxy, including optional character alignment for lip-sync. |
+
+Development-only previews are available at `/dev/recruiter`, `/dev/book`, and `/dev/building/[station]` (`street`, `entrance`, `desk`, `noteboard`, `corridor`, or `room`). They return 404 in production. The book preview is a layout/interaction workbench.
+
+### Current Limits
+
+- The configured track is behavioral SWE internship practice; there is no coding-exercise runner or track selector.
+- Résumé uploads must be text-based PDFs under 4 MB. There is no OCR path for scanned résumés; suspicious layouts require review of extracted text.
+- Voice input uses browser recognition. Silence submission is based on transcript inactivity, not voice-activity detection, and barge-in is not implemented.
+- Posting imports are limited to the four supported providers; other jobs can be supplied as pasted text.
+- Google sign-in, password-reset/account-deletion screens, report sharing/export, and spoken report rewrites are not implemented.
+- Bank-anchor embedding checks, generated acknowledgment clips, and TTS prewarming remain unfinished. External service availability and quotas affect scoring, résumé ingestion, and generated speech.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- ROADMAP -->
+## Roadmap
+
+The checked items are implemented. Open items below reflect unfinished work already identified in the codebase.
+
+- [x] Email/password accounts, usernames, and member codes.
+- [x] Quick and Full adaptive interviews with résumé and job context.
+- [x] Voice and typed answers, live notes, and the 3D office/recruiter.
+- [x] Saved sessions, scorecards, transcripts, and progress trends.
+- [ ] Complete bank embedding generation and calibrate anchor checks.
+- [ ] Implement acknowledgment-clip generation.
+- [ ] Add TTS prewarming.
+- [ ] Add narration for report rewrites.
+
+Use [project issues][issues-url] to report problems or propose further work.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTRIBUTING -->
+## Contributing
+
+Propose a change through [project issues][issues-url] or a pull request. For an implementation change:
+
+1. Create a branch in your fork or checkout.
+2. Make the change and include relevant validation.
+3. Run the appropriate checks below.
+4. Open a pull request explaining the behavior, validation, and any remaining limitations.
+
+Read [AGENTS.md](./AGENTS.md) before changing code. For Next.js changes, consult the installed version's guides in `node_modules/next/dist/docs/`. Keep the interview policy deterministic, preserve RLS ownership checks, and keep API secrets server-side.
+
+### Checks and Developer Tools
+
+```bash
+npm test                 # Unit tests; no browser or live services
+npm run test:watch
+npm run lint
 npm run typecheck
 npm run build
+npm run rehearse         # Offline interview simulation with scripted evaluation
+npm run measure          # Offline full-mode pacing simulation
 ```
 
-The engine tests are the regression harness that protects the demo: band edges, each of the four topic-resolution rules, the difficulty bump, the hard cap at 10, plateau detection, plus two scripted sessions (all-weak and all-strong) that must produce different move types. If those pass, the kernel works.
+Tests cover the engine, turn/report orchestration, question plans, résumé helpers, job-link parsing, voice state machines/lip-sync, and frontend state/layout utilities. They do not replace a browser walkthrough or a live service check.
 
-## Working with an AI agent
+| Command | Requirements and effects |
+| --- | --- |
+| `npm run check:db` | Read-only Supabase connectivity/table checks. |
+| `npm run probe` | Live Gemini latency/model/embedding probes; also probes ElevenLabs when configured. Consumes API quota. |
+| `npm run probe:eval` | Live evaluator smoke tests; `PROBE_RUNS` controls repetitions. |
+| `npm run rehearse -- --live` | Adds a real Gemini run to the rehearsal. |
+| `npm run verify:live` | Requires a running app and service-role key. Creates a test user, uploads a résumé, runs an interview, and leaves test data. Supports `-- --quick`. |
+| `npm run cleanup:test -- --dry-run` | Preview matching test users/data. Omitting `--dry-run` deletes those records using the service-role key. |
+| `npm run prep:art` | Regenerates the public campus illustration from the design source. |
 
-This repo ships a Claude Code skill at [`.claude/skills/worktree-pr/`](./.claude/skills/worktree-pr/SKILL.md). Run `/worktree-pr` before letting an agent change anything: it branches into a separate worktree, verifies the build, and opens a PR rather than editing your checkout in place.
+Live verification accepts `VERIFY_BASE_URL`, `VERIFY_PDF`, and `VERIFY_MAX_TURNS`. Its default PDF fixture is not included in the repository, and some assertions expect that fixture's specific résumé facts; review the script before using another PDF.
 
-Rules for agents working here, beyond what is in `AGENTS.md`:
+`npm run embed:bank` and `npm run gen:acks` are unfinished utilities that currently throw. `data/bank-embeddings.json` is still a placeholder; none of these is required for the current interview flow.
 
-- The engine is **pure and tested**. Never let the LLM choose the move.
-- API keys stay server-only.
-- No raw JSON, model names or stack traces in the UI, ever.
-- **This is not the Next.js you know** (v16, breaking changes). Read `node_modules/next/dist/docs/` before writing routes. Dynamic `params` is a Promise, and `PageProps`, `RouteContext` and `LayoutProps` are generated types.
+### Code Layout
 
-## Scope
+```text
+src/app/(building)/       Pages sharing the persistent office scene
+src/app/api/              Authenticated route handlers
+src/app/dev/              Recruiter and book previews
+src/components/building/  Building state, camera, stations, and 3D scenes
+src/components/room/      Interview controls, recruiter, captions, and notepad
+src/components/desk/      Session ledger and reports folder
+src/components/           Setup, reports, settings, charts, and shared UI
+src/lib/engine/           Pure interview policy, topic bank, scoring types
+src/lib/interview/        Turn and report orchestration
+src/lib/ai/               Gemini adapter, evaluation, planning, embeddings
+src/lib/resume/           PDF parsing, redaction, chunking, ranking, storage
+src/lib/jd/               Job-description distillation
+src/lib/voice/            Recognition, synthesis, and lip-sync
+src/lib/frontend/         Adapters, preferences, pagination, and UI state helpers
+src/lib/supabase/         Cookie/browser clients and session refresh
+src/proxy.ts              Page-request auth-cookie refresh
+supabase/migrations/      Schema, RLS, grants, and database functions
+scripts/                  Local simulations, service probes, maintenance tools
+public/                   Recruiter model, illustrations, and 3D font data
+design/tools/             Recruiter asset rebuild tools
+docs/                     Original plans and implementation notes
+```
 
-**Not in the MVP:** Google sign-in, voice-activity detection and barge-in, a photoreal avatar, multiple tracks, server-side STT, mobile polish beyond "does not break", and sharing or exporting reports.
+### Documentation
 
-**Not what this is:** not a coding-interview judge, and **not a hiring signal** — scores are practice feedback and are never presented as predictions of a hiring outcome. Not a free-form chatbot either; you cannot steer the conversation, the state machine does.
+- [Product requirements](./docs/PRD-JobMe-MVP.md), [technical design](./docs/TechDesign-JobMe-MVP.md), and [backend implementation brief](./docs/Backend-Implementation-Brief.md) are historical planning documents. They contain superseded scaffold, auth, scoring, and pipeline details; use the current source and this README for implemented behavior.
+- [October 5 migration note](./docs/Migration-Note-2026-10-05.md) explains résumé coverage, ranking, and PDF extraction changes.
+- [Recruiter asset tools](./design/tools/README.md) describe rebuilding the avatar; [third-party notices](./THIRD_PARTY_NOTICES.md) cover the bundled model, animation, and lettering assets.
+- [AGENTS.md](./AGENTS.md) contains repository instructions. Before changing Next.js code, read the relevant guides in `node_modules/next/dist/docs/` for this installed version.
 
-## Docs
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-- [Product Requirements](./docs/PRD-JobMe-MVP.md) — journey, screens, acceptance criteria, states and boundaries
-- [Technical Design](./docs/TechDesign-JobMe-MVP.md) — architecture, data model, API contracts, latency plan, failure modes
+<!-- LICENSE -->
+## License
 
-Built on [`maxMyers13/hackathon-app`](https://github.com/maxMyers13/hackathon-app). Process from [`challengepost/learn-ai-basics`](https://github.com/challengepost/learn-ai-basics).
+This repository does not currently declare a project-wide license. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the notices covering bundled assets.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTACT -->
+## Contact
+
+GitHub: [@Ccleveland09ner](https://github.com/Ccleveland09ner)
+
+Project: [Ccleveland09ner/JobMe][project-url]
+
+Questions and bug reports: [project issues][issues-url]
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- ACKNOWLEDGMENTS -->
+## Acknowledgments
+
+Originally built for Devpost *Build With AI: Basics*.
+
+- [Best-README-Template](https://github.com/othneildrew/Best-README-Template) — the format used for this README.
+- [maxMyers13/hackathon-app](https://github.com/maxMyers13/hackathon-app) — the application starter.
+- [challengepost/learn-ai-basics](https://github.com/challengepost/learn-ai-basics) — the project process.
+- TalkingHead sample avatars, Adobe Mixamo animation, and Comic Neue lettering — see [third-party notices](./THIRD_PARTY_NOTICES.md).
+- [Shields.io](https://shields.io/) — technology badges.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[project-url]: https://github.com/Ccleveland09ner/JobMe
+[issues-url]: https://github.com/Ccleveland09ner/JobMe/issues
+[next-shield]: https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white
+[next-url]: https://nextjs.org/
+[react-shield]: https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
+[react-url]: https://react.dev/
+[typescript-shield]: https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white
+[typescript-url]: https://www.typescriptlang.org/
+[tailwind-shield]: https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white
+[tailwind-url]: https://tailwindcss.com/
+[three-shield]: https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=threedotjs&logoColor=white
+[three-url]: https://threejs.org/
+[supabase-shield]: https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white
+[supabase-url]: https://supabase.com/

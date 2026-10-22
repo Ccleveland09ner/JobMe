@@ -1,27 +1,24 @@
 "use client";
 
 /**
- * Which resume the interview draws on: the latest one on file, a new upload,
- * or none.
- *
- * Upload goes to the real POST /api/resume (multipart `file`, plus the pasted
- * job description as `roleText` so the coverage list is ranked against it).
- * The PDF is parsed and discarded server-side; only redacted text is kept.
- *
- * `layoutSuspect` is a hard requirement from the resume pipeline: a flattened
- * two-column PDF parses into plausible nonsense that only the candidate can
- * spot, so the extracted text must be confirmed before the resume is used.
+ * Which resume the interview uses: the latest on file, a new upload, or none.
+ * A suspect layout (e.g. two columns) must be confirmed before use. Reports
+ * the choice with how far an upload has got, so the sheet can hold until it
+ * is ready.
  */
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
-import { friendlyError } from "@/lib/frontend/adapters";
+import { uploadResume } from "@/lib/frontend/api";
+import type { ResumeState } from "@/lib/frontend/setup";
 import type { ResumeSummary, ResumeUploadResponse } from "@/lib/frontend/types";
 
-type Choice = "existing" | "upload" | "none";
+import { FieldError } from "./JobDescriptionField";
+
+type Choice = ResumeState["choice"];
 
 type Upload =
   | { status: "idle" }
@@ -34,51 +31,60 @@ export function ResumeSelector({
   latest,
   roleText,
   onChange,
+  error,
 }: {
   latest: ResumeSummary | null;
   /** Pasted job description at upload time, for coverage ranking. */
   roleText: string;
-  /** The resume id to use, or null for none / not ready yet. */
-  onChange: (resumeId: string | null) => void;
+  onChange: (state: ResumeState) => void;
+  /** Why the sheet can't turn yet. */
+  error?: string;
 }) {
   const id = useId();
   const [choice, setChoice] = useState<Choice>(latest ? "existing" : "none");
-  const [upload, setUpload] = useState<Upload>({ status: "idle" });
+  const [upload, setUploadState] = useState<Upload>({ status: "idle" });
+  // An upload can finish after the choice has moved on.
+  const chosen = useRef(choice);
+
+  function report(next: Choice, state: Upload) {
+    if (next === "existing" && latest) onChange({ choice: "existing", resumeId: latest.id });
+    else if (next === "upload")
+      onChange({ choice: "upload", status: state.status, resumeId: state.status === "ready" ? state.result.resumeId : null });
+    else onChange({ choice: "none" });
+  }
 
   function choose(next: Choice) {
     setChoice(next);
-    if (next === "existing") onChange(latest?.id ?? null);
-    else if (next === "upload") onChange(upload.status === "ready" ? upload.result.resumeId : null);
-    else onChange(null);
+    chosen.current = next;
+    report(next, upload);
+  }
+
+  function setUpload(state: Upload) {
+    setUploadState(state);
+    if (chosen.current === "upload") report("upload", state);
   }
 
   async function uploadFile(file: File) {
     setUpload({ status: "uploading" });
-    onChange(null);
     const form = new FormData();
     form.append("file", file);
     if (roleText.trim()) form.append("roleText", roleText.trim());
+    const offline = "We couldn't upload that file. Check your connection and try again.";
     try {
-      const res = await fetch("/api/resume", { method: "POST", body: form });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        setUpload({ status: "error", message: friendlyError(res.status, body) });
+      const uploaded = await uploadResume(form);
+      if (!uploaded.ok) {
+        setUpload({ status: "error", message: uploaded.offline ? offline : uploaded.message });
         return;
       }
-      const result = body as ResumeUploadResponse;
-      if (result.layoutSuspect) {
-        setUpload({ status: "review", result });
-      } else {
-        setUpload({ status: "ready", result });
-        onChange(result.resumeId);
-      }
+      const result = uploaded.data;
+      setUpload({ status: result.layoutSuspect ? "review" : "ready", result });
     } catch {
-      setUpload({ status: "error", message: "We couldn't upload that file. Check your connection and try again." });
+      setUpload({ status: "error", message: offline });
     }
   }
 
   const items =
-    upload.status === "ready" || upload.status === "review"
+    choice === "upload" && upload.status === "ready"
       ? upload.result.coverage
       : choice === "existing"
         ? (latest?.items ?? [])
@@ -114,6 +120,8 @@ export function ResumeSelector({
             type="file"
             accept="application/pdf,.pdf"
             disabled={upload.status === "uploading"}
+            aria-invalid={error && upload.status !== "review" ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void uploadFile(file);
@@ -136,16 +144,18 @@ export function ResumeSelector({
                 This PDF&rsquo;s layout was hard to read. Check that the text below matches your resume before
                 using it.
               </p>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-surface p-3 font-mono text-xs text-ink">
+              <pre
+                tabIndex={0}
+                aria-label="Text read from your resume"
+                className="max-h-24 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-surface p-3 font-mono text-xs text-ink"
+              >
                 {upload.result.extractedPreview}
               </pre>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  onClick={() => {
-                    setUpload({ status: "ready", result: upload.result });
-                    onChange(upload.result.resumeId);
-                  }}
+                  data-invalid={error ? "" : undefined}
+                  onClick={() => setUpload({ status: "ready", result: upload.result })}
                 >
                   This looks right
                 </Button>
@@ -157,6 +167,8 @@ export function ResumeSelector({
           )}
         </div>
       )}
+
+      <FieldError id={`${id}-error`} message={error} />
 
       {items.length > 0 && (
         <div className="flex flex-col gap-1">

@@ -1,36 +1,10 @@
 "use client";
 
 /**
- * Client orchestrator for the live interview. Owns the phase machine
- * (roomMachine.ts), the voice wiring and the network calls; every other room
- * component is presentational.
- * Ref: docs/TechDesign-JobMe-MVP.md > Interview Room (client orchestrator)
- *      docs/PRD-JobMe-MVP.md > Interview Room: Voice Loop
- *
- * One turn:
- *   1. speaking        the recruiter says the queued lines (speak()); mic disabled
- *   2. awaitingAnswer  mic enabled; the candidate presses the mic
- *   3. recording       live transcript; Send, or 10s without a new word
- *   4. submitting      playAck() at once, then POST /api/sessions/[id]/turns
- *   5. the notepad entry renders BEFORE the next question is spoken
- *   6. done            the wrap line is spoken, then on to ./report
- *
- * A 409 with a body `state` means a stale clientTurnSeq (a double submit, or
- * another tab answered). The room does not read that engine state: it asks
- * the server page for a fresh render, and the page re-keys this component on
- * the server's turnSeq, so it remounts from the authoritative history.
- *
- * Never render raw JSON, model names or stack traces. Ref: PRD > Notepad.
- *
- * Layout (user decision, 2026-10-18): the room is a conversation, not a
- * dashboard. Laid over the 3D room, full screen:
- *   - the interviewer's question in a speech bubble by her head;
- *   - the candidate's words in their own bubble, over the microphone at the
- *     centre bottom of the frame (PushToTalk);
- *   - the notepad lies on the table: picked up (the 3D notepad, or its
- *     "Notes" button) it opens as a notepad to flip through (HeldNotepad).
- *     It shows the same entries the always-on notepad did, no more.
- * Every effect, request and phase above is unchanged.
+ * The live interview's orchestrator: owns the phase machine (roomMachine.ts),
+ * the voice wiring and the network calls; the other room components are
+ * presentational. A 409 with `state` means a stale turn: the page re-renders
+ * from the server's history.
  */
 
 import Link from "next/link";
@@ -41,15 +15,16 @@ import { useBuilding } from "@/components/building/BuildingProvider";
 import { domVisible } from "@/components/building/heldMachine";
 import { LoadingState } from "@/components/common/LoadingState";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { friendlyError, noteFromResponse } from "@/lib/frontend/adapters";
+import { noteFromResponse } from "@/lib/frontend/adapters";
+import { submitTurn } from "@/lib/frontend/api";
 import { takeIntro } from "@/lib/frontend/handoff";
-import type { InputMode, NoteView, ProgressView, QuestionView, TurnResponse } from "@/lib/frontend/types";
+import type { InputMode, NoteView, ProgressView, QuestionView } from "@/lib/frontend/types";
 import { readMouth, readSpokenWord, readVisemes, unlockAudio } from "@/lib/frontend/voiceSession";
 import { isSttSupported } from "@/lib/voice/stt";
 import type { SttErrorCode } from "@/lib/voice/sttMachine";
 import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
 
-import type { MicControl, MicState } from "./Recruiter3D";
+import type { MicControl, MicState } from "./types";
 import { RecruiterStage } from "./RecruiterStage";
 import { Captions } from "./Captions";
 import { EndInterviewDialog } from "./EndInterviewDialog";
@@ -60,10 +35,7 @@ import { avatarState, initRoom, roomReducer } from "./roomMachine";
 import { SpeechBubble } from "./SpeechBubble";
 import { useVoiceAnswer } from "./useVoiceAnswer";
 
-/**
- * Why voice answers stopped, in plain words, by the recognizer's error.
- * Only fatal errors reach here (the rest restart quietly).
- */
+/** Why voice answers stopped, by the recognizer's fatal error. */
 const FALLBACK_REASON: Partial<Record<SttErrorCode, string>> = {
   "not-allowed":
     "Microphone access is blocked for this site. To use your voice, allow the microphone in the address bar's site settings and reload.",
@@ -92,8 +64,6 @@ const noSubscribe = () => () => {};
 async function sayLines(lines: string[]): Promise<void> {
   const text = lines.join(" ").trim();
   if (!text) return;
-  // Both voices publish a lip-sync timeline (lib/voice/tts.ts), which the
-  // recruiter's mouth and the captions read directly; nothing to set up here.
   await Promise.race([speak(text), new Promise((r) => setTimeout(r, SPEECH_TIMEOUT_MS))]);
 }
 
@@ -134,7 +104,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
       }),
   });
 
-  // ---- 1. Speaking: say the queued lines, then hand over the turn ---------
+  // Speaking: say the queued lines, then hand over the turn.
   const firstSpeech = useRef(true);
   useEffect(() => {
     if (state.phase !== "speaking") return;
@@ -156,7 +126,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
     };
   }, [state.phase, state.speech, props.turnSeq, sessionId]);
 
-  // ---- 6. Done: say the wrap line, then go to the scorecard ---------------
+  // Done: say the wrap line, then go to the scorecard.
   useEffect(() => {
     if (state.phase !== "done") return;
     let cancelled = false;
@@ -172,7 +142,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
   // Silence everything if the candidate leaves mid-sentence.
   useEffect(() => () => stopSpeaking(), []);
 
-  // ---- 4. Submitting: one request per SUBMIT, guarded by phase + seq ------
+  // Submitting: one request per SUBMIT, guarded by phase and seq.
   const submittedSeq = useRef<number | null>(null);
   /** Timings of the last voice answer, for a retry after a failed send. */
   const lastVoiceTimings = useRef<{ holdMs: number; captureMs?: number } | null>(null);
@@ -183,8 +153,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
     submittedSeq.current = clientTurnSeq;
 
     void (async () => {
-      // Collect the answer: a live recording is stopped and flushed; a typed
-      // answer, or a voice retry, is the draft as it stands.
+      // A live recording is stopped and flushed; otherwise send the draft.
       let transcript = state.draft.trim();
       let timings: { holdMs: number; captureMs?: number } = { holdMs: 0 };
       if (voice.isActive()) {
@@ -195,8 +164,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
       } else if (state.inputMode === "voice" && lastVoiceTimings.current) {
         timings = lastVoiceTimings.current;
       }
-      // Typed answers send no capture time; the server then reports wpm as
-      // null rather than a made-up rate.
+      // Typed answers send no capture time, so the server reports no wpm.
 
       if (!transcript) {
         submittedSeq.current = null;
@@ -210,38 +178,35 @@ export function InterviewRoom(props: InterviewRoomProps) {
       // Covers the scoring wait (~0.3s target). Silent if clips are missing.
       playAck();
 
+      const offline = () => {
+        submittedSeq.current = null;
+        dispatch({ type: "SUBMIT_FAILED", message: "We couldn't reach the server. Your answer is kept — try sending again." });
+      };
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/turns`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript, clientTurnSeq, ...timings }),
-        });
-        const body = await res.json().catch(() => null);
-
-        if (res.status === 409) {
-          if (body && typeof body === "object" && "state" in body) {
+        const outcome = await submitTurn(sessionId, { transcript, clientTurnSeq, ...timings });
+        switch (outcome.kind) {
+          case "stale":
             dispatch({ type: "STALE" });
             router.refresh();
-          } else {
+            return;
+          case "finished":
             // Already finished elsewhere: the scorecard is the right place.
             router.push(reportHref);
-          }
-          return;
+            return;
+          case "failed":
+            submittedSeq.current = null;
+            dispatch({ type: "SUBMIT_FAILED", message: outcome.message });
+            return;
+          case "offline":
+            return offline();
+          case "nudge":
+            submittedSeq.current = null;
+            dispatch({ type: "NUDGE", line: outcome.line });
+            return;
         }
-        if (!res.ok) {
-          submittedSeq.current = null;
-          dispatch({ type: "SUBMIT_FAILED", message: friendlyError(res.status, body) });
-          return;
-        }
-
-        const turn = body as TurnResponse;
-        if (turn.kind === "nudge") {
-          submittedSeq.current = null;
-          dispatch({ type: "NUDGE", line: turn.line });
-          return;
-        }
+        const { turn } = outcome;
         lastVoiceTimings.current = null;
-        // 5. The note renders now, before the next question is spoken.
+        // The note renders before the next question is spoken.
         dispatch({
           type: "TURN_OK",
           note: noteFromResponse(turn.notepad),
@@ -259,18 +224,14 @@ export function InterviewRoom(props: InterviewRoomProps) {
           progress: turn.progress,
         });
       } catch {
-        submittedSeq.current = null;
-        dispatch({
-          type: "SUBMIT_FAILED",
-          message: "We couldn't reach the server. Your answer is kept — try sending again.",
-        });
+        offline();
       }
     })();
     // `voice` is stable in behaviour; its identity changes every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, state.turnSeq, state.draft, state.inputMode, sessionId, router, reportHref]);
 
-  // ---- Controls -------------------------------------------------------------
+  // Controls.
   const onDraftChange = useCallback((text: string) => dispatch({ type: "DRAFT_CHANGED", text }), []);
   const onSubmit = useCallback(() => {
     unlockAudio();
@@ -278,8 +239,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
   }, []);
   const startVoice = voice.start;
   const onRecordStart = useCallback(() => {
-    // Only on the candidate's turn — the machine refuses otherwise, and the
-    // recognizer must not open behind a refused transition.
+    // Only on the candidate's turn, so the recognizer never opens behind a refused transition.
     if (state.phase !== "awaitingAnswer" || state.inputMode !== "voice") return;
     unlockAudio();
     dispatch({ type: "RECORD_START" });
@@ -303,9 +263,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
     [micState, onSubmit, onRecordStart],
   );
 
-  // ---- The notepad on the table -----------------------------------------
-  // In the building it is a held object (heldMachine.ts): picked up off the
-  // table, then opened. Without the building, it just opens.
+  // The notepad: a held object in the building (heldMachine.ts); otherwise it just opens.
   const building = useBuilding();
   const dispatchHeld = building?.dispatchHeld;
   const setAction = building?.setAction;

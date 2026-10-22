@@ -1,13 +1,8 @@
 "use client";
 
 /**
- * Last-resort boundary for anything a segment boundary did not catch.
- *
- * Next 16.3: the recovery prop is `retry` (re-fetches and re-renders), not
- * the older `reset`. Ref: node_modules/next/dist/docs/.../file-conventions/error.md
- *
- * The error itself is logged, never shown: messages from a server render can
- * carry internals, and the candidate needs a way forward, not a stack.
+ * Last-resort error boundary. The error is logged, never shown.
+ * Next 16.3 names the recovery prop `retry`, not `reset`.
  */
 
 import Link from "next/link";

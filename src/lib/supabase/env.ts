@@ -1,10 +1,6 @@
 /**
- * Supabase connection values, tolerant of both key names — "anon key" was
- * renamed to "publishable key", and they are the same value.
- *
- * Both are referenced as literals on purpose: Next inlines
- * `process.env.NEXT_PUBLIC_*` by textual substitution, so a computed lookup
- * would resolve to undefined in the browser bundle.
+ * Supabase connection values (the anon key is now the publishable key). Literal
+ * process.env references, since Next inlines NEXT_PUBLIC_* textually.
  */
 
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;

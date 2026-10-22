@@ -1,7 +1,4 @@
-/**
- * Indeterminate activity. Decorative — the surrounding text says what is
- * happening, so this is hidden from assistive tech.
- */
+/** Indeterminate activity; decorative (the text beside it says what's happening). */
 
 export function Spinner({ className = "" }: { className?: string }) {
   return (

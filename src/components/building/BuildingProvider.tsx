@@ -1,16 +1,8 @@
 "use client";
 
 /**
- * The building's state, shared by the 3D scene and the pages inside it.
- *
- * Pages tell the building where the user is going (walkTo) and when the
- * request a walk is covering has finished (release / fail). The scene reads
- * where the camera should be. Neither knows anything about the other's
- * internals — see buildingMachine.ts.
- *
- * Outside the (building) route group there is no provider, and
- * useBuilding() returns null: every caller treats that as "no building",
- * so the same components work in both places.
+ * The building's state, shared by the 3D scene and the pages. Outside the
+ * (building) route group useBuilding() returns null.
  */
 
 import { usePathname } from "next/navigation";
@@ -22,12 +14,13 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from "react";
 
-import type { Speaker } from "@/components/room/Recruiter3D";
+import type { Speaker } from "@/components/room/types";
 import { webglAvailable } from "@/lib/frontend/webgl";
 
 import { buildingReducer, initialBuilding, type BuildingEvent, type BuildingState } from "./buildingMachine";
@@ -52,28 +45,38 @@ export interface Building {
   fail: (message: string) => void;
   /** The interviewer's face, read every frame by the scene. */
   speaker: RefObject<Speaker>;
-  /** The room drives the interviewer through this, without re-rendering the scene. */
+  /** Sets the speaker without re-rendering the scene. */
   setSpeaker: (speaker: Speaker) => void;
   /** Read every frame by the camera. */
   inset: RefObject<ViewInset>;
   setInset: (inset: ViewInset) => void;
-  /** The canvas renders on demand; CameraRig registers how to ask it for a frame. */
+  /** CameraRig registers how to request a frame (on-demand rendering). */
   setRedraw: (redraw: () => void) => void;
 
-  /** What the user is holding (heldMachine.ts), and how to change it. */
+  /** What the user is holding (heldMachine.ts). */
   held: HeldState;
   dispatchHeld: (event: HeldEvent) => void;
-  /**
-   * Things the user can do with an object, by name ("ledger", "reports",
-   * "settings", "notepad"). The page registers them; a click on the 3D object
-   * and a click on its DOM twin run the same one.
-   */
+  /** Named object actions; the 3D object and its DOM twin run the same one. */
   setAction: (name: string, run: (() => void) | null) => void;
   activate: (name: string) => void;
   hasAction: (name: string) => boolean;
   /** True while the camera is travelling; objects wait for it to settle. */
   cameraMoving: RefObject<boolean>;
-  setCameraMoving: (moving: boolean) => void;
+  /** The station the camera is resting at, or null while it moves. */
+  cameraAt: Station | null;
+  setCameraAt: (at: Station | null) => void;
+
+  /** What the user is pointing at, by action name (pointer or keyboard focus). */
+  hovered: string | null;
+  setHovered: (name: string | null) => void;
+
+  /** DOM elements the scene pins onto 3D rectangles each frame (ScreenAnchor). */
+  anchors: RefObject<Map<string, HTMLElement>>;
+  setAnchor: (name: string, el: HTMLElement | null) => void;
+
+  /** A close-up at the current station (a note on the board), or null. */
+  focus: string | null;
+  setFocus: (name: string | null) => void;
 }
 
 const BuildingContext = createContext<Building | null>(null);
@@ -84,10 +87,17 @@ export function useBuilding(): Building | null {
 
 const noSubscribe = () => () => {};
 
+/** Whether the 3D building shows; null until hydrated, so late-hydrating pages match the server HTML. */
+export function useShow3D(): boolean | null {
+  const building = useContext(BuildingContext);
+  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
+  return hydrated ? (building?.show3D ?? false) : null;
+}
+
 export function BuildingProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [state, dispatch] = useReducer(buildingReducer, pathname, (p) => initialBuilding(stationForPath(p)));
-  // false on the server and before hydration: the illustrated building renders first.
+  // false on the server and before hydration.
   const canUseWebGL = useSyncExternalStore(noSubscribe, webglAvailable, () => false);
 
   const speaker = useRef<Speaker>({ state: "idle" });
@@ -113,8 +123,26 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
   const activate = useCallback((name: string) => actions.current.get(name)?.(), []);
   const hasAction = useCallback((name: string) => actions.current.has(name), []);
   const cameraMoving = useRef(false);
-  const setCameraMoving = useCallback((moving: boolean) => {
-    cameraMoving.current = moving;
+  // The camera starts at rest at the first route's station (CameraRig).
+  const [cameraAt, setCameraAtState] = useState<Station | null>(() => stationForPath(pathname));
+  const setCameraAt = useCallback((at: Station | null) => {
+    cameraMoving.current = at === null;
+    setCameraAtState(at);
+  }, []);
+
+  // Keyed by path, so navigation clears them.
+  const [pointing, setPointing] = useState<{ path: string; name: string | null }>({ path: pathname, name: null });
+  const hovered = pointing.path === pathname ? pointing.name : null;
+  const setHovered = useCallback((name: string | null) => setPointing({ path: window.location.pathname, name }), []);
+  const [closeUp, setCloseUp] = useState<{ path: string; name: string | null }>({ path: pathname, name: null });
+  const focus = closeUp.path === pathname ? closeUp.name : null;
+  const setFocus = useCallback((name: string | null) => setCloseUp({ path: window.location.pathname, name }), []);
+
+  const anchors = useRef(new Map<string, HTMLElement>());
+  const setAnchor = useCallback((name: string, el: HTMLElement | null) => {
+    if (el) anchors.current.set(name, el);
+    else anchors.current.delete(name);
+    redraw.current();
   }, []);
 
   useEffect(() => {
@@ -156,9 +184,37 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
       activate,
       hasAction,
       cameraMoving,
-      setCameraMoving,
+      cameraAt,
+      setCameraAt,
+      hovered,
+      setHovered,
+      anchors,
+      setAnchor,
+      focus,
+      setFocus,
     }),
-    [state, canUseWebGL, show3D, walkTo, release, fail, setSpeaker, setInset, setRedraw, held, setAction, activate, hasAction, setCameraMoving],
+    [
+      state,
+      canUseWebGL,
+      show3D,
+      walkTo,
+      release,
+      fail,
+      setSpeaker,
+      setInset,
+      setRedraw,
+      held,
+      setAction,
+      activate,
+      hasAction,
+      cameraAt,
+      setCameraAt,
+      hovered,
+      setHovered,
+      setAnchor,
+      focus,
+      setFocus,
+    ],
   );
 
   return <BuildingContext.Provider value={value}>{children}</BuildingContext.Provider>;
