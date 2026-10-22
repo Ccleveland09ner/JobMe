@@ -1,7 +1,13 @@
-/** Core engine types, with no runtime dependencies. */
+/**
+ * Core engine types. Pure, no runtime dependencies — every engine, AI and UI
+ * module types against these.
+ *
+ * Ref: TechDesign > Data Model, > Adaptive Engine; docs/Scoring-Rubric.md
+ */
 
-/** The topic bank. A session covers a subset, chosen by mode and resume. */
+/** The topic bank. A session covers a subset, chosen by role and mode. */
 export type TopicId =
+  | "motivation"
   | "teamwork"
   | "conflict"
   | "learning_fast"
@@ -12,9 +18,13 @@ export type TopicId =
   | "prioritisation"
   | "process_improvement"
   | "pressure"
-  | "technical_challenge";
+  | "technical_challenge"
+  | "technical_knowledge"
+  | "product_sense"
+  | "data_reasoning";
 
 export const TOPIC_IDS: readonly TopicId[] = [
+  "motivation",
   "teamwork",
   "conflict",
   "learning_fast",
@@ -26,63 +36,244 @@ export const TOPIC_IDS: readonly TopicId[] = [
   "process_improvement",
   "pressure",
   "technical_challenge",
+  "technical_knowledge",
+  "product_sense",
+  "data_reasoning",
 ] as const;
 
-/** Scoring dimensions. STAR is scored per component, so the notepad can say "no Result". */
-export type StarDimension = "situation" | "task" | "action" | "result";
+/**
+ * What kind of question was asked, which decides the rubric it is scored on.
+ * A story, a technical explanation and "why this role" show competence in
+ * different ways; scoring all three on one STAR rubric marked a correct
+ * technical explanation down for having no Situation.
+ */
+export type QuestionKind =
+  | "behavioral"
+  | "resume"
+  | "technical"
+  | "problem_solving"
+  | "motivational";
 
-export type Dimension =
-  | StarDimension
-  | "specificity"
-  | "impact"
-  | "ownership"
-  | "relevance";
-
-export const STAR_DIMENSIONS: readonly StarDimension[] = [
-  "situation",
-  "task",
-  "action",
-  "result",
+export const QUESTION_KINDS: readonly QuestionKind[] = [
+  "behavioral",
+  "resume",
+  "technical",
+  "problem_solving",
+  "motivational",
 ] as const;
 
-export const DIMENSIONS: readonly Dimension[] = [
-  ...STAR_DIMENSIONS,
-  "specificity",
-  "impact",
-  "ownership",
-  "relevance",
-] as const;
+/** Kept beside TopicId rather than in the bank, so pure modules can read it. */
+export const TOPIC_KINDS: Record<TopicId, QuestionKind> = {
+  motivation: "motivational",
+  teamwork: "behavioral",
+  conflict: "behavioral",
+  learning_fast: "behavioral",
+  handling_failure: "behavioral",
+  leadership: "behavioral",
+  problem_solving: "behavioral",
+  persuasion: "behavioral",
+  prioritisation: "behavioral",
+  process_improvement: "behavioral",
+  pressure: "behavioral",
+  technical_challenge: "behavioral",
+  technical_knowledge: "technical",
+  product_sense: "problem_solving",
+  data_reasoning: "problem_solving",
+};
 
-/** Tie-break order for primary_gap: what a follow-up gains most (ownership, outcome) first. */
-export const GAP_PRIORITY: readonly Dimension[] = [
-  "ownership",
-  "impact",
-  "result",
-  "action",
-  "specificity",
-  "task",
-  "situation",
-  "relevance",
-] as const;
-
-/** Every dimension scored 1-4. */
-export type Scores = Record<Dimension, number>;
-
-/** Banding uses the STAR components, not all eight, to keep `great` reachable. */
-export function starRollup(scores: Scores): number {
-  const total = STAR_DIMENSIONS.reduce((sum, d) => sum + scores[d], 0);
-  return total / STAR_DIMENSIONS.length;
+/**
+ * The rubric a question is scored on. A resume-led thread is about one item
+ * on the resume, whatever competency it lands on; anything else follows its
+ * topic. An unknown topic (a legacy row) scores as behavioural.
+ */
+export function questionKind(q: {
+  topic: string | null | undefined;
+  source?: string | null;
+}): QuestionKind {
+  if (q.source === "resume") return "resume";
+  return TOPIC_KINDS[q.topic as TopicId] ?? "behavioral";
 }
 
-/** The five values banding is computed over. Not persisted — derived. */
-export function bandingValues(scores: Scores): number[] {
-  return [
-    starRollup(scores),
-    scores.specificity,
-    scores.impact,
-    scores.ownership,
-    scores.relevance,
-  ];
+/**
+ * Scoring dimensions. Each kind scores a weighted SUBSET (see WEIGHTS), so a
+ * technical explanation is never marked down for lacking an outcome, and a
+ * story is never marked down for lacking technical accuracy.
+ *
+ * STAR is deliberately not a dimension. It is one good way to tell a story;
+ * the rubric scores what a story shows (contribution, reasoning, outcome)
+ * however the candidate orders it.
+ */
+export type Dimension =
+  | "relevance"
+  | "specificity"
+  | "ownership"
+  | "reasoning"
+  | "outcome"
+  | "accuracy"
+  | "communication";
+
+export const DIMENSIONS: readonly Dimension[] = [
+  "relevance",
+  "specificity",
+  "ownership",
+  "reasoning",
+  "outcome",
+  "accuracy",
+  "communication",
+] as const;
+
+/**
+ * The rubric before 2026-10: four separate STAR components plus Impact.
+ * Turns and sessions persisted then still carry these keys, so they stay
+ * readable and displayable; nothing new is ever scored on them.
+ */
+export type LegacyDimension = "situation" | "task" | "action" | "result" | "impact";
+
+export const LEGACY_DIMENSIONS: readonly LegacyDimension[] = [
+  "situation",
+  "task",
+  "action",
+  "result",
+  "impact",
+] as const;
+
+/** Any key a stored score set may carry. */
+export type AnyDimension = Dimension | LegacyDimension;
+
+/** Display order for any score set, current or legacy. */
+export const DISPLAY_DIMENSIONS: readonly AnyDimension[] = [
+  "situation",
+  "task",
+  "action",
+  "result",
+  ...DIMENSIONS,
+  "impact",
+] as const;
+
+/**
+ * Weight of each dimension per question kind; each row sums to 1.
+ *
+ * Grounded in structured-interview practice rather than tuned to a target
+ * score: what shows the competency (contribution, reasoning, evidence,
+ * correctness) carries the weight. Communication is kept light because a
+ * speech transcript is a noisy signal of it, and it must never become a proxy
+ * for accent or grammar. Ref: docs/Scoring-Rubric.md
+ */
+export const WEIGHTS: Record<QuestionKind, Partial<Record<Dimension, number>>> = {
+  behavioral: {
+    relevance: 0.15,
+    specificity: 0.2,
+    ownership: 0.2,
+    reasoning: 0.25,
+    outcome: 0.15,
+    communication: 0.05,
+  },
+  resume: {
+    relevance: 0.15,
+    specificity: 0.2,
+    ownership: 0.2,
+    reasoning: 0.25,
+    outcome: 0.15,
+    communication: 0.05,
+  },
+  technical: {
+    relevance: 0.15,
+    accuracy: 0.35,
+    reasoning: 0.25,
+    specificity: 0.15,
+    communication: 0.1,
+  },
+  problem_solving: {
+    relevance: 0.1,
+    reasoning: 0.35,
+    accuracy: 0.2,
+    specificity: 0.2,
+    communication: 0.15,
+  },
+  motivational: {
+    relevance: 0.25,
+    specificity: 0.35,
+    reasoning: 0.25,
+    communication: 0.15,
+  },
+};
+
+/** The dimensions a kind is scored on, in DIMENSIONS order. */
+export function dimensionsFor(kind: QuestionKind): Dimension[] {
+  return DIMENSIONS.filter((d) => WEIGHTS[kind][d] !== undefined);
+}
+
+/**
+ * Never chased by a follow-up and never the reason an answer misses `great`:
+ * "speak more clearly" is not an interview question, and a transcript is too
+ * noisy a signal of delivery to gate a band on.
+ */
+export const NEVER_A_GAP: ReadonlySet<Dimension> = new Set(["communication"]);
+
+/**
+ * Tie-break order for `primary_gap`, computed in code so it never drifts from
+ * the scores. Ordered by what a follow-up most usefully adds: the candidate's
+ * own part and correctness first, then their reasoning and the outcome.
+ * Ownership and accuracy never apply to the same kind, so never compete.
+ */
+export const GAP_PRIORITY: readonly Dimension[] = [
+  "ownership",
+  "accuracy",
+  "reasoning",
+  "outcome",
+  "specificity",
+  "relevance",
+] as const;
+
+/** One answer's scores, 1-4: only the dimensions its kind is scored on. */
+export type Scores = Partial<Record<Dimension, number>>;
+
+/** A persisted score set, which may predate the current rubric. */
+export type StoredScores = Partial<Record<AnyDimension, number>>;
+
+/** True when a stored score set was written by the pre-2026-10 STAR rubric. */
+export function isLegacyScores(scores: StoredScores): boolean {
+  return typeof scores.situation === "number";
+}
+
+/**
+ * The single figure an answer's band and every headline number are built
+ * from: the kind's weighted mean over the dimensions present. Dividing by the
+ * weight actually present stops a missing dimension counting as zero.
+ *
+ * Legacy rows keep the formula they were banded with (the STAR roll-up beside
+ * four other dimensions), so an old session's numbers do not move.
+ */
+export function weightedScore(
+  scores: StoredScores,
+  kind: QuestionKind,
+): number | null {
+  if (isLegacyScores(scores)) return legacyScore(scores);
+
+  let total = 0;
+  let weight = 0;
+  for (const d of DIMENSIONS) {
+    const w = WEIGHTS[kind][d];
+    const s = scores[d];
+    if (w === undefined || typeof s !== "number") continue;
+    total += w * s;
+    weight += w;
+  }
+  // Rounded so float noise cannot move a band: an answer worth exactly 3.5
+  // must not come out as 3.4999999999999996 and miss `great`.
+  return weight > 0 ? Math.round((total / weight) * 1e6) / 1e6 : null;
+}
+
+function legacyScore(s: StoredScores): number | null {
+  const star = ["situation", "task", "action", "result"] as const;
+  const values = [
+    star.reduce((sum, d) => sum + (s[d] ?? 0), 0) / star.length,
+    s.specificity,
+    s.impact,
+    s.ownership,
+    s.relevance,
+  ].filter((v): v is number => typeof v === "number");
+  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
 /** Answer quality band. Drives the next move. */

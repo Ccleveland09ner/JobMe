@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { fallbackPlan } from "../ai/question-plan";
 import { questionFor } from "../engine/bank";
 import { FULL_QUESTION_CAP_MAX, type ResumeItem, type TopicId } from "../engine/types";
 import { JobLinkError, type JobPosting } from "../job-posting";
-import type { CreateSessionBody, QuestionPlan } from "../schemas";
+import type { CreateSessionBody } from "../schemas";
 import { excerptFor, FULL_TOPICS, QUICK_TOPICS, startInterview, type NewSession, type StartDeps, type StartResume } from "./start";
 
-const ALL_TOPICS: TopicId[] = ["teamwork", "conflict", "pressure", "leadership", "learning_fast", "persuasion"];
+const DEFAULTS: TopicId[] = ["motivation", "teamwork", "conflict", "pressure", "leadership", "learning_fast"];
+const NOT_TAILORED = "I couldn't tailor every question";
+const JOB_TEXT = "Acme is hiring a backend intern to build the payment APIs that our merchants rely on every day.";
 const body = (patch: Partial<CreateSessionBody> = {}): CreateSessionBody => ({ displayName: "Kazu", mode: "quick", ...patch });
 const item = (i: number): ResumeItem => ({ id: `item-${i}`, kind: "role", label: `Role ${i}`, chunkSeqs: [i], relevanceToRole: 1, covered: false });
+const posting = (patch: Partial<JobPosting> = {}): JobPosting =>
+  ({ provider: "lever", title: "Backend Intern", company: "Acme", companyInferred: false, text: JOB_TEXT, ...patch }) as JobPosting;
 
 function deps(patch: Partial<StartDeps> & { resume?: StartResume | null; insert?: { id: string } | { error: string } } = {}) {
   const saved: NewSession[] = [];
@@ -25,25 +30,30 @@ function deps(patch: Partial<StartDeps> & { resume?: StartResume | null; insert?
     fetchPosting: vi.fn(async (): Promise<JobPosting> => {
       throw new Error("no posting expected");
     }),
-    generatePlan: vi.fn(async () => null),
-    pickTopics: (n) => ALL_TOPICS.slice(0, n),
+    // What generateQuestionPlan returns without the model.
+    generatePlan: vi.fn<StartDeps["generatePlan"]>(async (inputs) => fallbackPlan(inputs)),
+    defaultTopics: vi.fn<StartDeps["defaultTopics"]>((_family, n) => DEFAULTS.slice(0, n)),
     ...patch,
   };
   return { deps: all, saved, profiles };
 }
 
 describe("startInterview", () => {
-  it("opens a quick interview on the bank's first question and saves it", async () => {
+  it("opens a quick interview on the first default topic and saves it", async () => {
     const { deps: d, saved, profiles } = deps();
-    const outcome = await startInterview(body({ targetRole: "Backend Intern" }), d);
+    const outcome = await startInterview(body(), d);
     expect(outcome.kind).toBe("created");
     if (outcome.kind !== "created") return;
     expect(outcome.sessionId).toBe("session-1");
-    expect(outcome.state.topics).toHaveLength(QUICK_TOPICS);
-    expect(outcome.firstQuestion).toEqual({ text: questionFor("teamwork", 1), type: "opening", topic: "teamwork", difficulty: 1, source: "bank" });
-    expect(outcome.plan).toBeNull();
-    expect(profiles).toEqual([{ display_name: "Kazu", target_role: "Backend Intern" }]);
-    expect(saved[0]).toMatchObject({ role_text: null, job_url: null, resume_id: null, question_count: 1 });
+    expect(outcome.state.topics).toEqual(DEFAULTS.slice(0, QUICK_TOPICS));
+    expect(outcome.firstQuestion).toEqual({ text: questionFor("motivation", 1), type: "opening", topic: "motivation", difficulty: 1, source: "bank" });
+    expect(outcome.personalized).toBe(false);
+    // Nothing to tailor to, so nothing to apologise for.
+    expect(outcome.introLine).toMatch(/^Thanks for making the time, Kazu\./);
+    expect(outcome.introLine).not.toContain(NOT_TAILORED);
+    // No title given: none is written over the one already saved.
+    expect(profiles).toEqual([{ display_name: "Kazu" }]);
+    expect(saved[0]).toMatchObject({ role_text: null, job_url: null, resume_id: null, question_count: 1, question_plan: outcome.plan });
   });
 
   it("draws more topics for a full interview", async () => {
@@ -52,11 +62,59 @@ describe("startInterview", () => {
     expect(outcome.kind === "created" && outcome.state.topics).toHaveLength(FULL_TOPICS);
   });
 
-  it("asks the planned opening when the plan has one", async () => {
-    const plan: QuestionPlan = { version: 1, role: null, topics: { teamwork: { l1: "Planned opening?" } }, resume: {} };
-    const { deps: d } = deps({ generatePlan: async () => plan });
-    const outcome = await startInterview(body(), d);
-    expect(outcome.kind === "created" && outcome.firstQuestion.text).toBe("Planned opening?");
+  it("chooses topics and the level from the job title", async () => {
+    const { deps: d, profiles } = deps();
+    await startInterview(body({ targetRole: "Backend Engineering Intern" }), d);
+    expect(d.defaultTopics).toHaveBeenCalledWith("software", QUICK_TOPICS);
+    expect(vi.mocked(d.generatePlan).mock.calls[0][0]).toMatchObject({ family: "software", seniority: "intern", targetRole: "Backend Engineering Intern" });
+    expect(profiles).toEqual([{ display_name: "Kazu", target_role: "Backend Engineering Intern" }]);
+  });
+
+  it("says so when job details were given but the plan couldn't use them", async () => {
+    const { deps: d } = deps();
+    const outcome = await startInterview(body({ targetRole: "Product Manager" }), d);
+    if (outcome.kind !== "created") throw new Error(outcome.kind);
+    expect(outcome.personalized).toBe(false);
+    expect(outcome.introLine).toContain(NOT_TAILORED);
+  });
+
+  it("follows the plan's topic order, resume order and planned opening", async () => {
+    const items = [item(0), item(1), item(2)];
+    const generatePlan = vi.fn<StartDeps["generatePlan"]>(async (inputs) => ({
+      ...fallbackPlan(inputs),
+      topics: { motivation: { l1: "What draws you to payments work at Acme?" } },
+      order: ["motivation", "technical_knowledge", "teamwork", "conflict"],
+      resumeOrder: ["item-2"],
+      job: { ...fallbackPlan(inputs).job!, generated: true },
+    }));
+    const { deps: d } = deps({ generatePlan, resume: { coverage_items: items, resume_facts: null, role_profile: null, resume_chunks: [] } });
+    const outcome = await startInterview(body({ targetRole: "Backend Intern", resumeId: "6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f" }), d);
+    if (outcome.kind !== "created") throw new Error(outcome.kind);
+    expect(outcome.state.topics).toEqual(["motivation", "technical_knowledge", "teamwork", "conflict"]);
+    expect(outcome.state.resumeItems.map((i) => i.id)).toEqual(["item-2", "item-0", "item-1"]);
+    expect(outcome.firstQuestion.text).toBe("What draws you to payments work at Acme?");
+    expect(outcome.personalized).toBe(true);
+    expect(outcome.introLine).not.toContain(NOT_TAILORED);
+  });
+
+  it("prefers a stated company to one read from the posting link", async () => {
+    const fromLink = posting({ company: "Greenhouse Board", companyInferred: true });
+    const stated = deps({ fetchPosting: async () => fromLink });
+    await startInterview(body({ jobUrl: "https://boards.greenhouse.io/acme/jobs/1", company: "Acme" }), stated.deps);
+    expect(vi.mocked(stated.deps.generatePlan).mock.calls[0][0]).toMatchObject({ company: "Acme", companyInferred: false });
+
+    const guessed = deps({ fetchPosting: async () => fromLink });
+    const outcome = await startInterview(body({ jobUrl: "https://boards.greenhouse.io/acme/jobs/1" }), guessed.deps);
+    expect(vi.mocked(guessed.deps.generatePlan).mock.calls[0][0]).toMatchObject({ company: "Greenhouse Board", companyInferred: true, targetRole: "Backend Intern", jobText: JOB_TEXT });
+    expect(outcome.kind === "created" && outcome.posting).toBe(fromLink);
+    expect(guessed.saved[0]).toMatchObject({ role_text: JOB_TEXT, job_url: "https://boards.greenhouse.io/acme/jobs/1" });
+  });
+
+  it("treats a description too short to be one as none", async () => {
+    const { deps: d, saved } = deps();
+    await startInterview(body({ roleText: "asdf" }), d);
+    expect(vi.mocked(d.generatePlan).mock.calls[0][0].jobText).toBeNull();
+    expect(saved[0].role_text).toBeNull();
   });
 
   it("counts every resume item, even ones a full interview can't reach", async () => {
@@ -69,11 +127,10 @@ describe("startInterview", () => {
   });
 
   it("plans only the first few resume items in a quick interview", async () => {
-    const generatePlan = vi.fn<StartDeps["generatePlan"]>(async () => null);
     const items = Array.from({ length: 7 }, (_, i) => item(i));
-    const { deps: d } = deps({ generatePlan, resume: { coverage_items: items, resume_facts: null, role_profile: null, resume_chunks: [] } });
+    const { deps: d } = deps({ resume: { coverage_items: items, resume_facts: null, role_profile: null, resume_chunks: [] } });
     await startInterview(body({ resumeId: "6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f" }), d);
-    expect(generatePlan.mock.calls[0][0].resumeItems).toHaveLength(4);
+    expect(vi.mocked(d.generatePlan).mock.calls[0][0].resumeItems).toHaveLength(4);
   });
 
   it("reports a posting link it can't read", async () => {

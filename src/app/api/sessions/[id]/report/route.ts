@@ -6,13 +6,15 @@
 import { NextResponse } from "next/server";
 
 import { getUserOrNull } from "@/lib/auth";
-import type { Dimension, Scores } from "@/lib/engine/types";
+import type { StoredScores } from "@/lib/engine/types";
 import { isSessionId, notFound, serverError, unauthorized } from "@/lib/http";
 import {
   runReport,
   type ReportStore,
   type StoredReport,
 } from "@/lib/interview/report";
+import { formatRoleForPrompt } from "@/lib/jd/distill";
+import { QuestionPlan } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
 /** One model call plus a few queries; the default can be too tight on Vercel. */
@@ -44,13 +46,20 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
     async loadSession() {
       const { data, error } = await supabase
         .from("interview_sessions")
-        .select("status, overall_scores, ended_at")
+        .select("status, overall_scores, ended_at, role_text, question_plan")
         .eq("id", id)
         .maybeSingle();
       if (error) throw new Error(`load session: ${error.message}`);
       if (!data) return null;
       endedAt = data.ended_at ?? null;
-      return { status: data.status, overallScores: data.overall_scores ?? null };
+      // The role as the turns saw it, so feedback is judged against the same job.
+      const plan = QuestionPlan.safeParse(data.question_plan);
+      const role = plan.success ? plan.data.role : null;
+      return {
+        status: data.status,
+        overallScores: data.overall_scores ?? null,
+        roleText: role ? formatRoleForPrompt(role) : (data.role_text ?? null),
+      };
     },
 
     async loadReport() {
@@ -73,7 +82,7 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
       const { data, error } = await supabase
         .from("turns")
         .select(
-          "id, seq, question_text, answer_transcript, scores, primary_gap, capture_ms",
+          "id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, primary_gap, capture_ms",
         )
         .eq("session_id", id)
         .order("seq", { ascending: true });
@@ -81,10 +90,13 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
       return (data ?? []).map((row) => ({
         id: row.id,
         seq: row.seq,
+        questionType: row.question_type ?? null,
+        topic: row.topic ?? null,
+        source: row.question_source ?? null,
         questionText: row.question_text ?? "",
         answerTranscript: row.answer_transcript ?? "",
-        scores: (row.scores ?? null) as Scores | null,
-        primaryGap: (row.primary_gap ?? null) as Dimension | null,
+        scores: (row.scores ?? null) as StoredScores | null,
+        primaryGap: row.primary_gap ?? null,
         captureMs: row.capture_ms ?? null,
       }));
     },

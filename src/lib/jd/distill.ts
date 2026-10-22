@@ -8,8 +8,11 @@ import { Type } from "@google/genai";
 import { LlmError, generateJson } from "@/lib/ai/llm";
 import { asUntrustedData } from "@/lib/ai/prompts";
 
-/** Mirrors the PRD's cap on `interview_sessions.role_text`. */
-export const MAX_JD_CHARS = 2000;
+/**
+ * Mirrors LIMITS.roleText. Was 2000, which cut most real job descriptions
+ * before their requirements, so ranking ran on the company blurb.
+ */
+export const MAX_JD_CHARS = 8000;
 
 export interface RoleProfile {
   title: string;

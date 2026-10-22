@@ -1,16 +1,16 @@
 # JobMe architecture
 
-How the code is organised, which way dependencies point, what the data layer guarantees, and where new code goes. The product itself is described in `PRD-JobMe-MVP.md` and `TechDesign-JobMe-MVP.md`.
+How the code is organised, which way dependencies point, what the data layer guarantees, and where new code goes. The product itself is described in `PRD-JobMe-MVP.md` and `TechDesign-JobMe-MVP.md`, and how answers are scored in `Scoring-Rubric.md`.
 
 ## Layers
 
 | Directory | Responsibility | Imports |
 |---|---|---|
-| `src/lib/engine` | The interview policy, pure: question bank, banding, the next move, notepad lines. No I/O. | nothing outside `lib/engine` |
+| `src/lib/engine` | The interview policy, pure: question bank, role families, the rubric and its weights, banding, the next move, notepad lines. No I/O. | nothing outside `lib/engine` |
 | `src/lib/interview` | Application services, one workflow each, with storage and models passed in: `start.ts` (begin an interview), `turn.ts` (one answer), `report.ts` (the scorecard). | `lib/engine`, the integrations, `lib/schemas`, `lib/stats` |
 | `src/lib/ai`, `lib/jd`, `lib/resume`, `lib/job-posting.ts` | Server-side integrations: the LLM and embeddings, job descriptions, resume ingestion, posting links. | `lib/engine`, `lib/schemas`, `lib/stats`, each other; `lib/resume/store.ts` also the server Supabase client |
 | `src/lib/voice` | Browser speech: recognition, the recruiter's voice, lip-sync. | `lib/frontend/motion.ts` |
-| `src/lib/frontend` | What the browser needs, mostly pure: row → view adapters, labels, view types, page plans for the ledger, folder and setup sheets, the typed API client (`api.ts`), small browser helpers (`motion.ts`, `dom.ts`). | `lib/engine`, `lib/schemas`, `lib/voice`, the posting-link check; server modules as `import type` only |
+| `src/lib/frontend` | What the browser needs, mostly pure: row → view adapters, labels, view types, page plans for the ledger, folder and setup sheets, the typed API client (`api.ts`), small browser helpers (`motion.ts`, `dom.ts`). | `lib/engine`, `lib/schemas`, `lib/stats`, `lib/voice`, the posting-link check; server modules as `import type` only |
 | `src/lib/supabase`, `lib/auth.ts`, `lib/http.ts` | Infrastructure: the server and browser clients, auth guards, and the answers every route shares (401/404/422/500). | `lib/schemas` |
 | `src/app` | Pages (server components) and API routes, kept thin: auth, validation, wiring and the response. | anything |
 | `src/components` | UI. `building/` is the 3D office and the DOM layer over it; `desk/`, `setup/`, `room/` are the documents and the interview room; `ui/` holds shared primitives. | `lib`, other components |
@@ -29,11 +29,11 @@ The dependency rules hold today, and are worth keeping:
 4. The `submit_turn` RPC saves the turn and the new engine state in one transaction.
 5. The route answers with `turnResponseBody`.
 
-**Starting an interview** (`POST /api/sessions`): `startInterview` in `lib/interview/start.ts` reads the resume and posting, makes one time-boxed plan call, sets the opening state, and saves the session through a store the route provides.
+**Starting an interview** (`POST /api/sessions`): `startInterview` in `lib/interview/start.ts` reads the resume and posting, takes the role family's default topics (`lib/engine/roles.ts`), makes one time-boxed plan call that may re-choose and re-word them for the job, sets the opening state, and saves the session through a store the route provides. Without the model the plan is the role defaults plus the job, so a session never starts on nothing.
 
-**The scorecard** (`POST /api/sessions/[id]/report`): `runReport` writes the report once, then completes the session.
+**The scorecard** (`POST /api/sessions/[id]/report`): `runReport` writes the report once, then completes the session. A follow-up adds to the question it came from, so turns are grouped by original question (`lib/stats.ts`) and each question is scored by its latest evaluation.
 
-**Pages** read through RLS with the server client. The dashboard uses `loadLedgerShelf` and `loadLedgerVolume` (`lib/frontend/ledger.ts`); the report pages use `loadReportDocument` and `loadReportIndex` (`lib/frontend/report-document.ts`). The reports folder loads other tabs with the same loaders over the browser client.
+**Pages** read through RLS with the server client. The dashboard uses `loadLedgerShelf` and `loadLedgerVolume` (`lib/frontend/ledger.ts`); the report pages use `loadReportDocument` and `loadReportIndex` (`lib/frontend/report-document.ts`), which group the turns by question the same way, so "Q2" in the feedback is Q2 on every sheet. The reports folder loads other tabs with the same loaders over the browser client.
 
 **The browser** calls the API only through `lib/frontend/api.ts`, which returns typed outcomes (ok, failed with a readable message, or offline) instead of raw responses.
 

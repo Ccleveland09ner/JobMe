@@ -74,7 +74,7 @@ export function SetupForm({
   const [resume, setResume] = useState<ResumeState>(
     latestResume ? { choice: "existing", resumeId: latestResume.id } : { choice: "none" },
   );
-  const [job, setJob] = useState<JobValue>({ targetRole: "", source: "paste", roleText: "", jobUrl: "" });
+  const [job, setJob] = useState<JobValue>({ targetRole: "", company: "", source: "paste", roleText: "", jobUrl: "" });
   const [micMode, setInputMode] = useState<InputMode>("typed");
   const inputMode: InputMode = defaults?.inputMode === "typed" ? "typed" : micMode;
   const [submitting, setSubmitting] = useState(false);

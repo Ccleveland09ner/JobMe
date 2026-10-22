@@ -11,13 +11,19 @@ vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn(), UNAUTHORIZED: { error: "U
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/ai/report", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ai/report")>()),
-  generateReportText: vi.fn(async () => ({ summary: "A fair first go.", rewrite: "Situation: …" })),
+  generateReportText: vi.fn(async () => ({ summary: "A fair first go.", rewrite: "Situation: …", feedback: FEEDBACK })),
 }));
 
+import { generateReportText } from "@/lib/ai/report";
 import { getUserOrNull } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 import { POST } from "./route";
+
+const FEEDBACK = vi.hoisted(() => ({
+  strengths: [{ question: "Q1", point: "Named the metric.", quote: "p99 fell from 1,200 ms to 340 ms" }],
+  improvements: [{ question: "Q1", point: "Say what you owned.", recommendation: "Start with your part." }],
+}));
 
 const ID = "8d1c5c0e-6b7a-4f1e-9d2c-3b4a5f6e7d8c";
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) }) as Parameters<typeof POST>[1];
@@ -95,6 +101,24 @@ describe("POST /api/sessions/[id]/report", () => {
     expect(await res.json()).toMatchObject({ summary: "A fair first go.", weakestTurnId: "t1" });
     const insert = fake.queries.find((q) => q.table === "reports" && q.action === "insert");
     expect(insert?.payload).toMatchObject({ session_id: ID, summary: "A fair first go.", weakest_turn_id: "t1" });
+  });
+
+  it("judges the answers against the job the turns saw, and keeps the feedback", async () => {
+    const role = { title: "Backend Intern", seniority: "intern", requiredSkills: ["Go"], responsibilities: [], competencies: [] };
+    const plan = { version: 1, role, topics: {}, resume: {} };
+    const fake = database({
+      session: { status: "in_progress", overall_scores: null, ended_at: null, role_text: "Raw posting", question_plan: plan },
+      turns: [{ ...TURN_ROW, topic: "teamwork", question_type: "opening", question_source: "bank" }],
+    });
+    await POST(request(), ctx(ID));
+    expect(vi.mocked(generateReportText).mock.calls.at(-1)?.[0].roleText).toContain("Backend Intern");
+    const insert = fake.queries.find((q) => q.table === "reports" && q.action === "insert");
+    expect((insert?.payload as { stats: { feedback: unknown } }).stats.feedback).toEqual(FEEDBACK);
+
+    // Without a readable plan, the stored posting text stands in.
+    database({ session: { status: "in_progress", overall_scores: null, ended_at: null, role_text: "Raw posting", question_plan: null }, turns: [TURN_ROW] });
+    await POST(request(), ctx(ID));
+    expect(vi.mocked(generateReportText).mock.calls.at(-1)?.[0].roleText).toBe("Raw posting");
   });
 
   it("answers 409 when nothing has been answered", async () => {

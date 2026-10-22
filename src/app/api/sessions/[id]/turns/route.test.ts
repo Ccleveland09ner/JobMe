@@ -44,6 +44,7 @@ const NOTE = {
   topic: "teamwork",
   questionType: "opening",
   source: "bank",
+  kind: "behavioral" as const,
   scores: null,
   band: null,
   primaryGap: null,

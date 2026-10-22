@@ -3,14 +3,15 @@
 /**
  * Score trend across completed interviews, one series at a time, as plain SVG
  * with a hidden data table for screen readers. Needs 2+ completed sessions.
- * Printed on a ledger page, so it has no card of its own.
+ * Values are the stored `overall_scores`, and the headline "Overall" series
+ * is the stored `overall`; nothing is recomputed. Printed on a ledger page,
+ * so it has no card of its own.
  */
 
 import { useId, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
-import { DIMENSIONS, type Dimension, type Scores } from "@/lib/engine/types";
-import { displayAverage } from "@/lib/frontend/adapters";
+import { DIMENSIONS, type Dimension } from "@/lib/engine/types";
 import { DIMENSION_LABELS } from "@/lib/frontend/labels";
 import type { TrendPoint } from "@/lib/frontend/types";
 
@@ -69,12 +70,12 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
 }
 
 function seriesLabel(s: Series): string {
-  return s === "average" ? "Average" : DIMENSION_LABELS[s];
+  return s === "average" ? "Overall" : DIMENSION_LABELS[s];
 }
 
-function valueOf(scores: Partial<Scores> | null, s: Series): number | null {
-  if (!scores) return null;
-  return s === "average" ? displayAverage(scores) : (scores[s] ?? null);
+function valueOf(point: TrendPoint, s: Series): number | null {
+  if (s === "average") return point.overall;
+  return point.scores?.[s] ?? null;
 }
 
 function Chart({ points, series }: { points: TrendPoint[]; series: Series }) {
@@ -83,7 +84,7 @@ function Chart({ points, series }: { points: TrendPoint[]; series: Series }) {
   const x = (i: number) => PAD.left + (points.length === 1 ? innerW / 2 : (i * innerW) / (points.length - 1));
   const y = (v: number) => PAD.top + ((MAX - v) / (MAX - MIN)) * innerH;
 
-  const values = points.map((p) => valueOf(p.scores, series));
+  const values = points.map((p) => valueOf(p, series));
 
   // Break the line where a session has no value for this series.
   let d = "";
@@ -143,7 +144,7 @@ function DataTable({ points }: { points: TrendPoint[] }) {
         <thead>
           <tr>
             <th scope="col">Interview</th>
-            <th scope="col">Average</th>
+            <th scope="col">Overall</th>
             {DIMENSIONS.map((d) => (
               <th key={d} scope="col">
                 {DIMENSION_LABELS[d]}
@@ -157,7 +158,7 @@ function DataTable({ points }: { points: TrendPoint[] }) {
               <th scope="row">
                 #{i + 1}, <LocalDate iso={p.startedAt} />
               </th>
-              <td>{valueOf(p.scores, "average") ?? "—"}</td>
+              <td>{valueOf(p, "average") ?? "—"}</td>
               {DIMENSIONS.map((d) => (
                 <td key={d}>{p.scores?.[d] ?? "—"}</td>
               ))}

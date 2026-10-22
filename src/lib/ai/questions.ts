@@ -3,8 +3,9 @@
  * replaced by a bank seed. Nothing here may change the move.
  */
 
-import { GAP_PRIORITY } from "../engine/types";
-import type { Band, Dimension, Scores } from "../engine/types";
+import { computePrimaryGap } from "../engine/classify";
+import { dimensionsFor } from "../engine/types";
+import type { Band, Dimension, QuestionKind, Scores } from "../engine/types";
 
 /** Drafts longer than this stop sounding like a spoken question. */
 export const MAX_DRAFT_WORDS = 25;
@@ -98,72 +99,58 @@ export function repairDraft(draft: string): string {
   return text;
 }
 
-/** Runs before the model: an answer this thin is weak under any rubric, so it always gets a Clarify. */
-export const MIN_SUBSTANTIVE_WORDS = 25;
+/**
+ * Runs BEFORE the model — the demo's insurance policy. An OPENING this thin
+ * cannot answer a question under any rubric, so deciding it in code makes
+ * "the scripted weak answer always gets a Clarify" true rather than likely.
+ *
+ * Deliberately narrow. The previous version also forced `weak` on any answer
+ * with no digit and no mid-sentence capital, and on anything under 25 words.
+ * Measured against the calibration fixtures, that overrode the model on good
+ * answers: a qualitative story the model scored 4/4 was banded weak, and so
+ * was every voice answer, because Chrome's recogniser returns lowercase text
+ * without punctuation. It also caught focused follow-up replies, which are
+ * short by design. Ref: docs/Scoring-Rubric.md
+ */
+export const MIN_SUBSTANTIVE_WORDS = 12;
 
-export function preClassify(answer: string): Band | null {
+export function preClassify(answer: string, questionType: string = "opening"): Band | null {
+  // A follow-up reply adds to the original answer; short is what was asked for.
+  if (questionType !== "opening") return null;
   const words = answer.trim().split(/\s+/).filter(Boolean);
-  if (words.length < MIN_SUBSTANTIVE_WORDS) return "weak";
-  if (!hasNumber(answer) && !hasProperNoun(answer)) return "weak";
-  return null;
-}
-
-function hasNumber(text: string): boolean {
-  return /\d/.test(text);
+  return words.length < MIN_SUBSTANTIVE_WORDS ? "weak" : null;
 }
 
 /**
- * A capitalised word that isn't sentence-initial: a proxy for naming a real
- * system, tool or company. Walks sentences (one regex got this wrong).
+ * Degraded-turn scores. Crude on purpose: the point is that an interview
+ * survives a 429, not that the numbers are good. The turn persists with
+ * `scores: null`, so these never reach an average or a trend line — they only
+ * pick a plausible gap for the fallback follow-up.
  */
-export function hasProperNoun(text: string): boolean {
-  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
-    const tokens = sentence.trim().split(/\s+/).filter(Boolean);
-    // Skip index 0: sentence-initial capitals carry no information.
-    for (let i = 1; i < tokens.length; i++) {
-      const token = tokens[i].replace(/^[("']+|[)"'.,;:!?]+$/g, "");
-      if (/^[A-Z][a-z]{2,}$/.test(token) || /^[A-Z]{2,}$/.test(token)) {
-        // "I" and common sentence connectors are not proper nouns.
-        if (!/^(I|A|The|But|And|So|Then|We|It|My|Our)$/i.test(token)) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
-/** Crude degraded-turn scores, only to pick a gap; the turn is saved with scores: null. */
-export function heuristicScores(answer: string): Scores {
+export function heuristicScores(answer: string, kind: QuestionKind = "behavioral"): Scores {
   const words = answer.trim().split(/\s+/).filter(Boolean).length;
   const clamp = (n: number) => Math.max(1, Math.min(4, n));
 
   const length = words < 25 ? 1 : words < 60 ? 2 : words < 140 ? 3 : 4;
-  const hasNumber = /\d/.test(answer);
-  const firstPerson = /\b(I|my)\b/.test(answer);
-  const hedges = /\b(we|our)\b/i.test(answer);
+  const firstPerson = /\b(I|my)\b/i.test(answer);
+  const because = /\b(because|so that|since|which meant|the reason|trade-?off)\b/i.test(answer);
+  const outcome = /\b(as a result|in the end|ended up|which meant|afterwards|learned|so now)\b/i.test(answer);
 
-  // Keyword proxies per STAR component: enough to pick a gap, not to show.
-  const situation = /\b(when|while|during|at the time|last (year|term|semester))\b/i.test(answer) ? 3 : 2;
-  const task = /\b(my job|my role|I was responsible|I owned|assigned|tasked)\b/i.test(answer) ? 3 : 1;
-  const action = /\b(then|so I|I built|I wrote|I changed|I proposed|I ran)\b/i.test(answer) ? 3 : 2;
-  const result = hasNumber ? 3 : /\b(as a result|in the end|ended up|which meant)\b/i.test(answer) ? 2 : 1;
-
-  return {
-    situation: clamp(Math.min(situation, length)),
-    task: clamp(task),
-    action: clamp(Math.min(action, length)),
-    result: clamp(result),
+  const all: Scores = {
+    relevance: 2,
     specificity: clamp(length),
-    impact: clamp(hasNumber ? 3 : 1),
-    ownership: clamp(firstPerson ? (hedges ? 2 : 3) : 1),
-    relevance: clamp(2),
+    ownership: firstPerson ? 3 : 1,
+    reasoning: because ? 3 : 2,
+    outcome: outcome ? 3 : 1,
+    accuracy: 2,
+    communication: 3,
   };
+  return Object.fromEntries(
+    dimensionsFor(kind).map((d) => [d, all[d]]),
+  ) as Scores;
 }
 
 /** Deterministic gap for the degraded path, matching GAP_PRIORITY ordering. */
-export function heuristicGap(scores: Scores): Dimension {
-  return GAP_PRIORITY.reduce((lowest, d) =>
-    scores[d] < scores[lowest] ? d : lowest,
-  );
+export function heuristicGap(scores: Scores, kind: QuestionKind = "behavioral"): Dimension {
+  return computePrimaryGap(scores, kind);
 }

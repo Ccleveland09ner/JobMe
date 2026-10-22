@@ -9,7 +9,8 @@
  * against a 15 requests/minute free tier. Everything downstream is identical.
  */
 
-import { questionFor, pickTopics } from "../src/lib/engine/bank";
+import { questionFor } from "../src/lib/engine/bank";
+import { defaultTopics } from "../src/lib/engine/roles";
 import { initState } from "../src/lib/engine/policy";
 import {
   FULL_QUESTION_CAP_MAX,
@@ -42,14 +43,13 @@ function check(label: string, ok: boolean, detail = ""): void {
 // ---------------------------------------------------------------------------
 
 const flat = (n: number): Scores => ({
-  situation: n,
-  task: n,
-  action: n,
-  result: n,
-  specificity: n,
-  impact: n,
-  ownership: n,
   relevance: n,
+  specificity: n,
+  ownership: n,
+  reasoning: n,
+  outcome: n,
+  accuracy: n,
+  communication: n,
 });
 
 const ANSWERS = {
@@ -79,6 +79,8 @@ function scriptedEvaluator(
       band === "weak" ? flat(1) : band === "great" ? flat(4) : flat(2);
     return {
       scores,
+      status: "complete",
+      clarify_gap: null,
       observation: `scripted ${band}`,
       off_topic: false,
       repeats_previous: Boolean(repeats),
@@ -106,7 +108,7 @@ function makeItems(count: number): ResumeItem[] {
 }
 
 function startSession(mode: InterviewMode, items: ResumeItem[]): EngineState {
-  const topics = pickTopics(mode === "full" ? 6 : 4);
+  const topics = defaultTopics("general", mode === "full" ? 6 : 4);
   const first: Question = {
     text: questionFor(topics[0], 1),
     type: "opening",

@@ -92,6 +92,7 @@ const entry = (id: string, extra: Partial<LedgerEntry> = {}): LedgerEntry => ({
   endedAt: null,
   questionCount: 2,
   overallScores: null,
+  overall: null,
   title: null,
   questions: [],
   summary: null,
@@ -164,7 +165,14 @@ describe("loading", () => {
     const db = fakeSupabase((q) => {
       if (q.table === "profiles") return { data: { username: "kazu", member_code: "JM-1" } };
       if (q.filters.some(([, col]) => col === "status")) {
-        return { count: 2, data: [{ id: "b", started_at: "2026-10-18", overall_scores: { task: 3 } }, { id: "a", started_at: "2026-10-10", overall_scores: null }] };
+        return {
+          count: 2,
+          data: [
+            { id: "c", started_at: "2026-10-20", overall_scores: { relevance: 3, outcome: 2, overall: 2.64 } },
+            { id: "b", started_at: "2026-10-18", overall_scores: { task: 3 } },
+            { id: "a", started_at: "2026-10-10", overall_scores: null },
+          ],
+        };
       }
       return { count: 5 };
     });
@@ -172,8 +180,10 @@ describe("loading", () => {
       total: 5,
       completed: 2,
       trend: [
-        { id: "a", startedAt: "2026-10-10", scores: null },
-        { id: "b", startedAt: "2026-10-18", scores: { task: 3 } },
+        { id: "a", startedAt: "2026-10-10", scores: null, overall: null },
+        // Stored before `overall` existed: the plain mean stands in.
+        { id: "b", startedAt: "2026-10-18", scores: { task: 3 }, overall: 3 },
+        { id: "c", startedAt: "2026-10-20", scores: { relevance: 3, outcome: 2 }, overall: 2.6 },
       ],
       owner: { username: "kazu", memberCode: "JM-1" },
     });

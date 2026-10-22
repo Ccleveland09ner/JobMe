@@ -1,13 +1,15 @@
 /**
  * POST /api/sessions: create a session and its first question. The flow is
  * lib/interview/start.ts; this is auth, validation, storage and the response.
+ *
+ * Ref: docs/TechDesign-JobMe-MVP.md > API Contracts; docs/Scoring-Rubric.md
  */
 
 import { NextResponse } from "next/server";
 
 import { generateQuestionPlan } from "@/lib/ai/question-plan";
 import { getUserOrNull } from "@/lib/auth";
-import { pickTopics } from "@/lib/engine/bank";
+import { defaultTopics } from "@/lib/engine/roles";
 import { readBody, serverError, unauthorized } from "@/lib/http";
 import { startInterview, type StartResume, type StartStore } from "@/lib/interview/start";
 import { fetchJobPosting } from "@/lib/job-posting";
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
     store: sessionStore(await createClient(), user.id),
     fetchPosting: fetchJobPosting,
     generatePlan: generateQuestionPlan,
-    pickTopics,
+    defaultTopics,
   });
 
   if (outcome.kind === "bad-link") {
@@ -45,12 +47,14 @@ export async function POST(request: Request) {
   return NextResponse.json({
     sessionId: outcome.sessionId,
     mode: state.mode,
-    introLine: `Thanks for making the time, ${body.displayName}. Let's get started.`,
+    introLine: outcome.introLine,
     question: outcome.firstQuestion,
-    /** False when nothing was given to personalise, or the plan call failed. */
-    personalized: outcome.plan !== null,
+    /** False when nothing was given to personalise, or the plan call failed (the setup screen says so). */
+    personalized: outcome.personalized,
     /** What was read from the link, so the setup screen can confirm it. */
-    job: posting ? { title: posting.title, company: posting.company, provider: posting.provider } : null,
+    job: posting
+      ? { title: posting.title, company: posting.company, companyInferred: posting.companyInferred, provider: posting.provider }
+      : null,
     progress: {
       questionCount: state.questionCount,
       questionCap: state.questionCap,

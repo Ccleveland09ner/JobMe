@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CreateSessionBody } from "../schemas";
+import { CreateSessionBody, LIMITS } from "../schemas";
 import { REVIEW_SHEET, sessionBody, SETUP_SHEETS, validateSetup, validateSetupSheet, type SetupValues } from "./setup";
 
 const RESUME = "6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f";
@@ -8,7 +8,7 @@ const sheet = (id: (typeof SETUP_SHEETS)[number]["id"]) => SETUP_SHEETS.findInde
 
 const values = (patch: Partial<SetupValues> = {}): SetupValues => ({
   displayName: "Kazu",
-  job: { targetRole: "", source: "paste", roleText: "", jobUrl: "" },
+  job: { targetRole: "", company: "", source: "paste", roleText: "", jobUrl: "" },
   resume: { choice: "none" },
   mode: "quick",
   ...patch,
@@ -23,7 +23,7 @@ describe("validateSetupSheet", () => {
 
   it("only accepts posting links the server can read", () => {
     const link = (jobUrl: string) =>
-      validateSetupSheet(sheet("job"), values({ job: { targetRole: "", source: "link", roleText: "", jobUrl } })).jobUrl;
+      validateSetupSheet(sheet("job"), values({ job: { targetRole: "", company: "", source: "link", roleText: "", jobUrl } })).jobUrl;
     expect(link("javascript:alert(1)")).toMatch(/https/);
     expect(link("https://example.com/careers/123")).toMatch(/paste the job description/i);
     expect(link("https://boards.greenhouse.io/acme/jobs/123456")).toBeUndefined();
@@ -31,9 +31,15 @@ describe("validateSetupSheet", () => {
   });
 
   it("checks the description only when it is the source", () => {
-    const long = "x".repeat(2001);
-    expect(validateSetupSheet(sheet("job"), values({ job: { targetRole: "", source: "paste", roleText: long, jobUrl: "" } })).roleText).toBeTruthy();
-    expect(validateSetupSheet(sheet("job"), values({ job: { targetRole: "", source: "link", roleText: long, jobUrl: "" } }))).toEqual({});
+    const long = "x".repeat(LIMITS.roleText + 1);
+    expect(validateSetupSheet(sheet("job"), values({ job: { targetRole: "", company: "", source: "paste", roleText: long, jobUrl: "" } })).roleText).toBeTruthy();
+    expect(validateSetupSheet(sheet("job"), values({ job: { targetRole: "", company: "", source: "link", roleText: long, jobUrl: "" } }))).toEqual({});
+  });
+
+  it("keeps the company to what the server accepts", () => {
+    const job = (company: string) => values({ job: { targetRole: "", company, source: "paste", roleText: "", jobUrl: "" } });
+    expect(validateSetupSheet(sheet("job"), job("x".repeat(LIMITS.company + 1))).company).toBeTruthy();
+    expect(validateSetupSheet(sheet("job"), job(" Acme "))).toEqual({});
   });
 
   it("holds the resume sheet until an upload is ready or another choice is made", () => {
@@ -62,7 +68,7 @@ describe("sessionBody", () => {
     const body = sessionBody(
       values({
         displayName: "  Kazu ",
-        job: { targetRole: " Backend Intern ", source: "link", roleText: "left over", jobUrl: " https://jobs.lever.co/acme/abc-123 " },
+        job: { targetRole: " Backend Intern ", company: " Acme ", source: "link", roleText: "left over", jobUrl: " https://jobs.lever.co/acme/abc-123 " },
         resume: { choice: "upload", status: "ready", resumeId: RESUME },
         mode: "full",
       }),
@@ -71,6 +77,7 @@ describe("sessionBody", () => {
       displayName: "Kazu",
       mode: "full",
       targetRole: "Backend Intern",
+      company: "Acme",
       jobUrl: "https://jobs.lever.co/acme/abc-123",
       resumeId: RESUME,
     });

@@ -1,17 +1,19 @@
 /**
  * Row and response -> view adapters (pure). The frontend formats what the
- * backend decided; it never re-decides band, move, gap, cap or coverage.
+ * backend decided; it never re-decides band, move, gap, cap or coverage. The
+ * headline score is the stored `overall`; displayAverage() only stands in for
+ * sessions stored before it existed.
  */
 
 import {
-  DIMENSIONS,
+  DISPLAY_DIMENSIONS,
+  type AnyDimension,
   type Band,
-  type Dimension,
   type EngineState,
   type InterviewMode,
   type QuestionSource,
   type QuestionType,
-  type Scores,
+  type StoredScores,
   type TopicId,
 } from "../engine/types";
 import type {
@@ -25,16 +27,21 @@ import type {
 
 // Scores
 
-const DIMENSION_SET = new Set<string>(DIMENSIONS);
+const DIMENSION_SET = new Set<string>(DISPLAY_DIMENSIONS);
 
-export function isDimension(value: unknown): value is Dimension {
+/** A current or legacy (pre-2026-10 STAR) dimension key. */
+export function isDimension(value: unknown): value is AnyDimension {
   return typeof value === "string" && DIMENSION_SET.has(value);
 }
 
-/** Keeps known dimensions with numeric values (legacy keys dropped); null or empty is unscored. */
-export function pickScores(raw: unknown): Partial<Scores> | null {
+/**
+ * Keeps known dimensions with numeric values, current and legacy alike, so an
+ * old session still renders; anything else (`overall`, the old `structure`
+ * key) is dropped. Null or empty is unscored.
+ */
+export function pickScores(raw: unknown): StoredScores | null {
   if (!raw || typeof raw !== "object") return null;
-  const out: Partial<Scores> = {};
+  const out: StoredScores = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (isDimension(key) && typeof value === "number" && Number.isFinite(value)) {
       out[key] = value;
@@ -43,15 +50,29 @@ export function pickScores(raw: unknown): Partial<Scores> | null {
   return Object.keys(out).length ? out : null;
 }
 
-/** [dimension, value] in rubric order, skipping dimensions with no value. */
-export function scoreEntries(scores: Partial<Scores>): [Dimension, number][] {
-  return DIMENSIONS.flatMap((d) =>
-    typeof scores[d] === "number" ? [[d, scores[d] as number] as [Dimension, number]] : [],
+/**
+ * The session's headline 1-4 score as the backend stored it (`overall`, the
+ * mean of its question scores). Sessions stored before it existed fall back
+ * to the plain mean of their dimensions, which is what they showed then.
+ */
+export function pickOverall(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const overall = (raw as Record<string, unknown>).overall;
+  if (typeof overall === "number" && Number.isFinite(overall)) {
+    return Number(overall.toFixed(1));
+  }
+  return displayAverage(pickScores(raw));
+}
+
+/** [dimension, value] in display order, skipping dimensions with no value. */
+export function scoreEntries(scores: StoredScores): [AnyDimension, number][] {
+  return DISPLAY_DIMENSIONS.flatMap((d) =>
+    typeof scores[d] === "number" ? [[d, scores[d] as number] as [AnyDimension, number]] : [],
   );
 }
 
-/** A row's headline number: the mean of the backend's averages. Never used for decisions. */
-export function displayAverage(scores: Partial<Scores> | null): number | null {
+/** The plain mean of a score set: the headline fallback for sessions stored before `overall`. Never used for decisions. */
+export function displayAverage(scores: StoredScores | null): number | null {
   if (!scores) return null;
   const values = scoreEntries(scores).map(([, v]) => v);
   if (!values.length) return null;
@@ -166,6 +187,7 @@ export function sessionSummaryFromRow(row: SessionRowData): SessionSummary {
     endedAt: row.ended_at,
     questionCount: row.question_count ?? 0,
     overallScores: pickScores(row.overall_scores),
+    overall: pickOverall(row.overall_scores),
   };
 }
 

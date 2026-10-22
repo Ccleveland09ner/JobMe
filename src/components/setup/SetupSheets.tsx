@@ -128,6 +128,7 @@ export function ReviewList({
       : job.source === "link" && job.jobUrl.trim()
         ? `posting on ${host(job.jobUrl.trim())}`
         : null;
+  const role = [job.targetRole.trim(), job.company.trim()].filter(Boolean).join(" at ");
   const rows: { label: string; value: ReactNode; sheet: number }[] = [
     { label: "Your name", value: values.displayName.trim(), sheet: sheetOf("you") },
     {
@@ -137,7 +138,7 @@ export function ReviewList({
     },
     {
       label: "The job",
-      value: [job.targetRole.trim() || null, source].filter(Boolean).join(" · ") || "Not given: general questions",
+      value: [role || null, source].filter(Boolean).join(" · ") || "Not given: general questions",
       sheet: sheetOf("job"),
     },
     {

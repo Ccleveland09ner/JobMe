@@ -1,22 +1,35 @@
 /**
- * Starting an interview: its topics, its question plan (one time-boxed model
- * call when there is anything to personalise; the bank's fixed text if it
- * fails), the first question, and the engine's opening state, saved as a new
- * session. Storage, the posting fetch, the model and the topic draw come in
- * as dependencies (the route wires the real ones).
+ * Starting an interview, prepared before it starts:
+ *   1. the job: title, company, posting text (pasted, or read from a link);
+ *   2. role-family defaults (engine/roles.ts): motivation first, the family's
+ *      own question second, then behavioural competencies for that family;
+ *   3. one time-boxed model call (lib/ai/question-plan.ts) that may re-choose
+ *      and re-word those topics for this job and order the resume.
+ * If the call fails the session starts on the role defaults with the job
+ * context still stored: a rate limit costs polish, never the interview.
+ * Storage, the posting fetch, the model and the topic draw come in as
+ * dependencies (the route wires the real ones).
  */
 
-import { plannedBankOpening, QUICK_PLAN_RESUME_ITEMS, type PlanInputs } from "../ai/question-plan";
+import {
+  orderResumeItems,
+  plannedBankOpening,
+  QUICK_PLAN_RESUME_ITEMS,
+  usableJobText,
+  type PlanInputs,
+} from "../ai/question-plan";
 import { questionFor } from "../engine/bank";
+import { introLineFor } from "../engine/notepad";
 import { initState } from "../engine/policy";
+import { inferSeniority, roleFamily, type RoleFamily } from "../engine/roles";
 import type { EngineState, Question, ResumeItem, TopicId } from "../engine/types";
 import { formatRoleForPrompt, type RoleProfile } from "../jd/distill";
 import { JobLinkError, type JobPosting } from "../job-posting";
 import { formatFactsForPrompt } from "../resume/distill";
 import type { ResumeFacts } from "../resume/store";
-import { LIMITS, type CreateSessionBody, type QuestionPlan } from "../schemas";
+import type { CreateSessionBody, QuestionPlan } from "../schemas";
 
-/** Drawn from a bank of 11: this is where session-to-session variety comes from. */
+/** Bank threads per session, before resume coverage. */
 export const QUICK_TOPICS = 4;
 export const FULL_TOPICS = 6;
 
@@ -35,15 +48,15 @@ export interface StartResume {
 export interface NewSession {
   role_text: string | null;
   job_url: string | null;
-  question_plan: QuestionPlan | null;
+  question_plan: QuestionPlan;
   resume_id: string | null;
   engine_state: EngineState;
   question_count: number;
 }
 
 export interface StartStore {
-  /** Remembers the name and target role for next time; its outcome doesn't matter. */
-  saveProfile(patch: { display_name: string; target_role: string | undefined }): Promise<unknown>;
+  /** Remembers the name, and the job title when one is given; its outcome doesn't matter. */
+  saveProfile(patch: { display_name: string; target_role?: string }): Promise<unknown>;
   /** The chosen resume, or null when it can't be read. */
   loadResume(id: string): Promise<StartResume | null>;
   /** The new session's id, or why it couldn't be saved (for the log). */
@@ -53,8 +66,10 @@ export interface StartStore {
 export interface StartDeps {
   store: StartStore;
   fetchPosting: (url: string) => Promise<JobPosting>;
-  generatePlan: (inputs: PlanInputs) => Promise<QuestionPlan | null>;
-  pickTopics: (count: number) => TopicId[];
+  /** Never null: without the model it is the role defaults plus the job. */
+  generatePlan: (inputs: PlanInputs) => Promise<QuestionPlan>;
+  /** The family's topics in ask order; the draw is random, so it is injected. */
+  defaultTopics: (family: RoleFamily, count: number) => TopicId[];
 }
 
 export type StartOutcome =
@@ -63,7 +78,11 @@ export type StartOutcome =
       sessionId: string;
       state: EngineState;
       firstQuestion: Question;
-      plan: QuestionPlan | null;
+      plan: QuestionPlan;
+      /** Spoken first; says so when job details were given but couldn't be used. */
+      introLine: string;
+      /** The model tailored the plan; false means the role-family defaults. */
+      personalized: boolean;
       /** What was read from the posting link, if one was given. */
       posting: JobPosting | null;
       /** Every resume item, before the engine trims what a full interview can't reach. */
@@ -82,7 +101,8 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
 
   // The reads and the profile write in one round trip (chunks let the plan quote the resume).
   const [, resumeRes, postingRes] = await Promise.allSettled([
-    store.saveProfile({ display_name: body.displayName, target_role: body.targetRole ?? body.roleText }),
+    // The title only: a pasted description doesn't belong in a 100-character title field.
+    store.saveProfile({ display_name: body.displayName, ...(body.targetRole && { target_role: body.targetRole }) }),
     body.resumeId ? store.loadResume(body.resumeId) : Promise.resolve(null),
     body.jobUrl ? deps.fetchPosting(body.jobUrl) : Promise.resolve(null),
   ]);
@@ -93,26 +113,39 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
   }
   const posting = postingRes.value;
 
-  // Ranked at ingest. Full mode without a resume becomes a longer bank-led interview.
+  // Ranked against the job given at upload; the plan re-orders them for this
+  // one. Full mode without a resume becomes a longer bank-led interview.
   const resume = resumeRes.status === "fulfilled" ? resumeRes.value : null;
-  const resumeItems = (resume?.coverage_items ?? []) as ResumeItem[];
+  const uploadRanked = (resume?.coverage_items ?? []) as ResumeItem[];
   const chunks = resume?.resume_chunks ?? [];
 
-  const topics = deps.pickTopics(body.mode === "full" ? FULL_TOPICS : QUICK_TOPICS);
-  const jobText = posting?.text ?? body.roleText ?? null;
+  // The job. A stated company wins over one guessed from a link's board name,
+  // and text too short to be a description ("asdf") counts as none.
+  const targetRole = body.targetRole ?? (posting?.title || null);
+  const company = body.company ?? posting?.company ?? null;
+  const companyInferred = !body.company && Boolean(posting?.companyInferred);
+  const jobText = usableJobText(posting?.text ?? body.roleText ?? null);
+  const family = roleFamily(targetRole, jobText);
+  const defaults = deps.defaultTopics(family, body.mode === "full" ? FULL_TOPICS : QUICK_TOPICS);
 
   // Quick mode plans only a few resume threads; later ones get the fixed opening.
-  const planItems = body.mode === "full" ? resumeItems : resumeItems.slice(0, QUICK_PLAN_RESUME_ITEMS);
+  const planItems = body.mode === "full" ? uploadRanked : uploadRanked.slice(0, QUICK_PLAN_RESUME_ITEMS);
 
   const plan = await deps.generatePlan({
-    topics,
+    topics: defaults,
+    family,
     resumeItems: planItems.map((item) => ({ item, excerpt: excerptFor(item, chunks) })),
-    targetRole: body.targetRole ?? posting?.title ?? null,
-    company: posting?.company ?? null,
+    targetRole,
+    company,
+    companyInferred,
     jobText,
     roleSummary: resume?.role_profile ? formatRoleForPrompt(resume.role_profile as RoleProfile) : null,
     resumeFacts: resume?.resume_facts ? formatFactsForPrompt(resume.resume_facts as ResumeFacts) : null,
+    seniority: inferSeniority(targetRole, jobText),
   });
+
+  const topics = plan.order?.length ? plan.order : defaults;
+  const resumeItems = orderResumeItems(uploadRanked, plan);
 
   const firstQuestion: Question = {
     text: plannedBankOpening(plan, topics[0], 1, []) ?? questionFor(topics[0], 1),
@@ -124,8 +157,8 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
   const state = initState({ mode: body.mode, topics, resumeItems, firstQuestion });
 
   const saved = await store.insertSession({
-    // Capped as if pasted; the plan's role summary is what turns use.
-    role_text: jobText ? jobText.slice(0, LIMITS.roleText) : null,
+    // The plan's distilled role is what turns use; this is the fallback.
+    role_text: jobText,
     job_url: body.jobUrl ?? null,
     question_plan: plan,
     resume_id: body.resumeId ?? null,
@@ -134,7 +167,18 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
   });
   if ("error" in saved) return { kind: "failed", reason: saved.error };
 
-  return { kind: "created", sessionId: saved.id, state, firstQuestion, plan, posting, coverageTotal: resumeItems.length };
+  const personalized = plan.job?.generated === true;
+  return {
+    kind: "created",
+    sessionId: saved.id,
+    state,
+    firstQuestion,
+    plan,
+    introLine: introLineFor(body.displayName, Boolean(targetRole || jobText || planItems.length) && !personalized),
+    personalized,
+    posting,
+    coverageTotal: resumeItems.length,
+  };
 }
 
 /** The resume text behind an item, from the chunks it was built from. */

@@ -1,6 +1,6 @@
 /**
- * The target job: a title, then a pasted description or a posting link
- * (never both). Links are read only from supported boards (lib/job-posting.ts).
+ * The target job: a title and company, then a pasted description or a posting
+ * link (never both). Links are read only from supported boards (lib/job-posting.ts).
  */
 
 import { useId } from "react";
@@ -21,7 +21,7 @@ export function JobDescriptionField({
 }: {
   value: JobValue;
   onChange: (next: JobValue) => void;
-  errors?: Pick<SetupErrors, "targetRole" | "roleText" | "jobUrl">;
+  errors?: Pick<SetupErrors, "targetRole" | "company" | "roleText" | "jobUrl">;
 }) {
   const id = useId();
   const set = (patch: Partial<JobValue>) => onChange({ ...value, ...patch });
@@ -29,9 +29,8 @@ export function JobDescriptionField({
 
   return (
     <fieldset className="flex flex-col gap-4">
-      <legend className="mb-2 text-sm font-medium text-ink">
-        Target job <span className="font-normal text-muted">(optional)</span>
-      </legend>
+      {/* The sheet's heading says this; the legend names the group for screen readers. */}
+      <legend className="sr-only">Target job (optional)</legend>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-role`} className="text-sm text-ink">
@@ -49,6 +48,27 @@ export function JobDescriptionField({
           className={INPUT}
         />
         <FieldError id={`${id}-role-error`} message={errors.targetRole} />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-company`} className="text-sm text-ink">
+          Company <span className="text-muted">(optional)</span>
+        </label>
+        <input
+          id={`${id}-company`}
+          type="text"
+          maxLength={LIMITS.company}
+          autoComplete="organization"
+          value={value.company}
+          onChange={(e) => set({ company: e.target.value })}
+          aria-invalid={errors.company ? true : undefined}
+          aria-describedby={describedBy(!!errors.company && `${id}-company-error`, `${id}-company-help`)}
+          className={INPUT}
+        />
+        <FieldError id={`${id}-company-error`} message={errors.company} />
+        <p id={`${id}-company-help`} className="text-xs text-muted">
+          Used by name only. Questions about the company draw on the job description, never on guesses.
+        </p>
       </div>
 
       <div role="radiogroup" aria-label="Job description source" className="flex gap-2">
@@ -76,7 +96,7 @@ export function JobDescriptionField({
           </label>
           <textarea
             id={`${id}-text`}
-            rows={6}
+            rows={4}
             maxLength={LIMITS.roleText}
             value={value.roleText}
             onChange={(e) => set({ roleText: e.target.value })}

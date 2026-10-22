@@ -21,14 +21,12 @@ import {
 } from "./turn";
 
 const flat = (n: number): Scores => ({
-  situation: n,
-  task: n,
-  action: n,
-  result: n,
-  specificity: n,
-  impact: n,
-  ownership: n,
   relevance: n,
+  specificity: n,
+  ownership: n,
+  reasoning: n,
+  outcome: n,
+  communication: n,
 });
 
 const FIRST: Question = {
@@ -55,6 +53,8 @@ const ANSWER =
 function raw(scores: Scores): RawEvaluation {
   return {
     scores,
+    status: "complete",
+    clarify_gap: null,
     observation: "Clear ownership; outcome quantified",
     off_topic: false,
     repeats_previous: false,
@@ -77,16 +77,64 @@ function ctx(overrides: Partial<TurnContext> = {}): TurnContext {
 }
 
 describe("runTurn — context reaches the evaluator", () => {
-  /** The evaluator gets the thread's history, to score follow-ups in context. */
-  it("passes this thread's earlier answers", async () => {
+  /** A follow-up is scored as the whole answer so far, against the original question. */
+  it("scores a follow-up as an addition to the original question", async () => {
     const evaluate = vi.fn(async () => raw(flat(3)));
     const history = [{ question: FIRST.text, answer: "We fixed the bug." }];
+    const clarify: Question = { ...FIRST, type: "clarify", text: "What did you change yourself?" };
+    const state = { ...freshState(), currentQuestion: clarify, threadScores: [flat(2)] };
 
-    await runTurn(ctx({ evaluate, priorThreadTurns: history }));
+    await runTurn(ctx({ state, evaluate, priorThreadTurns: history }));
 
     expect(evaluate).toHaveBeenCalledWith(
-      expect.objectContaining({ priorThreadTurns: history }),
+      expect.objectContaining({
+        questionText: FIRST.text,
+        followUpQuestion: clarify.text,
+        questionType: "clarify",
+        priorThreadTurns: history,
+      }),
     );
+  });
+
+  it("scores an opening on its own, against its own question", async () => {
+    const evaluate = vi.fn(async () => raw(flat(3)));
+    await runTurn(ctx({ evaluate }));
+    expect(evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        questionText: FIRST.text,
+        followUpQuestion: null,
+        priorThreadTurns: [],
+        kind: "behavioral",
+      }),
+    );
+  });
+
+  it("tells the evaluator the candidate's level and what was already asked", async () => {
+    const evaluate = vi.fn(async () => raw(flat(3)));
+    await runTurn(ctx({ evaluate, seniority: "intern" }));
+    expect(evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({ seniority: "intern", askedQuestions: [FIRST.text] }),
+    );
+  });
+
+  it("uses the technical rubric for a technical question", async () => {
+    const evaluate = vi.fn(async () => ({
+      ...raw({ relevance: 3, accuracy: 3, reasoning: 3, specificity: 3, communication: 3 }),
+    }));
+    const technical: Question = {
+      text: "What happens when you type a web address into a browser and press enter?",
+      type: "opening",
+      topic: "technical_knowledge",
+      difficulty: 1,
+      source: "bank",
+    };
+    const result = await runTurn(
+      ctx({ evaluate, state: { ...freshState(), currentQuestion: technical } }),
+    );
+    expect(evaluate).toHaveBeenCalledWith(expect.objectContaining({ kind: "technical" }));
+    if (result.kind !== "turn") throw new Error("expected a turn");
+    expect(result.notepad.kind).toBe("technical");
+    expect(result.notepad.primaryGap).not.toBe("ownership");
   });
 
   it("prefers the session's own job description over the resume's role title", async () => {
@@ -378,6 +426,22 @@ describe("turnContextFrom", () => {
     const ctx = turnContextFrom({ state: freshState(), answer, storedPlan: plan, postingText: "Raw posting", resume: null, recentTurns: [] });
     expect(ctx).toMatchObject({ transcript: ANSWER, holdMs: 9000, captureMs: 8000, plan, resumeFacts: null, role: null });
     expect(ctx.roleText).toContain("Backend Intern");
+  });
+
+  it("adds the plan's company and judges against the job's level", () => {
+    const job = { title: "Backend Intern", company: "Acme", companyInferred: true, family: "software" as const, seniority: "junior", generated: false };
+    const plan: QuestionPlan = { version: 1, role, topics: {}, resume: {}, job };
+    const ctx = turnContextFrom({ state: freshState(), answer, storedPlan: plan, postingText: null, resume: null, recentTurns: [] });
+    expect(ctx.roleText).toMatch(/Backend Intern[\s\S]*\nCompany: Acme \(read from the posting link\)$/);
+    expect(ctx.seniority).toBe("junior");
+
+    const stated = { ...plan, role: null, job: { ...job, companyInferred: false, seniority: null } };
+    const bare = turnContextFrom({ state: freshState(), answer, storedPlan: stated, postingText: null, resume: null, recentTurns: [] });
+    expect(bare.roleText).toBe("Company: Acme");
+    expect(bare.seniority).toBeNull();
+    // Without a job, the plan's role still gives the level.
+    const roleOnly = turnContextFrom({ state: freshState(), answer, storedPlan: { ...plan, job: undefined }, postingText: null, resume: null, recentTurns: [] });
+    expect(roleOnly.seniority).toBe("intern");
   });
 
   it("falls back to the posting, and to no plan, when the stored plan is malformed", () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   JobLinkError,
   MAX_POSTING_CHARS,
+  companyFromBoard,
   decodeEntities,
   fetchJobPosting,
   htmlToText,
@@ -150,6 +151,29 @@ describe("fetchJobPosting — extraction per provider", () => {
     expect(posting.text).toContain("We sponsor visas.");
   });
 
+  /** Lever's API has no company field; the board name is a labelled guess. */
+  it("Lever and Ashby: read the company from the board name, marked as inferred", async () => {
+    const lever = stubFetch({ text: "Platform Intern", descriptionPlain: LONG });
+    expect(await fetchJobPosting("https://jobs.lever.co/acme-robotics/abc-123", lever.fetcher)).toMatchObject({
+      company: "Acme Robotics",
+      companyInferred: true,
+    });
+
+    const ashby = stubFetch({ jobs: [{ id: "7458d4e9", title: "SWE Intern", descriptionPlain: LONG }] });
+    expect(await fetchJobPosting("https://jobs.ashbyhq.com/northwind/7458d4e9", ashby.fetcher)).toMatchObject({
+      company: "Northwind",
+      companyInferred: true,
+    });
+  });
+
+  it("Greenhouse and SmartRecruiters: a stated company is not inferred", async () => {
+    const { fetcher } = stubFetch({ title: "Intern", company_name: "Airbnb", content: `&lt;p&gt;${LONG}&lt;/p&gt;` });
+    expect(await fetchJobPosting("https://boards.greenhouse.io/airbnb/jobs/1", fetcher)).toMatchObject({
+      company: "Airbnb",
+      companyInferred: false,
+    });
+  });
+
   it("Ashby: picks the posting out of the whole board", async () => {
     const { fetcher } = stubFetch({
       jobs: [
@@ -189,6 +213,22 @@ describe("fetchJobPosting — extraction per provider", () => {
     const { fetcher } = stubFetch({ title: "x", descriptionPlain: "word ".repeat(5000) });
     const posting = await fetchJobPosting("https://jobs.lever.co/acme/abc", fetcher);
     expect(posting.text.length).toBeLessThanOrEqual(MAX_POSTING_CHARS);
+  });
+});
+
+describe("companyFromBoard", () => {
+  it.each([
+    ["acme", "Acme"],
+    ["acme-robotics", "Acme Robotics"],
+    ["north_wind", "North Wind"],
+    ["acme-2024", "Acme"],
+  ])("%s -> %s", (board, company) => {
+    expect(companyFromBoard(board)).toBe(company);
+  });
+
+  it("is null when there is nothing to read", () => {
+    expect(companyFromBoard(undefined)).toBeNull();
+    expect(companyFromBoard("2024")).toBeNull();
   });
 });
 

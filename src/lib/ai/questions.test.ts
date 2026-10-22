@@ -4,7 +4,6 @@ import { extractEvidence, validateEvaluation, EvalError } from "./evaluate";
 import {
   checkDraft,
   chooseQuestionText,
-  hasProperNoun,
   heuristicGap,
   heuristicScores,
   preClassify,
@@ -13,17 +12,16 @@ import {
 
 const VALID = {
   scores: {
-    situation: 3,
-    task: 2,
-    action: 3,
-    result: 1,
-    specificity: 2,
-    impact: 1,
-    ownership: 1,
     relevance: 4,
+    specificity: 2,
+    ownership: 1,
+    reasoning: 3,
+    outcome: 1,
+    communication: 3,
   },
+  status: "incomplete",
   observation: "Says we throughout; own role unclear",
-  off_topic: false,
+  clarify_gap: "ownership",
   repeats_previous: false,
   drafts: {
     deepen: "What trade-off did you weigh when you chose that approach?",
@@ -33,22 +31,52 @@ const VALID = {
 
 describe("validateEvaluation", () => {
   it("accepts a well-formed payload", () => {
-    expect(validateEvaluation(VALID).scores.impact).toBe(1);
+    const v = validateEvaluation(VALID, "behavioral");
+    expect(v.scores.outcome).toBe(1);
+    expect(v.status).toBe("incomplete");
+    expect(v.clarify_gap).toBe("ownership");
   });
 
   it.each([
     ["null", null],
     ["missing scores", { ...VALID, scores: undefined }],
-    ["a score out of range", { ...VALID, scores: { ...VALID.scores, impact: 7 } }],
-    ["a non-integer score", { ...VALID, scores: { ...VALID.scores, impact: 2.5 } }],
+    ["a score out of range", { ...VALID, scores: { ...VALID.scores, outcome: 7 } }],
+    ["a non-integer score", { ...VALID, scores: { ...VALID.scores, outcome: 2.5 } }],
+    ["a missing dimension of the kind", { ...VALID, scores: { ...VALID.scores, reasoning: undefined } }],
     ["a missing draft", { ...VALID, drafts: { deepen: "x?" } }],
   ])("rejects %s", (_label, payload) => {
-    expect(() => validateEvaluation(payload)).toThrow(EvalError);
+    expect(() => validateEvaluation(payload, "behavioral")).toThrow(EvalError);
   });
 
   it("truncates an over-long observation rather than failing the turn", () => {
     const long = { ...VALID, observation: "x".repeat(200) };
-    expect(validateEvaluation(long).observation).toHaveLength(90);
+    expect(validateEvaluation(long, "behavioral").observation).toHaveLength(90);
+  });
+
+  /** A stray key must not reach a weighted score or the notepad. */
+  it("keeps only the dimensions the kind is scored on", () => {
+    const technical = {
+      ...VALID,
+      scores: { relevance: 3, accuracy: 2, reasoning: 3, specificity: 3, communication: 3, ownership: 1 },
+      clarify_gap: "accuracy",
+    };
+    const v = validateEvaluation(technical, "technical");
+    expect(Object.keys(v.scores).sort()).toEqual(
+      ["accuracy", "communication", "reasoning", "relevance", "specificity"],
+    );
+    expect(v.scores.ownership).toBeUndefined();
+  });
+
+  it("drops a clarify gap the kind cannot chase", () => {
+    expect(validateEvaluation({ ...VALID, clarify_gap: "accuracy" }, "behavioral").clarify_gap).toBeNull();
+    expect(validateEvaluation({ ...VALID, clarify_gap: "communication" }, "behavioral").clarify_gap).toBeNull();
+  });
+
+  it("derives off_topic from the status, and tolerates an unknown status", () => {
+    expect(validateEvaluation({ ...VALID, status: "off_topic" }, "behavioral").off_topic).toBe(true);
+    const unknown = validateEvaluation({ ...VALID, status: "bogus" }, "behavioral");
+    expect(unknown.status).toBe("complete");
+    expect(unknown.off_topic).toBe(false);
   });
 });
 
@@ -166,30 +194,41 @@ describe("preClassify — demo insurance", () => {
     expect(preClassify("We worked as a team and fixed the bug.")).toBe("weak");
   });
 
-  it("forces weak for anything under the word floor", () => {
+  it("forces weak for an opening under the word floor", () => {
     expect(preClassify("I did the thing and it worked out well enough.")).toBe(
       "weak",
     );
   });
 
-  it("forces weak for a long answer with no concrete anchor", () => {
-    const vague =
-      "we worked really well as a group and everyone contributed their part " +
-      "and it all came together in the end which was good for everyone " +
-      "involved and we learned a lot from the whole process overall too";
-    expect(preClassify(vague)).toBe("weak");
+  /**
+   * The rule this replaced forced `weak` on any answer with no digit and no
+   * mid-sentence capital. Chrome's recogniser returns lowercase text without
+   * punctuation, so it overrode the model on nearly every voice answer —
+   * measured on the calibration fixtures, including one the model scored 4/4.
+   */
+  it("defers to the model on an unpunctuated, lowercase voice transcript", () => {
+    const voice =
+      "so last semester in my software class my group wanted a nosql database " +
+      "but i thought our data was really relational so i wrote the queries we " +
+      "would need in both and showed them side by side and they agreed to switch";
+    expect(preClassify(voice)).toBeNull();
   });
 
-  /** Regression: the word after a full stop is sentence-initial, not a proper noun. */
-  it("does not treat a sentence-initial capital as naming something", () => {
-    expect(
-      hasProperNoun("we shipped it on time. The team was happy about that."),
-    ).toBe(false);
+  it("defers to the model on a qualitative story with no numbers or names", () => {
+    const qualitative =
+      "The officers liked the paper form because it was what they had always " +
+      "used, so instead of arguing I sat at the sign-up table for an afternoon " +
+      "and wrote down every problem I saw, then brought that list to the next meeting.";
+    expect(preClassify(qualitative)).toBeNull();
   });
 
-  it("recognises an actual named system mid-sentence", () => {
-    expect(hasProperNoun("I rewrote the scheduler in Kubernetes.")).toBe(true);
-    expect(hasProperNoun("we migrated to AWS last spring")).toBe(true);
+  /**
+   * A follow-up reply adds to the original answer; short is what was asked
+   * for. The 25-word floor this replaced banded focused replies weak.
+   */
+  it("never forces a band on a follow-up reply, however short", () => {
+    expect(preClassify("It shipped on time and the team kept my setup.", "clarify")).toBeNull();
+    expect(preClassify("Mostly the trade-off on cost.", "deepen")).toBeNull();
   });
 
   it("defers to the model when the answer has substance", () => {
@@ -212,54 +251,38 @@ describe("heuristicScores — degraded turn", () => {
     }
   });
 
-  it("credits a number as impact evidence", () => {
-    expect(heuristicScores("I cut latency by 40% last quarter").impact).toBe(3);
+  it("scores only the dimensions the kind uses", () => {
+    expect(Object.keys(heuristicScores("anything at all here", "technical")).sort()).toEqual(
+      ["accuracy", "communication", "reasoning", "relevance", "specificity"],
+    );
   });
 
-  it("scores ownership lower when the answer hides behind we", () => {
-    const mine = heuristicScores("I rebuilt the pipeline myself").ownership;
-    const ours = heuristicScores("we rebuilt the pipeline as a team").ownership;
+  it("scores ownership lower when there is no first person", () => {
+    const mine = heuristicScores("I rebuilt the pipeline myself").ownership!;
+    const ours = heuristicScores("we rebuilt the pipeline as a team").ownership!;
     expect(mine).toBeGreaterThan(ours);
+  });
+
+  it("credits a stated reason as reasoning evidence", () => {
+    expect(heuristicScores("I chose it because the data was relational").reasoning!)
+      .toBeGreaterThan(heuristicScores("I chose it").reasoning!);
   });
 
   it("picks the lowest dimension, tie-broken by priority", () => {
     expect(
-      heuristicGap({
-        situation: 3,
-        task: 3,
-        action: 3,
-        result: 3,
-        specificity: 3,
-        impact: 1,
-        ownership: 1,
-        relevance: 3,
-      }),
+      heuristicGap(
+        { relevance: 3, specificity: 3, ownership: 1, reasoning: 3, outcome: 1, communication: 3 },
+        "behavioral",
+      ),
     ).toBe("ownership");
   });
 
-  it("chases the missing STAR component when that is the weakest part", () => {
+  it("never picks communication, which no follow-up chases", () => {
     expect(
-      heuristicGap({
-        situation: 4,
-        task: 4,
-        action: 4,
-        result: 1,
-        specificity: 3,
-        impact: 3,
-        ownership: 3,
-        relevance: 4,
-      }),
-    ).toBe("result");
-  });
-
-  it("credits an explicitly stated responsibility as Task", () => {
-    expect(heuristicScores("I was responsible for the billing service").task)
-      .toBeGreaterThan(heuristicScores("we shipped the billing service").task);
-  });
-
-  it("credits a number as Result evidence", () => {
-    expect(heuristicScores("it cut errors by 40%").result).toBeGreaterThan(
-      heuristicScores("it went well in the end").result,
-    );
+      heuristicGap(
+        { relevance: 4, specificity: 4, ownership: 4, reasoning: 4, outcome: 3, communication: 1 },
+        "behavioral",
+      ),
+    ).toBe("outcome");
   });
 });

@@ -22,6 +22,8 @@ export type JobSource = "paste" | "link";
 
 export interface JobValue {
   targetRole: string;
+  /** Optional; a posting link usually supplies it, and a stated one wins. */
+  company: string;
   source: JobSource;
   roleText: string;
   jobUrl: string;
@@ -42,7 +44,7 @@ export interface SetupValues {
   mode: InterviewMode;
 }
 
-export type SetupField = "displayName" | "targetRole" | "roleText" | "jobUrl" | "resume";
+export type SetupField = "displayName" | "targetRole" | "company" | "roleText" | "jobUrl" | "resume";
 export type SetupErrors = Partial<Record<SetupField, string>>;
 
 export function resumeIdOf(resume: ResumeState): string | null {
@@ -87,6 +89,8 @@ export function validateSetupSheet(sheet: number, values: SetupValues): SetupErr
   if (SETUP_SHEETS[sheet]?.id === "job") {
     if (job.targetRole.trim().length > LIMITS.targetRole)
       errors.targetRole = `Keep the job title to ${LIMITS.targetRole} characters.`;
+    if (job.company.trim().length > LIMITS.company)
+      errors.company = `Keep the company name to ${LIMITS.company} characters.`;
     if (job.source === "paste" && job.roleText.length > LIMITS.roleText)
       errors.roleText = `Keep the description to ${LIMITS.roleText.toLocaleString("en")} characters.`;
     const url = job.jobUrl.trim();
@@ -113,6 +117,7 @@ export function validateSetup(values: SetupValues): { sheet: number; errors: Set
 export function sessionBody(values: SetupValues) {
   const { job } = values;
   const targetRole = job.targetRole.trim();
+  const company = job.company.trim();
   const roleText = job.source === "paste" ? job.roleText.trim() : "";
   const jobUrl = job.source === "link" ? job.jobUrl.trim() : "";
   const resumeId = resumeIdOf(values.resume);
@@ -120,6 +125,7 @@ export function sessionBody(values: SetupValues) {
     displayName: values.displayName.trim(),
     mode: values.mode,
     ...(targetRole && { targetRole }),
+    ...(company && { company }),
     ...(roleText && { roleText }),
     ...(jobUrl && { jobUrl }),
     ...(resumeId && { resumeId }),

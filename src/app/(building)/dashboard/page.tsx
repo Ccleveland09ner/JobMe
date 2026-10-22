@@ -43,6 +43,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         completed: shelf.completed,
         inProgress: Math.max(0, shelf.total - shelf.completed),
         latestScores: shelf.trend.at(-1)?.scores ?? null,
+        latestOverall: shelf.trend.at(-1)?.overall ?? null,
       }}
       trend={shelf.trend}
       // A volume link (?page=) opens at the contents.

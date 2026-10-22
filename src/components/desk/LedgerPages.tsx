@@ -15,8 +15,7 @@ import { FlipSafe } from "@/components/ui/book-slider";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { ContentsList, kickerClass, PaperStat } from "@/components/ui/DocumentParts";
 import { DocumentPage } from "@/components/ui/DocumentPage";
-import { displayAverage } from "@/lib/frontend/adapters";
-import { dimensionLabel, MODE_LABELS, topicLabel } from "@/lib/frontend/labels";
+import { dimensionLabel, MODE_LABELS, scoreLevelLabel, topicLabel } from "@/lib/frontend/labels";
 import {
   entryNumber,
   LEDGER_CONTENTS_PAGE,
@@ -156,7 +155,7 @@ export function ContentsPage({
 }
 
 export function ProgressPage({ progress }: { progress: LedgerProgress }) {
-  const latest = displayAverage(progress.latestScores);
+  const latest = progress.latestOverall;
   return (
     <DocumentPage face="ledger" running="Your progress" number={LEDGER_PROGRESS_PAGE}>
       <FlipSafe className="flex flex-col gap-4">
@@ -166,7 +165,11 @@ export function ProgressPage({ progress }: { progress: LedgerProgress }) {
         <dl className="grid grid-cols-3 gap-3">
           <PaperStat label="Completed" value={String(progress.completed)} />
           <PaperStat label="In progress" value={String(progress.inProgress)} />
-          <PaperStat label="Latest average" value={latest === null ? "—" : `${latest} / 4`} />
+          <PaperStat
+            label="Latest overall"
+            value={latest === null ? "—" : `${latest} / 4`}
+            note={latest === null ? undefined : scoreLevelLabel(latest)}
+          />
         </dl>
         {progress.latestScores ? (
           <div className="flex flex-col gap-2">
@@ -195,7 +198,7 @@ export function TrendsPage({ trend }: { trend: TrendPoint[] }) {
 
 function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: number; onDelete: (s: SessionSummary) => void }) {
   const completed = entry.status === "completed";
-  const average = displayAverage(entry.overallScores);
+  const overall = entry.overall;
   return (
     <section aria-labelledby={entryHeadingId(entry.id)} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
@@ -213,7 +216,11 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
       </div>
       <dl className="grid grid-cols-2 gap-3 border-y-2 border-dashed border-ink/20 py-3">
         <PaperStat label={completed ? "Questions answered" : "Reached question"} value={String(entry.questionCount)} />
-        <PaperStat label="Average" value={!completed ? "—" : average === null ? "Not scored" : `${average} / 4`} />
+        <PaperStat
+          label="Overall"
+          value={!completed ? "—" : overall === null ? "Not scored" : `${overall} / 4`}
+          note={completed && overall !== null ? scoreLevelLabel(overall) : undefined}
+        />
       </dl>
       {entry.overallScores && (
         <div className="flex flex-col gap-2">

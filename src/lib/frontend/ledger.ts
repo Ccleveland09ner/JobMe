@@ -6,10 +6,11 @@
  */
 
 import type { ReportStats } from "@/lib/ai/report";
-import { FULL_QUESTION_CAP_MAX, type Scores } from "@/lib/engine/types";
+import { FULL_QUESTION_CAP_MAX, type StoredScores } from "@/lib/engine/types";
 import type { RowReader } from "@/lib/supabase/reader";
 
 import {
+  pickOverall,
   pickScores,
   reportTurnFromRow,
   SESSION_JSON_COLUMNS,
@@ -82,7 +83,9 @@ export interface LedgerProgress {
   completed: number;
   inProgress: number;
   /** overall_scores of the most recent completed interview. */
-  latestScores: Partial<Scores> | null;
+  latestScores: StoredScores | null;
+  /** Its headline score, the mean of its question scores. */
+  latestOverall: number | null;
 }
 
 /** An interview's running number: the first one ever is no. 1. */
@@ -263,7 +266,9 @@ export async function loadLedgerShelf(supabase: RowReader, userId: string): Prom
     total: totalRes.count ?? 0,
     completed: trendRes.count ?? 0,
     // Oldest first, for the chart.
-    trend: trendRows.map((r) => ({ id: r.id, startedAt: r.started_at, scores: pickScores(r.overall_scores) })).reverse(),
+    trend: trendRows
+      .map((r) => ({ id: r.id, startedAt: r.started_at, scores: pickScores(r.overall_scores), overall: pickOverall(r.overall_scores) }))
+      .reverse(),
     owner: profile ? { username: profile.username, memberCode: profile.member_code } : null,
   };
 }

@@ -1,7 +1,7 @@
 /**
  * An interview's report, filed in the reports folder with a tab for every
  * finished interview. Without a saved report the folder's sheet writes it
- * once (ReportGenerator). Scores are shown as stored.
+ * once (ReportGenerator). Scores are shown as stored, by original question.
  */
 
 import { notFound } from "next/navigation";
