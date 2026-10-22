@@ -18,7 +18,8 @@
 
 import type { TopicId } from "./types";
 
-export type RoleFamily = "software" | "product" | "data" | "general";
+export const ROLE_FAMILIES = ["software", "product", "data", "general"] as const;
+export type RoleFamily = (typeof ROLE_FAMILIES)[number];
 
 /** Checked in order: "Data Engineer" is data, "Product Engineer" software. */
 const FAMILY_PATTERNS: [RoleFamily, RegExp][] = [

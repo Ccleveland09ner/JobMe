@@ -2,19 +2,21 @@
  * Display labels for engine enums. Formatting only — nothing here decides
  * anything.
  *
- * Topic labels duplicate `BANK[id].label` on purpose: importing the bank into
- * a client component would ship every question's text to the browser for the
- * sake of a few short strings. labels.test.ts fails if the two drift apart.
+ * Topic labels come from engine/topics.ts, which holds no question text: the
+ * bank itself must never ship to the browser (architecture.test.ts).
  */
 
-import type {
-  AnyDimension,
-  Band,
-  InterviewMode,
-  Move,
-  QuestionKind,
-  QuestionSource,
-  TopicId,
+import { GREAT_FLOOR, WEAK_CEILING } from "../engine/classify";
+import { TOPICS } from "../engine/topics";
+import {
+  TOPIC_IDS,
+  type AnyDimension,
+  type Band,
+  type InterviewMode,
+  type Move,
+  type QuestionKind,
+  type QuestionSource,
+  type TopicId,
 } from "../engine/types";
 
 /**
@@ -52,23 +54,7 @@ export const DIMENSION_HINTS: Record<AnyDimension, string> = {
   impact: "What changed",
 };
 
-export const TOPIC_LABELS: Record<TopicId, string> = {
-  motivation: "Motivation and fit",
-  teamwork: "Teamwork",
-  conflict: "Handling disagreement",
-  learning_fast: "Learning quickly",
-  handling_failure: "Learning from setbacks",
-  leadership: "Leadership",
-  problem_solving: "Problem solving",
-  persuasion: "Influencing others",
-  prioritisation: "Managing priorities",
-  process_improvement: "Improving a process",
-  pressure: "Delivering under pressure",
-  technical_challenge: "Technical challenge",
-  technical_knowledge: "Technical knowledge",
-  product_sense: "Product sense",
-  data_reasoning: "Data reasoning",
-};
+export const TOPIC_LABELS = Object.fromEntries(TOPIC_IDS.map((id) => [id, TOPICS[id].label])) as Record<TopicId, string>;
 
 export const KIND_LABELS: Record<QuestionKind, string> = {
   behavioral: "Behavioural",
@@ -117,7 +103,7 @@ export function dimensionLabel(dim: string): string {
 
 /** The level a 1-4 score reads as, matching the bands. */
 export function scoreLevelLabel(score: number): string {
-  if (score < 2) return BAND_LABELS.weak;
-  if (score >= 3.5) return BAND_LABELS.great;
+  if (score < WEAK_CEILING) return BAND_LABELS.weak;
+  if (score >= GREAT_FLOOR) return BAND_LABELS.great;
   return BAND_LABELS.mediocre;
 }

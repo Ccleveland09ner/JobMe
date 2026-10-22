@@ -5,13 +5,11 @@
  * through RLS; the shaping and the layout are pure.
  */
 
-import type { ReportStats } from "@/lib/ai/report";
 import type { RowReader } from "@/lib/supabase/reader";
 
-import { purposeFor } from "../engine/bank";
+import { purposeFor } from "../engine/topics";
 import type { AnyDimension, InterviewMode, StoredScores, TopicId } from "../engine/types";
-import { QuestionPlan } from "../schemas";
-import { groupIntoQuestions, rollupQuestions } from "../stats";
+import { groupIntoQuestions, questionRef, reportFromRow, rollupQuestions, type ReportRow, type ReportStats } from "../stats";
 import {
   findEvidence,
   modeFromRow,
@@ -23,6 +21,8 @@ import {
   type TurnRow,
 } from "./adapters";
 import { topicLabel } from "./labels";
+import { parsePlan } from "../plan";
+import type { QuestionPlan } from "../schemas";
 import { splitText, type FlowBlock, type PagePlan } from "./paginate";
 import type { ReportQuestionView, ReportTurnView, SessionStatus } from "./types";
 
@@ -88,18 +88,11 @@ interface SessionRow {
   question_plan?: unknown;
 }
 
-interface ReportRow {
-  summary: string | null;
-  weakest_turn_id: string | null;
-  rewrite_text: string | null;
-  stats: ReportStats | null;
-}
-
 /** Numbered Q1, Q2… with the competency and what it assessed for this job. */
 export function questionsOf(turns: ReportTurn[], plan: QuestionPlan | null): ReportQuestion[] {
   return groupIntoQuestions(turns).map((g, i) => ({
     ...g,
-    ref: `Q${i + 1}`,
+    ref: questionRef(i),
     label: topicLabel(g.opening.topic),
     purpose: g.opening.topic ? purposeFor(plan, g.opening.topic as TopicId) : "",
   }));
@@ -114,8 +107,7 @@ export function reportDocumentFromRows(
     .sort((a, b) => a.seq - b.seq)
     .map((t) => ({ ...reportTurnFromRow(t), note: t.notepad_text?.trim() || null, reason: t.reason_text?.trim() || null }));
   // A malformed plan only costs each purpose its wording for this job.
-  const plan = QuestionPlan.safeParse(session.question_plan);
-  const questions = questionsOf(ordered, plan.success ? plan.data : null);
+  const questions = questionsOf(ordered, parsePlan(session.question_plan));
   return {
     id: session.id,
     status: session.status === "completed" ? "completed" : "in_progress",
@@ -126,12 +118,7 @@ export function reportDocumentFromRows(
     overallScores: pickScores(session.overall_scores),
     turns: ordered,
     questions,
-    report: report && {
-      summary: report.summary ?? "",
-      weakestTurnId: report.weakest_turn_id,
-      rewrite: report.rewrite_text,
-      stats: report.stats,
-    },
+    report: report && reportFromRow(report),
   };
 }
 

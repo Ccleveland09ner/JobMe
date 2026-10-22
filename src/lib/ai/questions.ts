@@ -154,3 +154,18 @@ export function heuristicScores(answer: string, kind: QuestionKind = "behavioral
 export function heuristicGap(scores: Scores, kind: QuestionKind = "behavioral"): Dimension {
   return computePrimaryGap(scores, kind);
 }
+
+/** A planned opening may run longer than a follow-up. */
+export const MAX_OPENING_WORDS = 30;
+
+/** Mechanical checks for an opening (like checkDraft, but statements and a little more length are fine). */
+export function checkOpening(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (t.split(/\s+/).length > MAX_OPENING_WORDS) return false;
+  if (!/[.?]$/.test(t)) return false;
+  if ((t.match(/\?/g) ?? []).length > 1) return false;
+  // A leaked placeholder or piece of prompt structure would be read aloud.
+  if (/[<>{}]|\[[A-Za-z_ ]+\]/.test(t)) return false;
+  return true;
+}

@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 
-import { TOPIC_IDS, type TopicId } from "./engine/types";
+import { ROLE_FAMILIES } from "./engine/roles";
+import { INTERVIEW_MODES, TOPIC_IDS, type TopicId } from "./engine/types";
 
 /** Input caps. */
 export const LIMITS = {
@@ -37,7 +38,7 @@ export const CreateSessionBody = z
       .regex(/^https?:\/\//i, "Must be a web link")
       .optional(),
     resumeId: z.string().uuid().optional(),
-    mode: z.enum(["quick", "full"]).default("quick"),
+    mode: z.enum(INTERVIEW_MODES).default("quick"),
   })
   .refine((b) => !(b.roleText?.trim() && b.jobUrl), {
     message: "Give either a pasted job description or a link, not both.",
@@ -90,7 +91,7 @@ export const QuestionPlan = z.object({
       company: z.string().nullable(),
       /** Read from the posting link's path, not stated by the posting. */
       companyInferred: z.boolean(),
-      family: z.enum(["software", "product", "data", "general"]),
+      family: z.enum(ROLE_FAMILIES),
       seniority: z.string().nullable(),
       /** The model contributed to this plan — what "personalised" means. */
       generated: z.boolean(),

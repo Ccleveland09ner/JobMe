@@ -16,19 +16,20 @@
 import {
   fallbackReport,
   generateReportText,
-  pickWeakest,
-  reportStats,
   type ReportDraft,
   type ReportQuestion,
-  type ReportStats,
 } from "../ai/report";
-import { BANK } from "../engine/bank";
+import { TOPICS } from "../engine/topics";
 import type { StoredScores, TopicId } from "../engine/types";
 import {
   groupIntoQuestions,
-  overallScoresFor,
+  overallScoresFrom,
+  pickWeakest,
+  questionRef,
+  reportStats,
   rollupQuestions,
   type QuestionGroup,
+  type ReportStats,
 } from "../stats";
 
 export interface ReportTurnRow {
@@ -88,9 +89,9 @@ export function reportQuestionsFor(
   groups: QuestionGroup<ReportTurnRow>[],
 ): (ReportQuestion & { openingId: string })[] {
   return groups.map((g, i) => ({
-    ref: `Q${i + 1}`,
+    ref: questionRef(i),
     openingId: g.opening.id,
-    competency: BANK[g.opening.topic as TopicId]?.label ?? g.opening.topic ?? "General",
+    competency: TOPICS[g.opening.topic as TopicId]?.label ?? g.opening.topic ?? "General",
     kind: g.kind,
     parts: g.turns.map((t) => ({ question: t.questionText, answer: t.answerTranscript })),
     score: g.score,
@@ -115,7 +116,7 @@ export async function runReport(
   // unscored questions are shown honestly but never averaged.
   const groups = groupIntoQuestions(turns);
   const rollup = rollupQuestions(groups);
-  const overallScores = overallScoresFor(turns);
+  const overallScores = overallScoresFrom(rollup);
 
   if (existing) {
     // A crash mid-way left a report on an in-progress session: heal it.

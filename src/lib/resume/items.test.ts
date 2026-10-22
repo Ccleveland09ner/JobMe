@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RoleProfile } from "@/lib/jd/distill";
+import type { RoleProfile } from "@/lib/jd/profile";
 import type { ResumeItem } from "@/lib/engine/types";
 
 import type { Chunk } from "./chunk";

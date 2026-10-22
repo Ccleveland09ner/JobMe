@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkOpening } from "../ai/question-plan";
+import { checkOpening } from "../ai/questions";
 import { BANK, questionFor } from "./bank";
 import {
   ROLE_SPECIFIC_TOPICS,

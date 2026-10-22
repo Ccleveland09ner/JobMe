@@ -31,6 +31,9 @@ import {
   type RoleFamily,
 } from "../engine/roles";
 import { TOPIC_IDS, type ResumeItem, type TopicId } from "../engine/types";
+import { normaliseQuestion } from "../engine/asked";
+import { checkOpening, MAX_OPENING_WORDS } from "./questions";
+import { usableJobText } from "../plan";
 import type { QuestionPlan } from "../schemas";
 import { LlmError, generateJson } from "./llm";
 import { asUntrustedData } from "./prompts";
@@ -43,13 +46,7 @@ import { asUntrustedData } from "./prompts";
 export const PLAN_TIMEOUT_MS = 12_000;
 /** Quick mode's cap leaves room for only a few resume threads. */
 export const QUICK_PLAN_RESUME_ITEMS = 4;
-export const MAX_OPENING_WORDS = 30;
 const JOB_PROMPT_CHARS = 6000;
-/**
- * Shorter than this, pasted text is not a job description ("asdf", a URL
- * pasted into the wrong box), and personalising on it would be noise.
- */
-export const MIN_JOB_TEXT_CHARS = 80;
 
 export interface PlanInputs {
   /** Role-family default topics, in ask order (engine/roles.ts). */
@@ -67,12 +64,6 @@ export interface PlanInputs {
   roleSummary?: string | null;
   resumeFacts?: string | null;
   seniority?: string | null;
-}
-
-/** A job description long enough to be one. */
-export function usableJobText(text: string | null | undefined): string | null {
-  const t = text?.trim();
-  return t && t.length >= MIN_JOB_TEXT_CHARS ? t : null;
 }
 
 const hasJobDetails = (i: PlanInputs) =>
@@ -317,18 +308,6 @@ export async function generateQuestionPlan(
 
 // Validation: every entry stands or falls alone.
 
-/** Mechanical checks for an opening (like checkDraft, but statements and a little more length are fine). */
-export function checkOpening(text: string): boolean {
-  const t = text.trim();
-  if (!t) return false;
-  if (t.split(/\s+/).length > MAX_OPENING_WORDS) return false;
-  if (!/[.?]$/.test(t)) return false;
-  if ((t.match(/\?/g) ?? []).length > 1) return false;
-  // A leaked placeholder or piece of prompt structure would be read aloud.
-  if (/[<>{}]|\[[A-Za-z_ ]+\]/.test(t)) return false;
-  return true;
-}
-
 /** Words too common in role titles to show the question read the resume. */
 const GENERIC_WORDS = new Set([
   "engineer", "engineering", "developer", "development", "intern",
@@ -354,8 +333,6 @@ export function namesItem(text: string, item: ResumeItem): boolean {
   return distinctive.some((w) => haystack.includes(w));
 }
 
-const normalise = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 
 const isTopic = (v: unknown): v is TopicId =>
   typeof v === "string" && (TOPIC_IDS as readonly string[]).includes(v);
@@ -387,8 +364,8 @@ export function validatePlan(raw: unknown, inputs: PlanInputs): QuestionPlan | n
   const accept = (text: unknown): string | undefined => {
     if (typeof text !== "string") return undefined;
     const t = text.trim().replace(/\s+/g, " ");
-    if (!checkOpening(t) || seen.has(normalise(t))) return undefined;
-    seen.add(normalise(t));
+    if (!checkOpening(t) || seen.has(normaliseQuestion(t))) return undefined;
+    seen.add(normaliseQuestion(t));
     return t;
   };
 
@@ -414,7 +391,7 @@ export function validatePlan(raw: unknown, inputs: PlanInputs): QuestionPlan | n
       const levels: { l1?: string; l2?: string; l3?: string; purpose?: string } = {};
       for (const [i, level] of (["l1", "l2", "l3"] as const).entries()) {
         const raw = entry[level];
-        if (typeof raw === "string" && normalise(raw) === normalise(questionFor(topic, i + 1))) {
+        if (typeof raw === "string" && normaliseQuestion(raw) === normaliseQuestion(questionFor(topic, i + 1))) {
           continue;
         }
         const text = accept(raw);
@@ -481,49 +458,14 @@ export function validatePlan(raw: unknown, inputs: PlanInputs): QuestionPlan | n
   };
 }
 
-// Lookups: the turn pipeline falls back to fixed text on null.
+export { checkOpening, MAX_OPENING_WORDS } from "./questions";
 
-const alreadyAsked = (text: string, asked: string[]) =>
-  asked.some((q) => normalise(q) === normalise(text));
-
-/** Planned wording for a bank topic at a difficulty, mirroring `questionFor`. */
-export function plannedBankOpening(
-  plan: QuestionPlan | null | undefined,
-  topic: TopicId,
-  difficulty: number,
-  asked: string[],
-): string | null {
-  const levels = plan?.topics[topic];
-  if (!levels) return null;
-  const text =
-    difficulty >= 3 ? levels.l3 : difficulty === 2 ? levels.l2 : levels.l1;
-  return text && !alreadyAsked(text, asked) ? text : null;
-}
-
-/** The planned opening for a resume item, with the competency it lands on. */
-export function plannedResumeOpening(
-  plan: QuestionPlan | null | undefined,
-  itemId: string,
-  asked: string[],
-): { text: string; topic: TopicId | null } | null {
-  const entry = plan?.resume[itemId];
-  return entry && !alreadyAsked(entry.text, asked) ? entry : null;
-}
-
-export { purposeFor } from "../engine/bank";
-
-/**
- * Resume items in the plan's order for THIS job. Items were ranked against
- * whatever job description accompanied the upload, which may be a different
- * job; ids the plan omitted keep their original relative order at the end.
- */
-export function orderResumeItems<T extends { id: string }>(
-  items: T[],
-  plan: QuestionPlan | null | undefined,
-): T[] {
-  const order = plan?.resumeOrder ?? [];
-  if (!order.length) return items;
-  const rank = new Map(order.map((id, i) => [id, i]));
-  const last = order.length;
-  return [...items].sort((a, b) => (rank.get(a.id) ?? last) - (rank.get(b.id) ?? last));
-}
+// Reading a stored plan lives in lib/plan.ts; these names stay here for older imports.
+export {
+  MIN_JOB_TEXT_CHARS,
+  orderResumeItems,
+  plannedBankOpening,
+  plannedResumeOpening,
+  usableJobText,
+} from "../plan";
+export { purposeFor } from "../engine/topics";

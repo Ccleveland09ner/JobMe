@@ -6,23 +6,19 @@
 import { createClient } from "@/lib/supabase/server";
 
 import type { ResumeItem } from "@/lib/engine/types";
-import type { RoleProfile } from "@/lib/jd/distill";
+import type { RoleProfile } from "@/lib/jd/profile";
 
 import type { Chunk } from "./chunk";
+import type { ResumeFacts } from "./facts";
 import type { RedactionResult } from "./redact";
 import type { ParsedResume } from "./parse";
+
+export type { ResumeFacts } from "./facts";
 
 export interface StoredResume {
   id: string;
   chunkCount: number;
   layoutSuspect: boolean;
-}
-
-export interface ResumeFacts {
-  roles?: { title?: string; employer?: string; period?: string }[];
-  projects?: string[];
-  metrics?: string[];
-  skills?: string[];
 }
 
 export class ResumeStoreError extends Error {

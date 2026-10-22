@@ -5,7 +5,7 @@
  */
 
 import type { InterviewMode } from "../engine/types";
-import { JobLinkError, resolveJobLink } from "../job-posting";
+import { JobLinkError, resolveJobLink } from "../job-link";
 import { LIMITS } from "../schemas";
 
 export const SETUP_SHEETS = [

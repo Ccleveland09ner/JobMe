@@ -11,22 +11,16 @@
  * dependencies (the route wires the real ones).
  */
 
-import {
-  orderResumeItems,
-  plannedBankOpening,
-  QUICK_PLAN_RESUME_ITEMS,
-  usableJobText,
-  type PlanInputs,
-} from "../ai/question-plan";
+import { QUICK_PLAN_RESUME_ITEMS, type PlanInputs } from "../ai/question-plan";
 import { questionFor } from "../engine/bank";
 import { introLineFor } from "../engine/notepad";
 import { initState } from "../engine/policy";
 import { inferSeniority, roleFamily, type RoleFamily } from "../engine/roles";
 import type { EngineState, Question, ResumeItem, TopicId } from "../engine/types";
-import { formatRoleForPrompt, type RoleProfile } from "../jd/distill";
+import { formatRoleForPrompt, type RoleProfile } from "../jd/profile";
 import { JobLinkError, type JobPosting } from "../job-posting";
-import { formatFactsForPrompt } from "../resume/distill";
-import type { ResumeFacts } from "../resume/store";
+import { formatFactsForPrompt, type ResumeFacts } from "../resume/facts";
+import { orderResumeItems, plannedBankOpening, usableJobText } from "../plan";
 import type { CreateSessionBody, QuestionPlan } from "../schemas";
 
 /** Bank threads per session, before resume coverage. */

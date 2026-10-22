@@ -27,7 +27,8 @@
  * tier is not a rare path.
  */
 
-import { TOPIC_KINDS, type Dimension, type QuestionKind, type TopicId } from "./types";
+import { TOPICS } from "./topics";
+import { levelFor, TOPIC_KINDS, type Dimension, type QuestionKind, type TopicId } from "./types";
 
 export interface TopicEntry {
   id: TopicId;
@@ -99,8 +100,6 @@ const ANALYTIC_DEEPEN = [
 
 function topic(
   id: TopicId,
-  label: string,
-  purpose: string,
   [opening, harder, hardest]: [string, string, string],
   exemplars: { weak: string; strong: string },
   clarify: Partial<Record<Dimension, string[]>> = {},
@@ -111,9 +110,9 @@ function topic(
     kind === "technical" || kind === "problem_solving" ? ANALYTIC_DEEPEN : GENERIC_DEEPEN;
   return {
     id,
-    label,
+    label: TOPICS[id].label,
     kind,
-    purpose,
+    purpose: TOPICS[id].purpose,
     opening,
     harder,
     hardest,
@@ -125,8 +124,6 @@ function topic(
 export const BANK: Record<TopicId, TopicEntry> = {
   motivation: topic(
     "motivation",
-    "Motivation and fit",
-    "why you want this role and how your background connects to it",
     [
       "Tell me a bit about yourself and what draws you to this role.",
       "What about this role fits where you want to go next?",
@@ -146,8 +143,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   teamwork: topic(
     "teamwork",
-    "Teamwork",
-    "how you work with others to get something done",
     [
       "Tell me about a time you worked on a team to ship something.",
       "Tell me about a time a team you were on struggled to work together, and what you did about it.",
@@ -169,8 +164,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   conflict: topic(
     "conflict",
-    "Handling disagreement",
-    "how you handle a disagreement and keep the work moving",
     [
       "Tell me about a time you disagreed with a teammate, and how you handled it.",
       "Tell me about a time you disagreed with someone more experienced than you.",
@@ -190,8 +183,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   learning_fast: topic(
     "learning_fast",
-    "Learning quickly",
-    "how you get up to speed on something new",
     [
       "Tell me about a time you had to learn something quickly.",
       "Tell me about a time you had to get up to speed on an unfamiliar tool, codebase or subject.",
@@ -211,8 +202,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   handling_failure: topic(
     "handling_failure",
-    "Learning from setbacks",
-    "how you respond when something goes wrong, and what you take from it",
     [
       "Tell me about a time something you worked on did not go to plan, and what you learned from it.",
       "Tell me about a mistake you made that affected other people, and how you handled it.",
@@ -232,8 +221,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   leadership: topic(
     "leadership",
-    "Leadership",
-    "how you take the lead and bring people with you",
     [
       "Tell me about a time you took the lead on something, formally or not.",
       "Tell me about a time you got a group moving when nobody was clearly in charge.",
@@ -253,8 +240,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   problem_solving: topic(
     "problem_solving",
-    "Problem solving",
-    "how you work through a hard problem",
     [
       "Tell me about a time you solved a difficult problem.",
       "Tell me about a problem where your first solution did not work.",
@@ -274,8 +259,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   persuasion: topic(
     "persuasion",
-    "Influencing others",
-    "how you make a case and bring others round to a different approach",
     [
       "Tell me about a time you persuaded a teammate or stakeholder to consider a different approach — how you made your case and what happened.",
       "Tell me about a time you had to convince someone more experienced than you to change course.",
@@ -295,8 +278,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   prioritisation: topic(
     "prioritisation",
-    "Managing priorities",
-    "how you decide what matters most when everything is due",
     [
       "Tell me about a time you had to manage multiple competing priorities.",
       "Tell me about a time you had to tell someone their work would be delayed.",
@@ -316,8 +297,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   process_improvement: topic(
     "process_improvement",
-    "Improving a process",
-    "how you spot and fix a better way of working",
     [
       "Tell me about a time you improved a process.",
       "Tell me about a time you improved something nobody had asked you to fix.",
@@ -337,8 +316,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   pressure: topic(
     "pressure",
-    "Delivering under pressure",
-    "how you deliver when time is short",
     [
       "Tell me about a time you had to deliver under pressure.",
       "Tell me about a time you had to deliver under pressure with incomplete information.",
@@ -358,8 +335,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   technical_challenge: topic(
     "technical_challenge",
-    "Technical challenge",
-    "how you tackle a hard piece of technical work",
     [
       "Tell me about the most technically challenging thing you have built.",
       "Tell me about a technical decision you made that you would make differently now.",
@@ -379,8 +354,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   technical_knowledge: topic(
     "technical_knowledge",
-    "Technical knowledge",
-    "how well you understand the fundamentals the role builds on",
     [
       "What happens, step by step, when you type a web address into a browser and press enter?",
       "How would you explain the difference between a process and a thread, and when each is the right choice?",
@@ -401,8 +374,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   product_sense: topic(
     "product_sense",
-    "Product sense",
-    "how you think about users, priorities and trade-offs",
     [
       "Pick a product you use often. What is one thing you would improve, and why?",
       "How would you decide which of two features to build first when you can only build one?",
@@ -423,8 +394,6 @@ export const BANK: Record<TopicId, TopicEntry> = {
 
   data_reasoning: topic(
     "data_reasoning",
-    "Data reasoning",
-    "how you reason with data to reach a sound conclusion",
     [
       "How would you check whether a dataset is reliable enough to base a decision on?",
       "How would you explain the result of an A/B test to someone without a statistics background?",
@@ -457,18 +426,5 @@ export function deepenSeeds(topicId: TopicId): string[] {
 /** Question text for a topic at a difficulty level (1-3). */
 export function questionFor(topicId: TopicId, difficulty: number): string {
   const entry = BANK[topicId];
-  if (difficulty >= 3) return entry.hardest;
-  if (difficulty === 2) return entry.harder;
-  return entry.opening;
-}
-
-/**
- * What a topic assesses for this job: the plan's purpose, else the bank's.
- * Here rather than beside the plan so the scorecard can call it in the browser.
- */
-export function purposeFor(
-  plan: { topics: Partial<Record<TopicId, { purpose?: string }>> } | null | undefined,
-  topic: TopicId,
-): string {
-  return plan?.topics[topic]?.purpose ?? BANK[topic]?.purpose ?? "";
+  return { 1: entry.opening, 2: entry.harder, 3: entry.hardest }[levelFor(difficulty)];
 }

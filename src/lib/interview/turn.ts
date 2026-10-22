@@ -17,6 +17,7 @@ import {
   transitionLead,
 } from "../engine/notepad";
 import {
+  progressOf,
   questionKind,
   type Band,
   type Dimension,
@@ -34,15 +35,14 @@ import {
   heuristicScores,
   preClassify,
 } from "../ai/questions";
-import { plannedBankOpening, plannedResumeOpening } from "../ai/question-plan";
 import {
   fallbackResumeQuestion,
   type generateResumeQuestion,
 } from "../ai/resume-questions";
-import { formatRoleForPrompt, type RoleProfile } from "../jd/distill";
-import { formatFactsForPrompt } from "../resume/distill";
-import type { ResumeFacts } from "../resume/store";
-import { QuestionPlan } from "../schemas";
+import type { RoleProfile } from "../jd/profile";
+import { formatFactsForPrompt, type ResumeFacts } from "../resume/facts";
+import { companyLineFor, parsePlan, plannedBankOpening, plannedResumeOpening, roleTextFor } from "../plan";
+import type { QuestionPlan } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
 /**
@@ -385,15 +385,8 @@ export function turnContextFrom(args: {
   resume: { resume_facts?: unknown; role_profile?: unknown } | null;
   recentTurns: Parameters<typeof threadHistory>[1];
 }): TurnContext {
-  const parsed = QuestionPlan.safeParse(args.storedPlan);
-  const plan = parsed.success ? parsed.data : null;
-  const company = plan?.job?.company;
-  const roleLines = [
-    plan?.role ? formatRoleForPrompt(plan.role) : args.postingText,
-    company
-      ? `Company: ${company}${plan?.job?.companyInferred ? " (read from the posting link)" : ""}`
-      : null,
-  ].filter(Boolean);
+  const plan = parsePlan(args.storedPlan);
+  const roleLines = [roleTextFor(plan, args.postingText), companyLineFor(plan)].filter(Boolean);
   return {
     state: args.state,
     transcript: args.answer.transcript,
@@ -420,14 +413,7 @@ export function turnResponseBody(result: Extract<TurnResult, { kind: "turn" }>) 
     next: result.next ? { ...result.next, lead: result.lead } : null,
     done: result.done,
     wrapLine: result.wrapLine,
-    progress: {
-      questionCount: state.questionCount,
-      questionCap: state.questionCap,
-      topicIndex: state.topicIndex,
-      topicsTotal: state.topics.length,
-      coverageDone: state.resumeItems.filter((i) => i.covered).length,
-      coverageTotal: state.resumeItems.length,
-    },
+    progress: progressOf(state),
   };
 }
 

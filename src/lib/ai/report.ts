@@ -24,7 +24,9 @@ import { Type } from "@google/genai";
 import { z } from "zod";
 
 import type { AnyDimension, QuestionKind, StoredScores } from "../engine/types";
-import { fillerCount, wordCount, type SessionRollup } from "../stats";
+import type { FeedbackItem, ReportFeedback, SessionRollup } from "../stats";
+
+export { pickWeakest, reportStats, type FeedbackItem, type ReportFeedback, type ReportStats } from "../stats";
 import { generateJson } from "./llm";
 import { asUntrustedData } from "./prompts";
 
@@ -47,21 +49,6 @@ export interface ReportQuestion {
   /** The kind's weighted score, 1-4; null when unscored. */
   score: number | null;
   scores: StoredScores | null;
-}
-
-export interface FeedbackItem {
-  /** Which question it is about, e.g. "Q2"; null for a session-wide point. */
-  question: string | null;
-  point: string;
-  /** Strengths: the candidate's own words, verified verbatim. */
-  quote?: string | null;
-  /** Improvements: what to do differently. */
-  recommendation?: string;
-}
-
-export interface ReportFeedback {
-  strengths: FeedbackItem[];
-  improvements: FeedbackItem[];
 }
 
 export interface ReportDraft {
@@ -316,70 +303,6 @@ export function capWords(text: string, max: number): string {
   return lastStop > clipped.length / 2
     ? clipped.slice(0, lastStop + 1)
     : `${clipped}…`;
-}
-
-// Pure helpers for the report pipeline (lib/interview/report.ts).
-
-/**
- * Lowest score among SCORED questions; ties go to the earliest. An unscored
- * question (the evaluator failed) is never "weakest" — we do not know how it
- * scored, and rewriting it would coach against a guess.
- */
-export function pickWeakest<T extends { score: number | null }>(questions: T[]): T | null {
-  let weakest: T | null = null;
-  for (const q of questions) {
-    if (q.score === null) continue;
-    // Strict: an equal score never displaces an earlier question.
-    if (!weakest || q.score < weakest.score!) weakest = q;
-  }
-  return weakest;
-}
-
-export interface ReportStats {
-  /** Words over capture time across every answer; null when none was timed. */
-  wpm: number | null;
-  fillers: number;
-  /** Chrome drops most um/uh before we see the transcript. Always say so. */
-  fillersApproximate: true;
-  answered: number;
-  scored: number;
-  /**
-   * Strengths and improvements, stored here rather than in a new column so
-   * the report needed no migration. Absent on reports written before 2026-10.
-   */
-  feedback?: ReportFeedback;
-}
-
-/**
- * Speaking stats across the session. WPM is words over total CAPTURE time
- * (not the mean of per-answer rates, which over-weights short answers), and
- * includes unscored turns — the evaluator failing says nothing about pace.
- * `answered` and `scored` count original questions: a follow-up is part of
- * the question it came from.
- */
-export function reportStats(
-  turns: {
-    answerTranscript: string;
-    captureMs: number | null;
-  }[],
-  rollup: Pick<SessionRollup, "questionsAsked" | "questionsScored">,
-): ReportStats {
-  let words = 0;
-  let captureMs = 0;
-  for (const turn of turns) {
-    if (turn.captureMs && turn.captureMs > 0) {
-      words += wordCount(turn.answerTranscript);
-      captureMs += turn.captureMs;
-    }
-  }
-
-  return {
-    wpm: captureMs > 0 ? Math.round(words / (captureMs / 60000)) : null,
-    fillers: turns.reduce((n, t) => n + fillerCount(t.answerTranscript), 0),
-    fillersApproximate: true,
-    answered: rollup.questionsAsked,
-    scored: rollup.questionsScored,
-  };
 }
 
 const LABEL: Record<AnyDimension, string> = {

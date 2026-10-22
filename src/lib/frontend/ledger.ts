@@ -5,7 +5,7 @@
  * no single entry is taller than a page.
  */
 
-import type { ReportStats } from "@/lib/ai/report";
+import type { ReportStats } from "@/lib/stats";
 import { FULL_QUESTION_CAP_MAX, type StoredScores } from "@/lib/engine/types";
 import type { RowReader } from "@/lib/supabase/reader";
 

@@ -10,7 +10,7 @@ import { asUntrustedData } from "./prompts";
 import { checkDraft, repairDraft } from "./questions";
 
 import { TOPIC_IDS, type ResumeItem, type TopicId } from "../engine/types";
-import type { RoleProfile } from "@/lib/jd/distill";
+import type { RoleProfile } from "@/lib/jd/profile";
 
 const SCHEMA = {
   type: Type.OBJECT,

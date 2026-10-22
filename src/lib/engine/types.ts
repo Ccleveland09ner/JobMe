@@ -140,6 +140,11 @@ export const LEGACY_DIMENSIONS: readonly LegacyDimension[] = [
 /** Any key a stored score set may carry. */
 export type AnyDimension = Dimension | LegacyDimension;
 
+/** The question level (1-3) a difficulty asks for; anything below 2 is the opening level. */
+export function levelFor(difficulty: number): 1 | 2 | 3 {
+  return difficulty >= 3 ? 3 : difficulty === 2 ? 2 : 1;
+}
+
 /** Display order for any score set, current or legacy. */
 export const DISPLAY_DIMENSIONS: readonly AnyDimension[] = [
   "situation",
@@ -276,17 +281,25 @@ function legacyScore(s: StoredScores): number | null {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
+// Each list is declared once; the types, the request schemas and the row
+// readers all derive from it, so a new value can't be accepted in one place
+// and rejected in another.
+
 /** Answer quality band. Drives the next move. */
-export type Band = "weak" | "mediocre" | "great";
+export const BANDS = ["weak", "mediocre", "great"] as const;
+export type Band = (typeof BANDS)[number];
 
 /** What kind of question was asked. Mirrors `turns.question_type`. */
-export type QuestionType = "opening" | "deepen" | "clarify";
+export const QUESTION_TYPES = ["opening", "deepen", "clarify"] as const;
+export type QuestionType = (typeof QUESTION_TYPES)[number];
 
 /** Where a question came from, so the policy can alternate like a real screen. */
-export type QuestionSource = "bank" | "resume";
+export const QUESTION_SOURCES = ["bank", "resume"] as const;
+export type QuestionSource = (typeof QUESTION_SOURCES)[number];
 
 /** Quick: bank-led and bounded. Full: covers every role and project. */
-export type InterviewMode = "quick" | "full";
+export const INTERVIEW_MODES = ["quick", "full"] as const;
+export type InterviewMode = (typeof INTERVIEW_MODES)[number];
 
 /** A role or project from the resume that the interview should cover. */
 export interface ResumeItem {
@@ -358,6 +371,20 @@ export const QUICK_QUESTION_CAP = 10;
 
 /** Full mode never exceeds this, however long the resume. */
 export const FULL_QUESTION_CAP_MAX = 30;
+
+/** Where an interview stands, as the turn route and the room report it. */
+export function progressOf(state: EngineState) {
+  const items = state.resumeItems ?? [];
+  return {
+    questionCount: state.questionCount,
+    questionCap: state.questionCap,
+    topicIndex: state.topicIndex,
+    // Optional for engine states saved before topics were stored.
+    topicsTotal: state.topics?.length,
+    coverageDone: items.filter((i) => i.covered).length,
+    coverageTotal: items.length,
+  };
+}
 
 /** Full mode is at least this long even for a one-line resume. */
 export const FULL_QUESTION_CAP_MIN = 8;
