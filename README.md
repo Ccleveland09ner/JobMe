@@ -68,12 +68,6 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-<p align="center">
-  <img src="./public/images/campus.png" alt="JobMe campus illustration" width="820" />
-  <br />
-  <em>Campus illustration used in the application.</em>
-</p>
-
 JobMe is a voice and text mock interview app for **behavioral SWE internship practice**. A recruiter asks follow-up questions based on your answers, while a live notepad explains the feedback and the next move.
 
 The application includes authentication, résumé ingestion, adaptive interviews, saved sessions, scorecards, and progress tracking. Its interface is a stylized 3D office: enter from the street, pick up a setup clipboard at the front desk, sit down with the recruiter, and review your reports in a folder.
