@@ -23,6 +23,7 @@ import type {
   Scores,
 } from "../src/lib/engine/types";
 import { computePrimaryGap } from "../src/lib/engine/classify";
+import { FULL_TOPICS } from "../src/lib/interview/start";
 
 const flat = (n: number): Scores => ({
   relevance: n, specificity: n, ownership: n, reasoning: n,
@@ -57,7 +58,7 @@ function items(n: number): ResumeItem[] {
 
 /** Runs one session to completion with an unbounded cap; returns the cost. */
 function measure(itemCount: number, bands: Band[]) {
-  const topics = defaultTopics("general", 6);
+  const topics = defaultTopics("general", FULL_TOPICS);
   const first: Question = {
     text: questionFor(topics[0], 1),
     type: "opening", topic: topics[0], difficulty: 1, source: "bank",

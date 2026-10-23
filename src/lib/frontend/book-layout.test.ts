@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { fitBook, isLeftPage, spreadAt } from "./book-layout";
+import { clipboardFrame, fitBook, isLeftPage, spreadAt } from "./book-layout";
 
 const page = { width: 420, height: 580 };
+
+describe("clipboardFrame", () => {
+  it("turns the engine's block a quarter right and each sheet back, about one centre", () => {
+    const { block, content } = clipboardFrame(page);
+    expect([block.width, block.height, block.rotate]).toEqual([page.height, page.width, 90]);
+    expect([content.width, content.height, content.rotate]).toEqual([page.width, page.height, -90]);
+    // The block is centred on the page, and the sheet on the block.
+    expect([block.left + block.width / 2, block.top + block.height / 2]).toEqual([page.width / 2, page.height / 2]);
+    expect([content.left + content.width / 2, content.top + content.height / 2]).toEqual([block.width / 2, block.height / 2]);
+  });
+});
 
 describe("fitBook", () => {
   it("lays a spread out when two pages fit, sized by the height", () => {

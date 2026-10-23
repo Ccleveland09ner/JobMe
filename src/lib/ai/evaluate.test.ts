@@ -1,0 +1,82 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { gapCandidates } from "../engine/classify";
+import { dimensionsFor, QUESTION_KINDS } from "../engine/types";
+import { evalSchemaFor, evaluateAndDraft } from "./evaluate";
+import { LlmError, type generateJson } from "./llm";
+import { FOLLOWUP_GUIDANCE } from "./prompts";
+
+describe("evalSchemaFor", () => {
+  // The model is only ever asked for the dimensions a kind is scored on.
+  it("asks for exactly the dimensions each kind is scored on, and a gap only among them", () => {
+    for (const kind of QUESTION_KINDS) {
+      const { scores, clarify_gap } = evalSchemaFor(kind).properties;
+      expect(Object.keys(scores.properties), kind).toEqual(dimensionsFor(kind));
+      expect(scores.required, kind).toEqual(dimensionsFor(kind));
+      expect(clarify_gap.enum, kind).toEqual(gapCandidates(kind));
+    }
+  });
+
+  it("never asks about ownership of a technical answer", () => {
+    expect(evalSchemaFor("technical").properties.scores.properties).not.toHaveProperty("ownership");
+  });
+});
+
+const ARGS = {
+  kind: "behavioral" as const,
+  topic: "Teamwork",
+  questionText: "What did you change yourself?",
+  questionType: "clarify" as const,
+  answer: "I wrote the sharding script.",
+};
+
+/** A model that always fails, so the call's system prompt can be read off it. */
+function failing() {
+  return vi.fn(async () => {
+    throw new Error("no model in tests");
+  }) as unknown as typeof generateJson & ReturnType<typeof vi.fn>;
+}
+
+const systemOf = (generate: ReturnType<typeof failing>) =>
+  (generate.mock.calls[0][0] as { systemInstruction: string }).systemInstruction;
+
+describe("evaluateAndDraft — what the evaluator is told about a follow-up", () => {
+  it("scores a follow-up as the whole answer so far when it has the thread", async () => {
+    const generate = failing();
+    await expect(
+      evaluateAndDraft(
+        {
+          ...ARGS,
+          questionText: "Tell me about a time you worked closely with someone very different.",
+          followUpQuestion: ARGS.questionText,
+          priorThreadTurns: [{ question: "Tell me about a time…", answer: "We fixed the bug." }],
+        },
+        generate,
+      ),
+    ).rejects.toThrow();
+    expect(systemOf(generate)).toContain(FOLLOWUP_GUIDANCE.trim());
+  });
+
+  // A failed history read leaves a lone reply: telling the model it is the
+  // whole answer to the original question would misjudge it.
+  it("scores the reply on its own when the thread is missing", async () => {
+    const generate = failing();
+    await expect(evaluateAndDraft({ ...ARGS, followUpQuestion: null, priorThreadTurns: [] }, generate)).rejects.toThrow();
+    expect(systemOf(generate)).not.toContain(FOLLOWUP_GUIDANCE.trim());
+  });
+
+  it("retries once, then gives up", async () => {
+    const generate = failing();
+    await expect(evaluateAndDraft(ARGS, generate)).rejects.toThrow("Evaluation failed after 2 attempts");
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  // A retry would spend the next of the free tier's 15 requests a minute.
+  it("gives up at once on a rate limit, and says so", async () => {
+    const generate = vi.fn(async () => {
+      throw new LlmError("Rate limited (free tier is 15 requests/minute).", true);
+    }) as unknown as typeof generateJson & ReturnType<typeof vi.fn>;
+    await expect(evaluateAndDraft(ARGS, generate)).rejects.toMatchObject({ rateLimited: true });
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+});

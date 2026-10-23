@@ -10,6 +10,8 @@
 
 import type { InputMode, NoteView, ProgressView, QuestionView } from "@/lib/frontend/types";
 
+import type { MicState, RecruiterState } from "./types";
+
 /** Silence after the last recognised word before a voice answer is sent. */
 export const IDLE_SEND_MS = 10_000;
 
@@ -202,8 +204,15 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
   }
 }
 
+/** The candidate's mic, as both the panel button and the 3D desk mic show it. */
+export function micStateFor(inputMode: InputMode, phase: Phase): MicState {
+  if (inputMode !== "voice") return "off";
+  if (phase === "recording") return "recording";
+  return phase === "awaitingAnswer" ? "ready" : "disabled";
+}
+
 /** The avatar's state for a phase. Presentation only. */
-export function avatarState(phase: Phase): "idle" | "listening" | "thinking" | "speaking" {
+export function avatarState(phase: Phase): RecruiterState {
   switch (phase) {
     case "speaking":
       return "speaking";

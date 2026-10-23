@@ -117,6 +117,26 @@ describe("startInterview", () => {
     expect(saved[0].role_text).toBeNull();
   });
 
+  // A resume that couldn't be read (an error, or not this user's) must not be
+  // stored on the session: turns would later read facts the plan never had.
+  it("only points the session at a resume it could read", async () => {
+    const { deps: d, saved } = deps({ resume: null });
+    const outcome = await startInterview(body({ resumeId: "6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f" }), d);
+    expect(outcome.kind).toBe("created");
+    expect(saved[0].resume_id).toBeNull();
+    const read = deps({ resume: { coverage_items: [item(0)], resume_facts: null, role_profile: null, resume_chunks: [] } });
+    await startInterview(body({ resumeId: "6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f" }), read.deps);
+    expect(read.saved[0].resume_id).toBe("6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f");
+  });
+
+  it("apologises when only the resume's role was there to tailor to, and the plan failed", async () => {
+    const role = { title: "Platform Intern", seniority: "intern", requiredSkills: [], responsibilities: [], competencies: [] };
+    const { deps: d } = deps({ resume: { coverage_items: [], resume_facts: null, role_profile: role, resume_chunks: [] } });
+    const outcome = await startInterview(body({ resumeId: "6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f" }), d);
+    if (outcome.kind !== "created") throw new Error(outcome.kind);
+    expect(outcome.introLine).toContain(NOT_TAILORED);
+  });
+
   it("counts every resume item, even ones a full interview can't reach", async () => {
     const items = Array.from({ length: FULL_QUESTION_CAP_MAX }, (_, i) => item(i));
     const { deps: d } = deps({ resume: { coverage_items: items, resume_facts: null, role_profile: null, resume_chunks: [] } });

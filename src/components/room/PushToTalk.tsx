@@ -18,7 +18,7 @@ import { TableMic } from "./TableMic";
 import type { Phase } from "./roomMachine";
 
 /** True when a key event belongs to something the user is typing into or operating (Space presses a button). */
-export function isTypingTarget(target: EventTarget | null): boolean {
+function isTypingTarget(target: EventTarget | null): boolean {
   return isTextEntry(target) || (target instanceof HTMLElement && ["BUTTON", "A"].includes(target.tagName));
 }
 
@@ -140,7 +140,7 @@ export function PushToTalk({
         <div className="pointer-events-auto absolute inset-x-3 bottom-[15.5rem] mx-auto max-w-2xl">
           <SpeechBubble tail="down" label="You">
             <div className="max-h-[22vh] overflow-y-auto">
-              <LiveTranscript final={draft} interim="" bare />
+              <LiveTranscript text={draft} />
             </div>
           </SpeechBubble>
         </div>

@@ -8,8 +8,9 @@
 import { NextResponse } from "next/server";
 import type { z } from "zod";
 
-import { UNAUTHORIZED } from "@/lib/auth";
 import { SessionId } from "@/lib/schemas";
+
+export const UNAUTHORIZED = { error: "Unauthorized" } as const;
 
 export function unauthorized(): NextResponse {
   return NextResponse.json(UNAUTHORIZED, { status: 401 });
@@ -18,6 +19,16 @@ export function unauthorized(): NextResponse {
 /** Also the answer for another user's row: under RLS the two look the same. */
 export function notFound(): NextResponse {
   return NextResponse.json({ error: "Not found" }, { status: 404 });
+}
+
+/** Well formed, but not something this route can act on; the body says why. */
+export function unprocessable(body: { error: string; code?: string }): NextResponse {
+  return NextResponse.json(body, { status: 422 });
+}
+
+/** A service the route depends on is off, down or rate limited. */
+export function unavailable(body: { error: string; detail?: string }): NextResponse {
+  return NextResponse.json(body, { status: 503 });
 }
 
 /** A failure the candidate gets a plain sentence for; the detail goes to the log only. */

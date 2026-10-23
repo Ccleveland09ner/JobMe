@@ -22,6 +22,9 @@ export const DOC_PAGE = {
   gap: 14,
 } as const;
 
+/** A page's size, as BookSlider takes it. */
+export const DOC_PAGE_SIZE = { width: DOC_PAGE.width, height: DOC_PAGE.height };
+
 /** Height the body of a page has for content, with a running head and a page number. */
 export const DOC_BODY_HEIGHT = DOC_PAGE.height - DOC_PAGE.padTop - DOC_PAGE.padBottom - DOC_PAGE.head - DOC_PAGE.foot;
 export const DOC_BODY_WIDTH = DOC_PAGE.width - DOC_PAGE.padX * 2;

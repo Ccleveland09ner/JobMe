@@ -6,11 +6,11 @@ export async function proxy(request: NextRequest) {
 }
 
 /**
- * Skips api/: route handlers authenticate themselves (lib/auth.ts), and a
- * session refresh there costs a Supabase round trip on every request.
+ * Skips api/ (route handlers authenticate themselves, lib/auth.ts) and static
+ * files: a session refresh costs a Supabase round trip on every request.
  */
 export const config = {
   matcher: [
-    "/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|glb|gltf|json|mp3|wav|ogg|woff2?|ttf)$).*)",
   ],
 };

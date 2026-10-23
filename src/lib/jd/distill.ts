@@ -8,22 +8,15 @@ import { Type } from "@google/genai";
 import { LlmError, generateJson } from "@/lib/ai/llm";
 import { asUntrustedData } from "@/lib/ai/prompts";
 
+import type { RoleProfile } from "./profile";
+
+export { formatRoleForPrompt, roleProfileToQuery, type RoleProfile } from "./profile";
+
 /**
  * Mirrors LIMITS.roleText. Was 2000, which cut most real job descriptions
  * before their requirements, so ranking ran on the company blurb.
  */
 export const MAX_JD_CHARS = 8000;
-
-export interface RoleProfile {
-  title: string;
-  seniority: string;
-  /** Skills and technologies the posting asks for, most emphasised first. */
-  requiredSkills: string[];
-  /** What the person will actually be doing. */
-  responsibilities: string[];
-  /** Competencies worth probing behaviourally, e.g. "cross-team influence". */
-  competencies: string[];
-}
 
 const SCHEMA = {
   type: Type.OBJECT,
@@ -60,12 +53,13 @@ const SYSTEM = [
 /** Null on failure: a job description only improves ordering, never blocks a start. */
 export async function distillJobDescription(
   text: string,
+  generate: typeof generateJson = generateJson,
 ): Promise<RoleProfile | null> {
   const trimmed = text.trim();
   if (trimmed.length < 40) return null;
 
   try {
-    const { value } = await generateJson<RoleProfile>({
+    const { value } = await generate<RoleProfile>({
       systemInstruction: SYSTEM,
       prompt: asUntrustedData("job_posting", trimmed.slice(0, MAX_JD_CHARS)),
       responseSchema: SCHEMA,
@@ -86,29 +80,4 @@ export async function distillJobDescription(
     );
     return null;
   }
-}
-
-/** The text resume items are ranked against: skills and responsibilities, not just the title. */
-export function roleProfileToQuery(profile: RoleProfile): string {
-  return [
-    profile.title,
-    profile.seniority,
-    ...profile.requiredSkills,
-    ...profile.responsibilities,
-  ]
-    .filter(Boolean)
-    .join(". ");
-}
-
-/** Renders the role for a turn prompt. Caller wraps in `asUntrustedData`. */
-export function formatRoleForPrompt(profile: RoleProfile | null): string {
-  if (!profile) return "";
-  const parts = [`Target role: ${profile.title} (${profile.seniority})`];
-  if (profile.requiredSkills.length) {
-    parts.push(`Wants: ${profile.requiredSkills.join(", ")}`);
-  }
-  if (profile.competencies.length) {
-    parts.push(`Competencies to probe: ${profile.competencies.join(", ")}`);
-  }
-  return parts.join("\n");
 }

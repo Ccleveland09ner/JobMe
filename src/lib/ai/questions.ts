@@ -3,9 +3,10 @@
  * replaced by a bank seed. Nothing here may change the move.
  */
 
+import { alreadyAsked } from "../engine/asked";
 import { computePrimaryGap } from "../engine/classify";
-import { dimensionsFor } from "../engine/types";
-import type { Band, Dimension, QuestionKind, Scores } from "../engine/types";
+import { dimensionsFor, isFollowUpType } from "../engine/types";
+import type { Band, Dimension, QuestionKind, QuestionType, Scores } from "../engine/types";
 
 /** Drafts longer than this stop sounding like a spoken question. */
 export const MAX_DRAFT_WORDS = 25;
@@ -45,10 +46,7 @@ export function checkDraft(draft: string, askedQuestions: string[] = []): DraftC
     return { ok: false, reason: "placeholder_leak" };
   }
 
-  const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-  if (askedQuestions.some((q) => normalise(q) === normalise(text))) {
-    return { ok: false, reason: "repeat" };
-  }
+  if (alreadyAsked(text, askedQuestions)) return { ok: false, reason: "repeat" };
 
   return { ok: true };
 }
@@ -84,7 +82,7 @@ export function chooseQuestionText(args: {
 
 function pickSeed(seeds: string[] | undefined, asked: string[]): string | null {
   if (!seeds?.length) return null;
-  const unused = seeds.find((s) => !asked.includes(s));
+  const unused = seeds.find((s) => !alreadyAsked(s, asked));
   return unused ?? seeds[0];
 }
 
@@ -114,9 +112,9 @@ export function repairDraft(draft: string): string {
  */
 export const MIN_SUBSTANTIVE_WORDS = 12;
 
-export function preClassify(answer: string, questionType: string = "opening"): Band | null {
+export function preClassify(answer: string, questionType: QuestionType = "opening"): Band | null {
   // A follow-up reply adds to the original answer; short is what was asked for.
-  if (questionType !== "opening") return null;
+  if (isFollowUpType(questionType)) return null;
   const words = answer.trim().split(/\s+/).filter(Boolean);
   return words.length < MIN_SUBSTANTIVE_WORDS ? "weak" : null;
 }
@@ -153,4 +151,19 @@ export function heuristicScores(answer: string, kind: QuestionKind = "behavioral
 /** Deterministic gap for the degraded path, matching GAP_PRIORITY ordering. */
 export function heuristicGap(scores: Scores, kind: QuestionKind = "behavioral"): Dimension {
   return computePrimaryGap(scores, kind);
+}
+
+/** A planned opening may run longer than a follow-up. */
+export const MAX_OPENING_WORDS = 30;
+
+/** Mechanical checks for an opening (like checkDraft, but statements and a little more length are fine). */
+export function checkOpening(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (t.split(/\s+/).length > MAX_OPENING_WORDS) return false;
+  if (!/[.?]$/.test(t)) return false;
+  if ((t.match(/\?/g) ?? []).length > 1) return false;
+  // A leaked placeholder or piece of prompt structure would be read aloud.
+  if (/[<>{}]|\[[A-Za-z_ ]+\]/.test(t)) return false;
+  return true;
 }

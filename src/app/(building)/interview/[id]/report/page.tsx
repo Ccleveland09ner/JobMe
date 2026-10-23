@@ -9,13 +9,13 @@ import { notFound } from "next/navigation";
 import { ReportsFolder } from "@/components/desk/ReportsFolder";
 import { requireUser } from "@/lib/auth";
 import { loadReportDocument, loadReportIndex, type ReportTab } from "@/lib/frontend/report-document";
-import { SessionId } from "@/lib/schemas";
+import { isSessionId } from "@/lib/http";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ReportPage({ params }: PageProps<"/interview/[id]/report">) {
   const { id } = await params;
   await requireUser();
-  if (!SessionId.safeParse(id).success) notFound();
+  if (!isSessionId(id)) notFound();
 
   const supabase = await createClient();
   const [doc, index] = await Promise.all([

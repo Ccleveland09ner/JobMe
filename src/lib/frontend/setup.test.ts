@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { CreateSessionBody, LIMITS } from "../schemas";
-import { REVIEW_SHEET, sessionBody, SETUP_SHEETS, validateSetup, validateSetupSheet, type SetupValues } from "./setup";
+import { fakeSupabase } from "../testing/fake-supabase";
+
+import { loadSetup, REVIEW_SHEET, sessionBody, SETUP_SHEETS, validateSetup, validateSetupSheet, type SetupValues } from "./setup";
 
 const RESUME = "6f1c1d1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f";
 const sheet = (id: (typeof SETUP_SHEETS)[number]["id"]) => SETUP_SHEETS.findIndex((s) => s.id === id);
@@ -83,5 +85,24 @@ describe("sessionBody", () => {
     });
     expect(CreateSessionBody.safeParse(body).success).toBe(true);
     expect(sessionBody(values({ resume: { choice: "upload", status: "review", resumeId: null } }))).not.toHaveProperty("resumeId");
+  });
+});
+
+describe("loadSetup", () => {
+  it("prefills the saved name and offers the latest resume's items", async () => {
+    const db = fakeSupabase((q) =>
+      q.table === "profiles"
+        ? { data: { display_name: "Kazu" } }
+        : { data: { id: RESUME, created_at: "2026-10-20T09:00:00Z", page_count: 2, coverage_items: [{ kind: "role", label: "Intern at Acme", relevanceToRole: 1 }] } },
+    );
+    expect(await loadSetup(db.client as never, { id: "u1", email: "k@example.com" })).toEqual({
+      defaultName: "Kazu",
+      latestResume: { id: RESUME, createdAt: "2026-10-20T09:00:00Z", pageCount: 2, items: [{ kind: "role", label: "Intern at Acme" }] },
+    });
+  });
+
+  it("falls back to the email name and no resume when neither read works", async () => {
+    const db = fakeSupabase(() => ({ error: { message: "down" } }));
+    expect(await loadSetup(db.client as never, { id: "u1", email: "kazu@example.com" })).toEqual({ defaultName: "kazu", latestResume: null });
   });
 });

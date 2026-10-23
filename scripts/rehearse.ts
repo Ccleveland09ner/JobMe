@@ -9,28 +9,26 @@
  * against a 15 requests/minute free tier. Everything downstream is identical.
  */
 
-import { questionFor } from "../src/lib/engine/bank";
+import "./_load-env";
+
+import type { RawEvaluation } from "../src/lib/ai/evaluate";
+import { fallbackPlan } from "../src/lib/ai/question-plan";
 import { defaultTopics } from "../src/lib/engine/roles";
-import { initState } from "../src/lib/engine/policy";
 import {
   FULL_QUESTION_CAP_MAX,
   maxCoverableItems,
   type Band,
   type EngineState,
   type InterviewMode,
-  type Question,
   type ResumeItem,
   type Scores,
 } from "../src/lib/engine/types";
-import type { RawEvaluation } from "../src/lib/ai/evaluate";
+import { startInterview } from "../src/lib/interview/start";
 import { runTurn } from "../src/lib/interview/turn";
-import { loadEnv, requireEnv } from "./_env";
-
-loadEnv();
+import { requireEnv } from "./_env";
+import { PACE_MS, sleep } from "./_pace";
 
 const LIVE = process.argv.includes("--live");
-const PACE_MS = 4200;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let failures = 0;
 function check(label: string, ok: boolean, detail = ""): void {
@@ -107,16 +105,25 @@ function makeItems(count: number): ResumeItem[] {
   }));
 }
 
-function startSession(mode: InterviewMode, items: ResumeItem[]): EngineState {
-  const topics = defaultTopics("general", mode === "full" ? 6 : 4);
-  const first: Question = {
-    text: questionFor(topics[0], 1),
-    type: "opening",
-    topic: topics[0],
-    difficulty: 1,
-    source: "bank",
-  };
-  return initState({ mode, topics, resumeItems: items, firstQuestion: first });
+/** A session started as POST /api/sessions starts one, with the model-free plan and the resume in memory. */
+async function startSession(mode: InterviewMode, items: ResumeItem[]): Promise<EngineState> {
+  const started = await startInterview(
+    { displayName: "Rehearsal", mode, ...(items.length && { resumeId: "rehearsal-resume" }) },
+    {
+      store: {
+        saveProfile: async () => {},
+        loadResume: async () => ({ coverage_items: items, resume_facts: null, role_profile: null, resume_chunks: [] }),
+        insertSession: async () => ({ id: "rehearsal" }),
+      },
+      fetchPosting: async () => {
+        throw new Error("rehearsals have no posting");
+      },
+      generatePlan: async (inputs) => fallbackPlan(inputs),
+      defaultTopics: (family, n) => defaultTopics(family, n),
+    },
+  );
+  if (started.kind !== "created") throw new Error(`rehearsal start: ${started.kind}`);
+  return started.state;
 }
 
 interface Trace {
@@ -134,7 +141,7 @@ async function runSession(opts: {
   plan: (turn: number) => { band: Band; repeats?: boolean };
   live?: boolean;
 }): Promise<Trace> {
-  let state = startSession(opts.mode, opts.items);
+  let state = await startSession(opts.mode, opts.items);
   const moves: string[] = [];
   const sources: string[] = [];
   const bands: (Band | null)[] = [];
@@ -149,17 +156,6 @@ async function runSession(opts: {
       holdMs: 30_000,
       captureMs: 24_000,
       evaluate: opts.live ? undefined : scriptedEvaluator(() => opts.plan(turn)),
-      // A SECOND model call. Stubbed offline too, or a 24-turn rehearsal
-      // spends a minute of quota and exercises the fallback, not the real path.
-      generateQuestion: opts.live
-        ? undefined
-        : async ({ item, fallbackTopic }) => ({
-            text: `Tell me about a challenge you hit on ${item.label}.`,
-            topic: fallbackTopic,
-            itemId: item.id,
-          }),
-      excerptFor: async (id) =>
-        opts.items.find((i) => i.id === id)?.label ?? "",
     });
 
     if (result.kind === "nudge") {

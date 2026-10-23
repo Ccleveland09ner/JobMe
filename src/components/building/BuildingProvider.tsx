@@ -15,11 +15,11 @@ import {
   useReducer,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from "react";
 
+import { useBrowserValue, useHydrated } from "@/components/common/useBrowserValue";
 import type { Speaker } from "@/components/room/types";
 import { webglAvailable } from "@/lib/frontend/webgl";
 
@@ -85,12 +85,10 @@ export function useBuilding(): Building | null {
   return useContext(BuildingContext);
 }
 
-const noSubscribe = () => () => {};
-
 /** Whether the 3D building shows; null until hydrated, so late-hydrating pages match the server HTML. */
 export function useShow3D(): boolean | null {
   const building = useContext(BuildingContext);
-  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const hydrated = useHydrated();
   return hydrated ? (building?.show3D ?? false) : null;
 }
 
@@ -98,7 +96,7 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [state, dispatch] = useReducer(buildingReducer, pathname, (p) => initialBuilding(stationForPath(p)));
   // false on the server and before hydration.
-  const canUseWebGL = useSyncExternalStore(noSubscribe, webglAvailable, () => false);
+  const canUseWebGL = useBrowserValue(webglAvailable, false);
 
   const speaker = useRef<Speaker>({ state: "idle" });
   const inset = useRef<ViewInset>({ right: 0, bottom: 0 });

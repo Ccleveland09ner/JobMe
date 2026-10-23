@@ -4,12 +4,11 @@
  */
 
 import { cosine, embedMany } from "@/lib/ai/embeddings";
-import type { RoleProfile } from "@/lib/jd/distill";
-import { roleProfileToQuery } from "@/lib/jd/distill";
+import { roleProfileToQuery, type RoleProfile } from "@/lib/jd/profile";
 
 import type { Chunk } from "./chunk";
 import type { ResumeItem } from "@/lib/engine/types";
-import type { ResumeFacts } from "./store";
+import type { ResumeFacts } from "./facts";
 
 /** Fact to chunks: cheap containment, case-insensitive. */
 function chunksMentioning(chunks: Chunk[], ...needles: string[]): number[] {

@@ -7,6 +7,7 @@ import {
   avatarState,
   idleStatus,
   initRoom,
+  micStateFor,
   roomReducer,
   type RoomEvent,
   type RoomState,
@@ -248,6 +249,19 @@ describe("idleStatus", () => {
     expect(idleStatus(IDLE_SEND_MS, 0).expired).toBe(true);
     // A new word resets the window.
     expect(idleStatus(IDLE_SEND_MS, 5_000).expired).toBe(false);
+  });
+});
+
+describe("micStateFor", () => {
+  it("is ready on the candidate's turn, live while recording, and disabled otherwise", () => {
+    expect(micStateFor("voice", "awaitingAnswer")).toBe("ready");
+    expect(micStateFor("voice", "recording")).toBe("recording");
+    for (const phase of ["speaking", "submitting", "resyncing", "done"] as const) expect(micStateFor("voice", phase)).toBe("disabled");
+  });
+
+  it("is off for typed answers, whatever the phase", () => {
+    expect(micStateFor("typed", "awaitingAnswer")).toBe("off");
+    expect(micStateFor("typed", "recording")).toBe("off");
   });
 });
 

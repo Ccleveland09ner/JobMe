@@ -7,28 +7,19 @@
  */
 
 import dynamic from "next/dynamic";
-import { Component, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { useBuilding } from "@/components/building/BuildingProvider";
+import { useBuilding, useShow3D } from "@/components/building/BuildingProvider";
+import { useBrowserValue } from "@/components/common/useBrowserValue";
 import { webglAvailable } from "@/lib/frontend/webgl";
 import type { VisemeWeights } from "@/lib/voice/lipsync";
 
-import type { MicControl } from "./types";
-
 import { Avatar, type AvatarProps } from "./Avatar";
 import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
+import { RECRUITER_STATE_TEXT, type MicControl } from "./types";
 
 // Browser-only: WebGL and three.js cannot render on the server.
 const Recruiter3D = dynamic(() => import("./Recruiter3D"), { ssr: false });
-
-const STATE_TEXT: Record<AvatarProps["state"], string> = {
-  idle: "Waiting for your answer",
-  listening: "Listening",
-  thinking: "Thinking",
-  speaking: "Speaking",
-};
-
-const noSubscribe = () => () => {};
 
 
 /** A failed model load or WebGL context falls back to the SVG recruiter. */
@@ -52,21 +43,20 @@ export function RecruiterStage({
   mic,
 }: AvatarProps & { readVisemes?: () => VisemeWeights | null; mic?: MicControl }) {
   // false on the server and before hydration: the SVG renders first.
-  const canUse3D = useSyncExternalStore(noSubscribe, webglAvailable, () => false);
+  const canUse3D = useBrowserValue(webglAvailable, false);
   const [ready, setReady] = useState(false);
   const onReady = useCallback(() => setReady(true), []);
 
   // In the 3D building the recruiter is in the shared scene: just drive it.
   const building = useBuilding();
-  // Hydrate as the server rendered (the SVG), then switch.
-  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
-  const inBuilding = hydrated && (building?.show3D ?? false);
+  // Null until hydrated: the server rendered the SVG, so that comes first.
+  const inBuilding = useShow3D() === true;
   const setSpeaker = building?.setSpeaker;
   useEffect(() => {
     if (inBuilding) setSpeaker?.({ state, readMouth, readVisemes, mic });
   });
   useEffect(() => () => setSpeaker?.({ state: "idle" }), [setSpeaker]);
-  if (inBuilding) return <p className="text-xs text-muted">Interviewer · {STATE_TEXT[state]}</p>;
+  if (inBuilding) return <p className="text-xs text-muted">Interviewer · {RECRUITER_STATE_TEXT[state]}</p>;
 
   const svg = <Avatar state={state} readMouth={readMouth} />;
   if (!canUse3D) return svg;
@@ -92,7 +82,7 @@ export function RecruiterStage({
             </svg>
           </div>
         </div>
-        <figcaption className="text-xs text-muted">Interviewer · {STATE_TEXT[state]}</figcaption>
+        <figcaption className="text-xs text-muted">Interviewer · {RECRUITER_STATE_TEXT[state]}</figcaption>
       </figure>
     </FallbackOnError>
   );

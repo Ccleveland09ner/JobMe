@@ -2,6 +2,7 @@
 
 /** Outside: the plaza and the building's front, after the campus drawing. */
 
+import { memo } from "react";
 import * as THREE from "three";
 
 import { glassMaterial, toonMaterial } from "@/components/three/toon";
@@ -26,7 +27,8 @@ function WingWindows({ side }: { side: 1 | -1 }) {
   );
 }
 
-export function Street({ doorsOpen }: { doorsOpen: boolean }) {
+/** Memoized: its props rarely change, and it reads no context itself. */
+export const Street = memo(function Street({ doorsOpen }: { doorsOpen: boolean }) {
   const d = DOOR.width / 2;
   return (
     <group>
@@ -95,4 +97,4 @@ export function Street({ doorsOpen }: { doorsOpen: boolean }) {
       ))}
     </group>
   );
-}
+});

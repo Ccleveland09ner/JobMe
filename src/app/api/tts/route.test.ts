@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn(), UNAUTHORIZED: { error: "Unauthorized" } }));
+vi.mock("@/lib/auth", () => ({ getUserOrNull: vi.fn() }));
 
 import { getUserOrNull } from "@/lib/auth";
 import { TTS_MODEL_ID, TTS_OUTPUT_FORMAT } from "@/lib/voice/config";

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { ROLE_FAMILIES } from "../engine/roles";
 import type { ResumeItem, TopicId } from "../engine/types";
+import { parsePlan } from "../plan";
 import type { generateJson } from "./llm";
 import {
   buildPlanPrompt,
@@ -321,6 +323,17 @@ describe("fallbackPlan", () => {
 
   it("has no role when there is no title", () => {
     expect(fallbackPlan(inputs({ targetRole: null })).role).toBeNull();
+  });
+});
+
+describe("a plan survives being stored and read back", () => {
+  // Plans are validated when read, not when written: one the schema rejects
+  // would silently cost every turn its role context and planned openings.
+  it("parses what both the fallback and the model path write, for every role family", () => {
+    for (const family of ROLE_FAMILIES) {
+      const written = [fallbackPlan(inputs({ family })), validatePlan(OUTPUT, inputs({ family }))];
+      for (const plan of written) expect(parsePlan(JSON.parse(JSON.stringify(plan)))).toEqual(plan);
+    }
   });
 });
 

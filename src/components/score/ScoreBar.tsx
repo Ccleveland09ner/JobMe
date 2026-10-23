@@ -1,15 +1,9 @@
 /** One score: label, a 1–4 bar and the number (never colour alone). Averages show one decimal. */
 
 import { scoreLevel } from "@/lib/frontend/adapters";
+import { formatScore, SCORE_MAX } from "@/lib/frontend/labels";
 
-const FILL: Record<1 | 2 | 3 | 4, string> = {
-  1: "bg-score-1",
-  2: "bg-score-2",
-  3: "bg-score-3",
-  4: "bg-score-4",
-};
-
-export const SCORE_MAX = 4;
+import { SCORE_LEVEL_CLASSES } from "./levels";
 
 export function ScoreBar({
   label,
@@ -20,7 +14,7 @@ export function ScoreBar({
   value: number;
   compact?: boolean;
 }) {
-  const shown = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  const shown = formatScore(value);
   const pct = Math.min(100, Math.max(0, (value / SCORE_MAX) * 100));
 
   return (
@@ -31,7 +25,7 @@ export function ScoreBar({
         aria-label={`${label}: ${shown} out of ${SCORE_MAX}`}
         className="h-2 overflow-hidden rounded-full bg-sunken"
       >
-        <span className={`block h-full rounded-full ${FILL[scoreLevel(value)]}`} style={{ width: `${pct}%` }} />
+        <span className={`block h-full rounded-full ${SCORE_LEVEL_CLASSES[scoreLevel(value)].fill}`} style={{ width: `${pct}%` }} />
       </span>
       <span aria-hidden="true" className="text-right font-medium tabular-nums">
         {shown}

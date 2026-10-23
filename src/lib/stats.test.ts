@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupIntoQuestions, overallScoresFor, rollupQuestions, type GroupableTurn } from "./stats";
+import { fillerCount, groupIntoQuestions, overallScoresFor, rollupQuestions, wordCount, wpm, type GroupableTurn } from "./stats";
 
 const story = (n: number) => ({
   relevance: n,
@@ -102,20 +102,6 @@ describe("rollupQuestions", () => {
     expect(rollup.dimensions.reasoning).toBe(3);
   });
 
-  it("reports per competency", () => {
-    const rollup = rollupQuestions(
-      groupIntoQuestions([
-        turn(1, "opening", story(4)),
-        turn(2, "opening", story(2), "conflict"),
-        turn(3, "opening", story(3)),
-      ]),
-    );
-    expect(rollup.competencies).toEqual([
-      { topic: "teamwork", kind: "behavioral", score: 3.5, questions: 2 },
-      { topic: "conflict", kind: "behavioral", score: 2, questions: 1 },
-    ]);
-  });
-
   it("leaves unscored questions out of every figure", () => {
     const rollup = rollupQuestions(
       groupIntoQuestions([turn(1, "opening", story(4)), turn(2, "opening", null, "conflict")]),
@@ -134,5 +120,23 @@ describe("overallScoresFor", () => {
   it("is null when nothing was scored", () => {
     expect(overallScoresFor([turn(1, "opening", null)])).toBeNull();
     expect(overallScoresFor([])).toBeNull();
+  });
+});
+
+describe("speaking stats", () => {
+  it("counts words however the text is spaced", () => {
+    expect(wordCount("  one two\n three  ")).toBe(3);
+    expect(wordCount("   ")).toBe(0);
+  });
+
+  // Approximate by design: Chrome drops most um/uh before the text arrives.
+  it("counts filler words and phrases, whatever their case", () => {
+    expect(fillerCount("Um, I mean, it was like, basically done. Ummm.")).toBe(5);
+    expect(fillerCount("We shipped it on time.")).toBe(0);
+  });
+
+  it("measures words per minute over the time actually captured", () => {
+    expect(wpm("one two three four five six", 3000)).toBe(120);
+    expect(wpm("anything at all", 0)).toBe(0);
   });
 });

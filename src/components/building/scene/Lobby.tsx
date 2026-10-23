@@ -2,14 +2,15 @@
 
 /** The lobby: front desk, secretary's chair, notice board and the corridor opening. */
 
-import { Suspense } from "react";
+import { memo, Suspense } from "react";
 
 import { CORRIDOR, DESK, FACADE_Z, LOBBY, SECRETARY } from "../world";
 import { DeskObjects, NoticeBoard } from "./Objects";
 import { OfficeChair } from "./OfficeChair";
 import { Box, CeilingLight, Pane, PottedPlant, Slab } from "./parts";
 
-export function Lobby() {
+/** Memoized: its props rarely change, and it reads no context itself. */
+export const Lobby = memo(function Lobby() {
   const { left, right, back, height } = LOBBY;
   const cl = CORRIDOR.x - CORRIDOR.width / 2;
   const cr = CORRIDOR.x + CORRIDOR.width / 2;
@@ -59,4 +60,4 @@ export function Lobby() {
       <Slab x={[right - 0.55, right - 0.15]} y={[0, 0.42]} z={[-2.3, -2.1]} color="ink" />
     </group>
   );
-}
+});

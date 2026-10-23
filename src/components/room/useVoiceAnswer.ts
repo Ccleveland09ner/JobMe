@@ -140,8 +140,10 @@ export function useVoiceAnswer(handlers: {
     };
   }, [stopTicker]);
 
+  const isActive = useCallback(() => active.current, []);
+
   // Never leave the microphone open behind an unmounted room.
   useEffect(() => abort, [abort]);
 
-  return { start, finish, abort, isActive: () => active.current, secondsLeft };
+  return { start, finish, abort, isActive, secondsLeft };
 }

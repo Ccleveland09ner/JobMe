@@ -58,8 +58,6 @@ export type Effect =
   | { e: "STOP" }
   | { e: "ABORT" }
   | { e: "ARM"; timer: "restart" | "endWatchdog" | "stopDeadline"; ms: number }
-  | { e: "EMIT_INTERIM"; text: string }
-  | { e: "EMIT_SEGMENT"; text: string }
   | { e: "RESOLVE" };
 
 /** Backoff between restarts after repeated silence. */
@@ -146,10 +144,10 @@ export function reduce(
       // A late result must not mutate anything after resolution.
       if (s.phase === "idle") return { state: s, effects: [] };
 
-      const effects: Effect[] = [];
       const committed = [...s.committed];
       let interim = "";
       let highWater = s.finalHighWater;
+      let heardFinal = false;
 
       // The higher of the event index and our high-water mark (no duplicates after a restart).
       for (let i = Math.max(ev.resultIndex, s.finalHighWater); i < ev.results.length; i++) {
@@ -159,15 +157,13 @@ export function reduce(
           const text = r.text.trim();
           if (text) {
             committed.push(text);
-            effects.push({ e: "EMIT_SEGMENT", text });
+            heardFinal = true;
           }
           highWater = i + 1;
         } else {
           interim = r.text;
         }
       }
-
-      if (interim) effects.push({ e: "EMIT_INTERIM", text: interim });
 
       return {
         state: {
@@ -176,11 +172,9 @@ export function reduce(
           interim,
           finalHighWater: highWater,
           // Any final speech clears the silence streak.
-          consecutiveNoSpeech: effects.some((e) => e.e === "EMIT_SEGMENT")
-            ? 0
-            : s.consecutiveNoSpeech,
+          consecutiveNoSpeech: heardFinal ? 0 : s.consecutiveNoSpeech,
         },
-        effects,
+        effects: [],
       };
     }
 

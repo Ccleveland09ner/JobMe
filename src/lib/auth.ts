@@ -30,5 +30,3 @@ export async function getUserOrNull(): Promise<AuthedUser | null> {
   if (error || !user) return null;
   return { id: user.id, email: user.email ?? undefined };
 }
-
-export const UNAUTHORIZED = { error: "Unauthorized" } as const;

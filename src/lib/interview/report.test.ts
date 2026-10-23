@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ReportDraft } from "../ai/report";
+import { TOPICS } from "../engine/topics";
 import type { Scores } from "../engine/types";
+import { groupIntoQuestions } from "../stats";
 import {
+  reportQuestionsFor,
   runReport,
+  type ReportOutcome,
   type ReportSessionRow,
   type ReportStore,
   type ReportTurnRow,
@@ -78,6 +82,13 @@ const DRAFT: ReportDraft = {
   feedback: { strengths: [], improvements: [] },
 };
 
+
+/** A filed report's body; anything else fails the test. */
+function bodyOf(outcome: ReportOutcome) {
+  if (outcome.kind !== "filed") throw new Error(`expected a filed report, got ${outcome.kind}`);
+  return outcome.body;
+}
+
 describe("runReport", () => {
   it("generates once and marks the session completed", async () => {
     const { store, db } = memoryStore({ turns: [turn(1, flat(2)), turn(2, flat(3))] });
@@ -85,7 +96,7 @@ describe("runReport", () => {
 
     const outcome = await runReport(store, { generateText });
 
-    expect(outcome.status).toBe(200);
+    expect(outcome.kind).toBe("filed");
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(db.report?.rewrite).toBe(DRAFT.rewrite);
     expect(db.session?.status).toBe("completed");
@@ -100,7 +111,7 @@ describe("runReport", () => {
     const second = await runReport(store, { generateText });
 
     expect(generateText).toHaveBeenCalledTimes(1);
-    expect(second.body).toEqual(first.body);
+    expect(bodyOf(second)).toEqual(bodyOf(first));
     expect(second).toMatchObject({ generated: false });
   });
 
@@ -108,14 +119,14 @@ describe("runReport", () => {
   it("works with exactly one answered turn", async () => {
     const { store } = memoryStore({ turns: [turn(1, flat(2))] });
     const outcome = await runReport(store, { generateText: async () => DRAFT });
-    expect(outcome.status).toBe(200);
-    expect(outcome.body).toMatchObject({ weakestTurnId: "turn-1" });
+    expect(outcome.kind).toBe("filed");
+    expect(bodyOf(outcome)).toMatchObject({ weakestTurnId: "turn-1" });
   });
 
   it("refuses to build a report from zero answers", async () => {
     const { store, db } = memoryStore({ turns: [] });
     const outcome = await runReport(store, { generateText: async () => DRAFT });
-    expect(outcome.status).toBe(409);
+    expect(outcome.kind).toBe("nothing-answered");
     expect(db.report).toBeNull();
     expect(db.completions).toBe(0);
   });
@@ -123,7 +134,7 @@ describe("runReport", () => {
   /** RLS makes another user's session invisible, so this is also "not yours". */
   it("answers 404 for a session it cannot see", async () => {
     const { store } = memoryStore({ session: null });
-    expect((await runReport(store)).status).toBe(404);
+    expect((await runReport(store)).kind).toBe("not-found");
   });
 
   it("excludes unscored turns from every average and from the weakest pick", async () => {
@@ -134,12 +145,12 @@ describe("runReport", () => {
     const outcome = await runReport(store, { generateText });
 
     // (4 + 2) / 2 — the unscored turn neither drags nor lifts the average.
-    expect(outcome.body).toMatchObject({
+    expect(bodyOf(outcome)).toMatchObject({
       overallScores: { ...flat(3), overall: 3 },
       weakestTurnId: "turn-3",
     });
-    expect(outcome.body).toHaveProperty("stats.answered", 3);
-    expect(outcome.body).toHaveProperty("stats.scored", 2);
+    expect(bodyOf(outcome)).toHaveProperty("stats.answered", 3);
+    expect(bodyOf(outcome)).toHaveProperty("stats.scored", 2);
   });
 
   it("spends no model call when nothing was scored, and still reports", async () => {
@@ -149,8 +160,8 @@ describe("runReport", () => {
     const outcome = await runReport(store, { generateText });
 
     expect(generateText).not.toHaveBeenCalled();
-    expect(outcome.status).toBe(200);
-    expect(outcome.body).toMatchObject({
+    expect(outcome.kind).toBe("filed");
+    expect(bodyOf(outcome)).toMatchObject({
       rewrite: null,
       overallScores: null,
       weakestTurnId: null,
@@ -168,12 +179,12 @@ describe("runReport", () => {
     });
 
     warn.mockRestore();
-    expect(outcome.status).toBe(200);
-    expect(outcome.body).toMatchObject({ rewrite: null });
-    expect((outcome.body as { summary: string }).summary).toMatch(/Across 1 question/);
+    expect(outcome.kind).toBe("filed");
+    expect(bodyOf(outcome)).toMatchObject({ rewrite: null });
+    expect(bodyOf(outcome).summary).toMatch(/Across 1 question/);
     expect(db.session?.status).toBe("completed");
     // The failure is logged server-side, never returned.
-    expect(JSON.stringify(outcome.body)).not.toMatch(/rate limited|requests\/minute/i);
+    expect(JSON.stringify(bodyOf(outcome))).not.toMatch(/rate limited|requests\/minute/i);
   });
 
   it("returns the winner's report when a concurrent request inserted first", async () => {
@@ -192,7 +203,30 @@ describe("runReport", () => {
     };
 
     const outcome = await runReport(store, { generateText: async () => DRAFT });
-    expect(outcome.body).toMatchObject({ summary: winner.summary });
+    expect(bodyOf(outcome)).toMatchObject({ summary: winner.summary });
+  });
+
+  // A crash between the two writes must never leave a filed report on an
+  // interview the ledger still offers to resume.
+  it("completes the interview before filing its report", async () => {
+    const { store, db } = memoryStore({ turns: [turn(1, flat(2))] });
+    store.insertReport = async () => {
+      throw new Error("connection lost");
+    };
+    await expect(runReport(store, { generateText: async () => DRAFT })).rejects.toThrow("connection lost");
+    expect(db.session?.status).toBe("completed");
+    expect(db.report).toBeNull();
+  });
+
+  it("keeps the end time the turn route stamped, and stamps one for End early", async () => {
+    const ended: string[] = [];
+    for (const endedAt of ["2026-10-20T09:30:00.000Z", null]) {
+      const { store } = memoryStore({ session: { status: "in_progress", overallScores: null, endedAt }, turns: [turn(1, flat(2))] });
+      store.completeSession = async (_scores, at) => void ended.push(at);
+      await runReport(store, { generateText: async () => DRAFT });
+    }
+    expect(ended[0]).toBe("2026-10-20T09:30:00.000Z");
+    expect(new Date(ended[1]).getTime()).toBeGreaterThan(Date.parse("2026-01-01"));
   });
 
   it("heals a session left in progress by a crash after the insert", async () => {
@@ -225,10 +259,10 @@ describe("runReport — a follow-up adds to the question it came from", () => {
     const outcome = await runReport(store, { generateText: async () => DRAFT });
 
     // Two questions, (4 + 3) / 2 — not three turns averaging (2 + 4 + 3) / 3.
-    expect(outcome.body).toHaveProperty("overallScores.overall", 3.5);
-    expect(outcome.body).toHaveProperty("stats.answered", 2);
+    expect(bodyOf(outcome)).toHaveProperty("overallScores.overall", 3.5);
+    expect(bodyOf(outcome)).toHaveProperty("stats.answered", 2);
     // Weakest is the conflict question; the first is now complete.
-    expect(outcome.body).toMatchObject({ weakestTurnId: "turn-3" });
+    expect(bodyOf(outcome)).toMatchObject({ weakestTurnId: "turn-3" });
   });
 
   it("sends the model each question with its follow-ups, and cites the opening as weakest", async () => {
@@ -243,7 +277,7 @@ describe("runReport — a follow-up adds to the question it came from", () => {
     ];
     expect(args.questions.map((q) => [q.ref, q.parts.length])).toEqual([["Q1", 2], ["Q2", 1]]);
     expect(args.weakestRef).toBe("Q1");
-    expect(outcome.body).toMatchObject({ weakestTurnId: "turn-1" });
+    expect(bodyOf(outcome)).toMatchObject({ weakestTurnId: "turn-1" });
   });
 
   /** A technical question has no Ownership; it must not count as a zero there. */
@@ -254,9 +288,9 @@ describe("runReport — a follow-up adds to the question it came from", () => {
     });
     const outcome = await runReport(store, { generateText: async () => DRAFT });
 
-    expect(outcome.body).toHaveProperty("overallScores.ownership", 2);
-    expect(outcome.body).toHaveProperty("overallScores.accuracy", 4);
-    expect(outcome.body).toHaveProperty("overallScores.reasoning", 3);
+    expect(bodyOf(outcome)).toHaveProperty("overallScores.ownership", 2);
+    expect(bodyOf(outcome)).toHaveProperty("overallScores.accuracy", 4);
+    expect(bodyOf(outcome)).toHaveProperty("overallScores.reasoning", 3);
   });
 
   it("stores the feedback with the report", async () => {
@@ -267,5 +301,24 @@ describe("runReport — a follow-up adds to the question it came from", () => {
     const { store, db } = memoryStore({ turns: [turn(1, flat(2))] });
     await runReport(store, { generateText: async () => ({ ...DRAFT, feedback }) });
     expect(db.report?.stats.feedback).toEqual(feedback);
+  });
+});
+
+describe("reportQuestionsFor", () => {
+  it("cites each original question with its competency, everything said to it, and its score", () => {
+    const questions = reportQuestionsFor(groupIntoQuestions([turn(1, flat(2)), turn(2, flat(3), "clarify"), turn(3, null, "opening", "conflict")]));
+    expect(questions.map((q) => [q.ref, q.openingId, q.competency, q.parts.length])).toEqual([
+      ["Q1", "turn-1", TOPICS.teamwork.label, 2],
+      ["Q2", "turn-3", TOPICS.conflict.label, 1],
+    ]);
+    expect(questions[0].parts[1]).toEqual({ question: "Question 2?", answer: "Answer number 2 about the checkout service." });
+    // The latest cumulative evaluation, so the follow-up's.
+    expect(questions[0].scores).toEqual(flat(3));
+    expect(questions[1].score).toBeNull();
+  });
+
+  it("names a topic it doesn't know by its id, and a missing one General", () => {
+    const groups = groupIntoQuestions([turn(1, flat(2), "opening", "brand_new_topic"), { ...turn(2, flat(2)), topic: null }]);
+    expect(reportQuestionsFor(groups).map((q) => q.competency)).toEqual(["brand_new_topic", "General"]);
   });
 });

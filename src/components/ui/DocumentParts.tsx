@@ -1,10 +1,19 @@
 /**
  * Small parts printed on the ledger's and the folder's pages: the kicker
- * (spaced capitals above a heading), a labelled figure, and a contents list
- * whose lines turn to their page.
+ * (spaced capitals above a heading), a labelled figure, a contents list whose
+ * lines turn to their page, and the pieces both documents print the same way.
  */
 
+import Link from "next/link";
 import type { ReactNode } from "react";
+
+import { LocalDate } from "@/components/common/LocalDate";
+import type { InterviewMode } from "@/lib/engine/types";
+import { MODE_LABELS } from "@/lib/frontend/labels";
+
+import { buttonClasses, type ButtonSize } from "./Button";
+import { DocumentPage, type PageFace } from "./DocumentPage";
+import { FlipSafe } from "./FlipSafe";
 
 /** Spaced capitals above a heading, or for a minor heading. */
 export const kickerClass = "text-[11px] font-bold uppercase tracking-[0.2em] text-muted";
@@ -65,5 +74,75 @@ export function ContentsList({
         </li>
       ))}
     </ol>
+  );
+}
+
+/** A page of laid-out blocks, each kept whole through a page turn. */
+export function FlowPage({
+  ids,
+  nodes,
+  number,
+  running,
+  face,
+}: {
+  ids: string[];
+  nodes: Map<string, ReactNode>;
+  number: number;
+  running?: ReactNode;
+  face?: PageFace;
+}) {
+  return (
+    <DocumentPage face={face} number={number} running={running}>
+      {ids.map((id) => (
+        <FlipSafe key={id}>{nodes.get(id)}</FlipSafe>
+      ))}
+    </DocumentPage>
+  );
+}
+
+/** When an interview was, and its length when the title doesn't already say it. */
+export function SessionDateLine({ startedAt, mode, titled }: { startedAt: string; mode: InterviewMode | null; titled: boolean }) {
+  return (
+    <>
+      <LocalDate iso={startedAt} format="dateTime" />
+      {mode && titled && ` · ${MODE_LABELS[mode]}`}
+    </>
+  );
+}
+
+/** Speaking rate and filler words; a dash for what wasn't measured. */
+export function SpeakingStats({
+  wpm,
+  fillers,
+  size,
+  explainWpm = false,
+  className,
+}: {
+  wpm: number | null;
+  fillers: number | null;
+  size?: "md" | "lg";
+  /** Say why a missing rate is missing. */
+  explainWpm?: boolean;
+  className?: string;
+}) {
+  return (
+    <dl className={className}>
+      <PaperStat
+        size={size}
+        label="Words per minute"
+        value={wpm ?? "—"}
+        note={explainWpm && wpm === null ? "Measured on spoken answers only." : undefined}
+      />
+      <PaperStat size={size} label="Filler words (approx.)" value={fillers ?? "—"} />
+    </dl>
+  );
+}
+
+/** The way to a new interview, wherever a page offers one. */
+export function StartInterviewLink({ size, className }: { size?: ButtonSize; className?: string }) {
+  return (
+    <Link href="/interview/new" className={buttonClasses({ size, className })}>
+      Start an interview
+    </Link>
   );
 }

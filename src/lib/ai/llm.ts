@@ -40,6 +40,18 @@ export interface GenerateJsonResult<T> {
   ms: number;
 }
 
+/**
+ * The model's JSON. A failure never quotes the output: it can carry resume or
+ * answer text, and error messages end up in server logs.
+ */
+export function parseModelJson<T>(text: string): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new LlmError(`Model returned unparseable JSON (${text.length} characters)`);
+  }
+}
+
 /** One structured-output call, with no thinkingConfig. Re-run `npm run probe` if LLM_MODEL changes. */
 export async function generateJson<T>(args: {
   systemInstruction: string;
@@ -65,18 +77,8 @@ export async function generateJson<T>(args: {
       },
     });
 
-    const text = res.text ?? "";
-    let value: T;
-    try {
-      value = JSON.parse(text) as T;
-    } catch {
-      throw new LlmError(
-        `Model returned unparseable JSON: ${text.slice(0, 200)}`,
-      );
-    }
-
     return {
-      value,
+      value: parseModelJson<T>(res.text ?? ""),
       thoughtTokens: res.usageMetadata?.thoughtsTokenCount ?? 0,
       outputTokens: res.usageMetadata?.candidatesTokenCount ?? 0,
       ms: performance.now() - started,
@@ -108,6 +110,3 @@ export const EMBED_MODEL = process.env.EMBED_MODEL ?? "gemini-embedding-001";
 
 /** Embedding width. Configurable on this model via `outputDimensionality`. */
 export const EMBED_DIMS = 768;
-
-/** `generateContent` (default) | `interactions` — see the note above. */
-export const LLM_SURFACE = process.env.LLM_SURFACE ?? "generateContent";

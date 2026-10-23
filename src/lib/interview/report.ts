@@ -16,19 +16,20 @@
 import {
   fallbackReport,
   generateReportText,
-  pickWeakest,
-  reportStats,
   type ReportDraft,
-  type ReportQuestion,
-  type ReportStats,
+  type ReportPromptQuestion,
 } from "../ai/report";
-import { BANK } from "../engine/bank";
+import { TOPICS } from "../engine/topics";
 import type { StoredScores, TopicId } from "../engine/types";
 import {
   groupIntoQuestions,
-  overallScoresFor,
+  overallScoresFrom,
+  pickWeakest,
+  questionRef,
+  reportStats,
   rollupQuestions,
   type QuestionGroup,
+  type ReportStats,
 } from "../stats";
 
 export interface ReportTurnRow {
@@ -56,6 +57,8 @@ export interface StoredReport {
 export interface ReportSessionRow {
   status: "in_progress" | "completed";
   overallScores: Record<string, number> | null;
+  /** Stamped by the turn route on a natural wrap; End early leaves it empty. */
+  endedAt?: string | null;
   /** The target role as the turns saw it, for the report prompt. */
   roleText?: string | null;
 }
@@ -67,8 +70,8 @@ export interface ReportStore {
   loadTurns(): Promise<ReportTurnRow[]>;
   /** `exists` when a concurrent request inserted first. */
   insertReport(report: StoredReport): Promise<"inserted" | "exists">;
-  /** Marks the session completed with its overall scores. Idempotent. */
-  completeSession(overallScores: Record<string, number> | null): Promise<void>;
+  /** Marks the session completed with its overall scores and end time. Idempotent. */
+  completeSession(overallScores: Record<string, number> | null, endedAt: string): Promise<void>;
 }
 
 export interface ReportBody {
@@ -80,17 +83,20 @@ export interface ReportBody {
 }
 
 export type ReportOutcome =
-  | { status: 200; body: ReportBody; generated: boolean }
-  | { status: 404 | 409; body: { error: string } };
+  | { kind: "filed"; body: ReportBody; generated: boolean }
+  /** RLS hides other users' sessions, so "not yours" is this too. */
+  | { kind: "not-found" }
+  /** End early is allowed from one answer, but not from zero. */
+  | { kind: "nothing-answered" };
 
 /** One grouped question in the shape the report prompt reads. */
 export function reportQuestionsFor(
   groups: QuestionGroup<ReportTurnRow>[],
-): (ReportQuestion & { openingId: string })[] {
+): (ReportPromptQuestion & { openingId: string })[] {
   return groups.map((g, i) => ({
-    ref: `Q${i + 1}`,
+    ref: questionRef(i),
     openingId: g.opening.id,
-    competency: BANK[g.opening.topic as TopicId]?.label ?? g.opening.topic ?? "General",
+    competency: TOPICS[g.opening.topic as TopicId]?.label ?? g.opening.topic ?? "General",
     kind: g.kind,
     parts: g.turns.map((t) => ({ question: t.questionText, answer: t.answerTranscript })),
     score: g.score,
@@ -108,30 +114,22 @@ export async function runReport(
     store.loadTurns(),
   ]);
 
-  // RLS hides other users' sessions, so "not yours" is this same 404.
-  if (!session) return { status: 404, body: { error: "Not found" } };
+  if (!session) return { kind: "not-found" };
 
   // One score per ORIGINAL question — its latest cumulative evaluation — and
   // unscored questions are shown honestly but never averaged.
   const groups = groupIntoQuestions(turns);
   const rollup = rollupQuestions(groups);
-  const overallScores = overallScoresFor(turns);
+  const overallScores = overallScoresFrom(rollup);
+  const complete = () => store.completeSession(overallScores, session.endedAt ?? new Date().toISOString());
 
   if (existing) {
     // A crash mid-way left a report on an in-progress session: heal it.
-    if (session.status !== "completed" || !session.overallScores) {
-      await store.completeSession(overallScores);
-    }
-    return { status: 200, body: { ...existing, overallScores }, generated: false };
+    if (session.status !== "completed" || !session.overallScores) await complete();
+    return { kind: "filed", body: { ...existing, overallScores }, generated: false };
   }
 
-  // End early is allowed from one answer, but not from zero.
-  if (turns.length === 0) {
-    return {
-      status: 409,
-      body: { error: "Answer at least one question before ending the interview." },
-    };
-  }
+  if (turns.length === 0) return { kind: "nothing-answered" };
 
   const questions = reportQuestionsFor(groups);
   const weakest = pickWeakest(questions);
@@ -162,15 +160,16 @@ export async function runReport(
     stats: { ...reportStats(turns, rollup), feedback: draft.feedback },
   };
 
+  // Completed first: a crash between the two writes then leaves a finished
+  // interview without a report, which the folder writes again, never a filed
+  // report on an interview the ledger still offers to resume.
+  await complete();
   const inserted = await store.insertReport(report);
-  await store.completeSession(overallScores);
 
   if (inserted === "exists") {
     const winner = await store.loadReport();
-    if (winner) {
-      return { status: 200, body: { ...winner, overallScores }, generated: false };
-    }
+    if (winner) return { kind: "filed", body: { ...winner, overallScores }, generated: false };
   }
 
-  return { status: 200, body: { ...report, overallScores }, generated: true };
+  return { kind: "filed", body: { ...report, overallScores }, generated: true };
 }

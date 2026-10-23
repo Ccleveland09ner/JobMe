@@ -5,7 +5,7 @@
  * no single entry is taller than a page.
  */
 
-import type { ReportStats } from "@/lib/ai/report";
+import type { ReportStats } from "@/lib/stats";
 import { FULL_QUESTION_CAP_MAX, type StoredScores } from "@/lib/engine/types";
 import type { RowReader } from "@/lib/supabase/reader";
 
@@ -236,7 +236,7 @@ export function describeLedger({ spread, total }: { spread: number[]; total: num
 
 const VOLUME_COLUMNS = `id, status, question_count, overall_scores, started_at, ended_at, ${SESSION_JSON_COLUMNS}`;
 const TURN_COLUMNS =
-  "id, session_id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text";
+  "id, session_id, seq, topic, question_type, question_text, answer_transcript, band, primary_gap, notepad_text";
 
 /** The record as a whole: how many interviews, how many finished, the trend, and whose it is. */
 export interface LedgerShelf {

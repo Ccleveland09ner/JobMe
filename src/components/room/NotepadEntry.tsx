@@ -3,18 +3,20 @@
  * next. An unscored turn says so instead of showing zero bars.
  */
 
+import { CandidateQuote } from "@/components/report/CandidateQuote";
 import { BandBadge } from "@/components/score/BandBadge";
 import { ScoreList } from "@/components/score/ScoreList";
 import { Badge } from "@/components/ui/Badge";
-import { DIMENSION_LABELS, MOVE_LABELS, topicLabel } from "@/lib/frontend/labels";
+import { gapLabel, MOVE_LABELS, topicLabel } from "@/lib/frontend/labels";
 import type { NoteView } from "@/lib/frontend/types";
 
-export function noteLabel(note: NoteView): string {
+function noteLabel(note: NoteView): string {
   return `Q${note.seq} · ${topicLabel(note.topic)} · ${MOVE_LABELS[note.questionType]}`;
 }
 
 export function NotepadEntry({ note, headingLevel = "h3" }: { note: NoteView; headingLevel?: "h3" | "h4" }) {
   const Heading = headingLevel;
+  const gap = note.degraded ? null : gapLabel(note.primaryGap);
   return (
     <article className="flex flex-col gap-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
@@ -33,17 +35,17 @@ export function NotepadEntry({ note, headingLevel = "h3" }: { note: NoteView; he
         <ScoreList scores={note.scores} highlight={note.primaryGap} compact />
       )}
 
-      {note.primaryGap && !note.degraded && (
+      {gap && (
         <p className="text-sm">
           <span className="text-muted">Gap: </span>
-          <span className="font-medium text-ink">{DIMENSION_LABELS[note.primaryGap]}</span>
+          <span className="font-medium text-ink">{gap}</span>
         </p>
       )}
 
       {note.evidence && (
-        <blockquote className="border-l-2 border-line pl-3 font-mono text-xs leading-relaxed text-ink">
-          &ldquo;{note.evidence}&rdquo;
-        </blockquote>
+        <CandidateQuote block className="border-l-2 border-line pl-3 font-mono text-xs leading-relaxed text-ink">
+          {note.evidence}
+        </CandidateQuote>
       )}
 
       {note.observation && <p className="text-sm text-ink">{note.observation}</p>}

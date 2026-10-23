@@ -5,11 +5,12 @@
  * Escape), HeldPad (the room's notepad), and Pages, turned one at a time.
  */
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { Button } from "@/components/ui/Button";
+import { usePageArrowKeys } from "@/components/ui/usePageArrowKeys";
 import type { Held } from "@/components/building/heldMachine";
-import { isTextEntry } from "@/lib/frontend/dom";
 
 import { useHeld } from "./useHeld";
 
@@ -39,6 +40,42 @@ export function useHeldShell(name: Held, onClose: () => void) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return { closing, heading };
+}
+
+/** A document held up from the desk (the ledger, the reports folder): putting it down goes back to the desk. */
+export function useHeldDocument(name: Held) {
+  const router = useRouter();
+  const close = useCallback(() => router.push("/dashboard"), [router]);
+  const { closing, heading } = useHeldShell(name, close);
+  const headingId = useId();
+  return { close, closing, heading, headingId };
+}
+
+/** The held document's frame and the hidden title it opens on (useHeldDocument gives the rest). */
+export function HeldDocument({
+  title,
+  headingId,
+  heading,
+  closing,
+  children,
+}: {
+  title: string;
+  headingId: string;
+  heading: RefObject<HTMLHeadingElement | null>;
+  closing: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      aria-labelledby={headingId}
+      className={`relative flex w-full max-w-6xl flex-col items-center ${closing ? "held-out" : "held-in"}`}
+    >
+      <h1 id={headingId} ref={heading} tabIndex={-1} className="sr-only">
+        {title}
+      </h1>
+      {children}
+    </section>
+  );
 }
 
 /** The paper tag tied to a held document that puts it down. */
@@ -115,21 +152,17 @@ export function Pages({
   children: ReactNode;
 }) {
   const [direction, setDirection] = useState<"next" | "prev">("next");
-  const turn = (to: number) => {
-    if (to < 0 || to >= count || to === page) return;
-    setDirection(to > page ? "next" : "prev");
-    onTurn(to);
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (isTextEntry(e.target)) return;
-      if (e.key === "ArrowRight") turn(page + 1);
-      else if (e.key === "ArrowLeft") turn(page - 1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+  const turn = useCallback(
+    (to: number) => {
+      if (to < 0 || to >= count || to === page) return;
+      setDirection(to > page ? "next" : "prev");
+      onTurn(to);
+    },
+    [count, page, onTurn],
+  );
+  const next = useCallback(() => turn(page + 1), [turn, page]);
+  const prev = useCallback(() => turn(page - 1), [turn, page]);
+  usePageArrowKeys(true, next, prev);
 
   const animation = axis === "up" ? "page-up" : direction === "next" ? "page-next" : "page-prev";
   return (

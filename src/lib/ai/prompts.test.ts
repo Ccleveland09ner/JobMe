@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { QUESTION_KINDS, dimensionsFor } from "../engine/types";
-import { ASKED_IN_PROMPT, buildTurnPrompt, evaluatorSystemFor } from "./prompts";
+import { ASKED_IN_PROMPT, buildTurnPrompt, evaluatorSystemFor, OBSERVATION_MAX_CHARS } from "./prompts";
+import { MAX_DRAFT_WORDS } from "./questions";
 
 describe("evaluatorSystemFor — the rubric each kind is scored on", () => {
   it("lists exactly the kind's dimensions", () => {
@@ -108,5 +109,13 @@ describe("buildTurnPrompt", () => {
     expect(prompt).toContain("ALREADY ASKED (do not repeat):");
     expect(prompt).toContain("- Question 19?");
     expect(prompt).not.toContain(`- Question ${20 - ASKED_IN_PROMPT - 1}?`);
+  });
+});
+
+describe("the limits the evaluator is told", () => {
+  it("are the ones the code enforces", () => {
+    const system = evaluatorSystemFor("behavioral", "opening");
+    expect(system).toContain(`observation: one line, max ${OBSERVATION_MAX_CHARS} chars`);
+    expect(system).toContain(`One question. Max ${MAX_DRAFT_WORDS} words.`);
   });
 });

@@ -5,28 +5,37 @@
  * Every failure offers typed answers. Reports the input mode upward.
  */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { useAlive } from "@/components/common/useAlive";
+import { useBrowserValue } from "@/components/common/useBrowserValue";
 import { Button } from "@/components/ui/Button";
 import type { InputMode } from "@/lib/frontend/types";
 import { isSttSupported } from "@/lib/voice/stt";
 
 type MicStatus = "idle" | "checking" | "allowed" | "denied" | "no-device" | "error";
 
-/** Capability does not change while the page is open; nothing to subscribe to. */
-const neverChanges = () => () => {};
-
 function browserSupportsVoice(): boolean {
   return isSttSupported() && Boolean(navigator.mediaDevices?.getUserMedia);
 }
 
-export function MicCheck({ onInputModeChange }: { onInputModeChange: (mode: InputMode) => void }) {
+export function MicCheck({
+  typedByDefault,
+  onInputModeChange,
+}: {
+  /** The board's saved default: "Type my answers instead" starts ticked. */
+  typedByDefault: boolean;
+  onInputModeChange: (mode: InputMode) => void;
+}) {
   // null on the server, to match on hydration.
-  const speechSupported = useSyncExternalStore(neverChanges, browserSupportsVoice, () => null);
+  const speechSupported = useBrowserValue(browserSupportsVoice, null);
   const [status, setStatus] = useState<MicStatus>("idle");
-  const [preferTyped, setPreferTyped] = useState(false);
+  // Null until ticked or unticked here; the saved default stands until then.
+  const [typedChoice, setPreferTyped] = useState<boolean | null>(null);
+  const preferTyped = typedChoice ?? typedByDefault;
   const [level, setLevel] = useState(0);
   const cleanup = useRef<(() => void) | null>(null);
+  const alive = useAlive();
 
   useEffect(() => () => cleanup.current?.(), []);
 
@@ -42,6 +51,11 @@ export function MicCheck({ onInputModeChange }: { onInputModeChange: (mode: Inpu
     setStatus("checking");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Left the sheet during the permission prompt: let the microphone go at once.
+      if (!alive.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;

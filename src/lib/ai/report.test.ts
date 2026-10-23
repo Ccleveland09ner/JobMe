@@ -12,7 +12,7 @@ import {
   pickWeakest,
   reportStats,
   verifyQuote,
-  type ReportQuestion,
+  type ReportPromptQuestion,
 } from "./report";
 
 /** A stand-in for the model that returns `value` and records its arguments. */
@@ -29,7 +29,7 @@ const NO_NUMBERS_ANSWER =
   "We had a slow checkout page. I profiled it, found the query doing a full " +
   "scan, and added an index. The page got a lot faster after that.";
 
-const QUESTIONS: ReportQuestion[] = [
+const QUESTIONS: ReportPromptQuestion[] = [
   {
     ref: "Q1",
     competency: "Teamwork",
@@ -254,7 +254,6 @@ describe("fallbackReport", () => {
   const rollup = (over: Partial<SessionRollup> = {}): SessionRollup => ({
     overall: 2.7,
     dimensions: { relevance: 3, specificity: 3, ownership: 3.5, reasoning: 2.5, outcome: 1.5, communication: 1 },
-    competencies: [],
     questionsAsked: 2,
     questionsScored: 2,
     ...over,
@@ -263,7 +262,7 @@ describe("fallbackReport", () => {
   it("names the overall score, the strongest and weakest dimensions, with a tip", () => {
     const { summary } = fallbackReport(rollup());
     expect(summary).toContain("Across 2 questions your overall score was 2.7/4");
-    expect(summary).toContain("strongest area was Your own contribution (3.5/4)");
+    expect(summary).toContain("strongest area was Own contribution (3.5/4)");
     expect(summary).toContain("work on is Outcome (1.5/4)");
   });
 

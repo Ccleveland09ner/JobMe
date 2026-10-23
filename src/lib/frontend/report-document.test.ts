@@ -9,14 +9,19 @@ import { topicLabel } from "./labels";
 import { packPages } from "./paginate";
 import {
   describeFolder,
+  feedbackItems,
   folderBook,
   folderFlow,
   FOLDER_COMPETENCY_ROWS,
   FOLDER_FLOW_START,
   isFiled,
+  latestFiledReportId,
   loadReportDocument,
   loadReportIndex,
+  questionsOf,
   reportDocumentFromRows,
+  reportIdIn,
+  reportPath,
   reportTabsFromRows,
   sectionStarts,
   strengths,
@@ -126,9 +131,8 @@ describe("reportDocumentFromRows", () => {
     expect(written.overallScores).toEqual(SCORES);
   });
 
-  it("gives each tab its overall score", () => {
-    expect(reportTabsFromRows([session])[0]).toMatchObject({ id: "s1", title: "Backend Intern", overall: 2.7 });
-    expect(reportTabsFromRows([{ ...session, overall_scores: { task: 2, action: 3 } }])[0].overall).toBe(2.5);
+  it("gives each tab its date, length and title", () => {
+    expect(reportTabsFromRows([session])[0]).toEqual({ id: "s1", startedAt: "2026-10-18T10:00:00Z", mode: "quick", title: "Backend Intern" });
   });
 });
 
@@ -148,6 +152,14 @@ describe("strengths", () => {
     expect(s.strongest.map(([d]) => d)).toEqual(["ownership", "relevance"]);
     expect(s.weakest.map(([d]) => d)).toEqual(["outcome", "specificity"]);
     expect(strengths(null)).toEqual({ strongest: [], weakest: [] });
+  });
+
+  // Clarity is never a gap: a transcript is too noisy a signal to fault it,
+  // and the fallback report ranks the same way.
+  it("never names Clarity, and breaks ties in display order", () => {
+    const s = strengths({ relevance: 3, ownership: 4, reasoning: 2, outcome: 2, communication: 1 });
+    expect(s.strongest.map(([d]) => d)).toEqual(["ownership", "relevance"]);
+    expect(s.weakest.map(([d]) => d)).toEqual(["reasoning", "outcome"]);
   });
 });
 
@@ -191,6 +203,20 @@ describe("folderFlow and folderBook", () => {
     expect(kinds(folderFlow(doc({ report: { weakest_turn_id: null } })), "rewrite-").map((b) => b.kind)).toEqual(["rewrite-none"]);
   });
 
+  it("ties what was said to the question rewritten, and marks where the rewrite starts", () => {
+    const flow = folderFlow(doc());
+    expect(kinds(flow, "rewrite-said").map((b) => b.question)).toEqual([0, 0]);
+    expect(kinds(flow, "rewrite-text").map((b) => b.first)).toEqual([true]);
+  });
+
+  // Stats are stored JSON: a report missing one list still files.
+  it("treats a feedback list the report lacks as empty", () => {
+    const feedback = { strengths: [{ question: "Q1", point: "Named the number." }] } as unknown as ReportStats["feedback"];
+    const filed = doc({ report: { stats: { ...STATS, feedback } } });
+    expect(kinds(folderFlow(filed), "feedback-").map((b) => b.id)).toEqual(["fl-strengths", "fi-strengths-0", "fl-improvements"]);
+    expect(feedbackItems(filed, "improvements")).toEqual([]);
+  });
+
   it("lists the competencies a few to a block, once anything was scored", () => {
     const many = Array.from({ length: FOLDER_COMPETENCY_ROWS + 1 }, (_, i) => turn(i + 1));
     expect(kinds(folderFlow(doc({ turns: many })), "competencies").map((b) => b.range)).toEqual([
@@ -219,6 +245,15 @@ describe("windowStart", () => {
     expect(windowStart(20, 5, 1, 3)).toBe(1);
     expect(windowStart(20, 5, 19, 0)).toBe(15);
     expect(windowStart(3, 5, 2, 4)).toBe(0);
+  });
+});
+
+describe("reportPath and reportIdIn", () => {
+  it("reads back the report a path names, and nothing from any other path", () => {
+    expect(reportIdIn(reportPath("s1"))).toBe("s1");
+    expect(reportIdIn("/interview/s1/report/")).toBe("s1");
+    expect(reportIdIn("/reports")).toBeNull();
+    expect(reportIdIn("/interview/s1")).toBeNull();
   });
 });
 
@@ -254,9 +289,29 @@ describe("loadReportDocument and loadReportIndex", () => {
   it("lists finished interviews, newest first, as tabs", async () => {
     const db = fakeSupabase(() => ({ data: [session] }));
     expect(await loadReportIndex(db.client as never)).toEqual([
-      { id: "s1", startedAt: session.started_at, mode: "quick", title: "Backend Intern", overall: 2.7 },
+      { id: "s1", startedAt: session.started_at, mode: "quick", title: "Backend Intern" },
     ]);
     expect(db.queries[0].filters).toContainEqual(["eq", "status", "completed"]);
     expect(db.queries[0].modifiers).toContain("limit:60");
+  });
+});
+
+describe("latestFiledReportId", () => {
+  it("is the newest finished interview, or none", async () => {
+    const db = fakeSupabase(() => ({ data: { id: "s9" } }));
+    expect(await latestFiledReportId(db.client as never)).toBe("s9");
+    expect(db.queries[0].filters).toContainEqual(["eq", "status", "completed"]);
+    expect(await latestFiledReportId(fakeSupabase(() => ({ data: null })).client as never)).toBeNull();
+    await expect(latestFiledReportId(fakeSupabase(() => ({ error: { message: "down" } })).client as never)).rejects.toThrow("reports: down");
+  });
+});
+
+describe("questionsOf", () => {
+  it("numbers the original questions and says what each assessed", () => {
+    const questions = questionsOf(doc().turns, null);
+    expect(questions.map((q) => [q.ref, q.label, q.purpose, q.turns.map((t) => t.id)])).toEqual([
+      ["Q1", topicLabel("teamwork"), BANK.teamwork.purpose, ["t1", "t2"]],
+      ["Q2", topicLabel("conflict"), BANK.conflict.purpose, ["t3"]],
+    ]);
   });
 });

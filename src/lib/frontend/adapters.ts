@@ -6,16 +6,19 @@
  */
 
 import {
+  BANDS,
   DISPLAY_DIMENSIONS,
+  INTERVIEW_MODES,
+  progressOf,
+  QUESTION_SOURCES,
+  QUESTION_TYPES,
   type AnyDimension,
-  type Band,
   type EngineState,
   type InterviewMode,
-  type QuestionSource,
-  type QuestionType,
   type StoredScores,
   type TopicId,
 } from "../engine/types";
+import { isDimension, pickScores } from "../stats";
 import type {
   NoteView,
   ProgressView,
@@ -27,28 +30,7 @@ import type {
 
 // Scores
 
-const DIMENSION_SET = new Set<string>(DISPLAY_DIMENSIONS);
-
-/** A current or legacy (pre-2026-10 STAR) dimension key. */
-export function isDimension(value: unknown): value is AnyDimension {
-  return typeof value === "string" && DIMENSION_SET.has(value);
-}
-
-/**
- * Keeps known dimensions with numeric values, current and legacy alike, so an
- * old session still renders; anything else (`overall`, the old `structure`
- * key) is dropped. Null or empty is unscored.
- */
-export function pickScores(raw: unknown): StoredScores | null {
-  if (!raw || typeof raw !== "object") return null;
-  const out: StoredScores = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (isDimension(key) && typeof value === "number" && Number.isFinite(value)) {
-      out[key] = value;
-    }
-  }
-  return Object.keys(out).length ? out : null;
-}
+export { isDimension, pickScores } from "../stats";
 
 /**
  * The session's headline 1-4 score as the backend stored it (`overall`, the
@@ -86,12 +68,8 @@ export function scoreLevel(value: number): 1 | 2 | 3 | 4 {
 
 // Rows
 
-const BANDS = new Set(["weak", "mediocre", "great"]);
-const QUESTION_TYPES = new Set(["opening", "deepen", "clarify"]);
-const SOURCES = new Set(["bank", "resume"]);
-
-function oneOf<T extends string>(set: Set<string>, value: unknown): T | null {
-  return typeof value === "string" && set.has(value) ? (value as T) : null;
+function oneOf<T extends string>(values: readonly T[], value: unknown): T | null {
+  return typeof value === "string" && (values as readonly string[]).includes(value) ? (value as T) : null;
 }
 
 /** The `turns` columns the notepad needs. */
@@ -120,10 +98,10 @@ export function noteFromTurnRow(row: TurnRow): NoteView {
   return {
     seq: row.seq,
     topic: (row.topic ?? "teamwork") as TopicId,
-    questionType: oneOf<QuestionType>(QUESTION_TYPES, row.question_type) ?? "opening",
-    source: oneOf<QuestionSource>(SOURCES, row.question_source),
+    questionType: oneOf(QUESTION_TYPES, row.question_type) ?? "opening",
+    source: oneOf(QUESTION_SOURCES, row.question_source),
     scores,
-    band: oneOf<Band>(BANDS, row.band),
+    band: oneOf(BANDS, row.band),
     primaryGap: isDimension(row.primary_gap) ? row.primary_gap : null,
     evidence: row.evidence || null,
     observation: row.notepad_text ?? "",
@@ -143,12 +121,12 @@ export function reportTurnFromRow(row: TurnRow & { id: string }): ReportTurnView
     id: row.id,
     seq: row.seq,
     topic: (row.topic as TopicId | null) ?? null,
-    questionType: oneOf<QuestionType>(QUESTION_TYPES, row.question_type),
-    source: oneOf<QuestionSource>(SOURCES, row.question_source),
+    questionType: oneOf(QUESTION_TYPES, row.question_type),
+    source: oneOf(QUESTION_SOURCES, row.question_source),
     questionText: row.question_text ?? "",
     answer: row.answer_transcript ?? "",
     scores: pickScores(row.scores),
-    band: oneOf<Band>(BANDS, row.band),
+    band: oneOf(BANDS, row.band),
     primaryGap: isDimension(row.primary_gap) ? row.primary_gap : null,
     evidence: row.evidence || null,
     wpm: row.wpm ?? null,
@@ -175,7 +153,7 @@ export interface SessionRowData {
 
 /** A stored mode, or null for anything else. */
 export function modeFromRow(mode: string | null | undefined): InterviewMode | null {
-  return mode === "quick" || mode === "full" ? mode : null;
+  return oneOf(INTERVIEW_MODES, mode);
 }
 
 export function sessionSummaryFromRow(row: SessionRowData): SessionSummary {
@@ -195,16 +173,7 @@ export function sessionSummaryFromRow(row: SessionRowData): SessionSummary {
 
 /** Reads progress from the engine state (the cap and coverage are the engine's). */
 export function progressFromState(state: EngineState): ProgressView {
-  const items = state.resumeItems ?? [];
-  return {
-    mode: state.mode,
-    questionCount: state.questionCount,
-    questionCap: state.questionCap,
-    coverageDone: items.filter((i) => i.covered).length,
-    coverageTotal: items.length,
-    topicIndex: state.topicIndex,
-    topicsTotal: state.topics?.length,
-  };
+  return { mode: state.mode, ...progressOf(state) };
 }
 
 export function questionFromState(state: EngineState): QuestionView {

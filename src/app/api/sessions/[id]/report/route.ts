@@ -6,15 +6,14 @@
 import { NextResponse } from "next/server";
 
 import { getUserOrNull } from "@/lib/auth";
-import type { StoredScores } from "@/lib/engine/types";
 import { isSessionId, notFound, serverError, unauthorized } from "@/lib/http";
 import {
   runReport,
   type ReportStore,
   type StoredReport,
 } from "@/lib/interview/report";
-import { formatRoleForPrompt } from "@/lib/jd/distill";
-import { QuestionPlan } from "@/lib/schemas";
+import { jobForPrompt, parsePlan } from "@/lib/plan";
+import { pickScores, reportFromRow } from "@/lib/stats";
 import { createClient } from "@/lib/supabase/server";
 
 /** One model call plus a few queries; the default can be too tight on Vercel. */
@@ -33,15 +32,17 @@ export async function POST(
 
   try {
     const outcome = await runReport(reportStore(await createClient(), id));
-    return NextResponse.json(outcome.body, { status: outcome.status });
+    if (outcome.kind === "not-found") return notFound();
+    if (outcome.kind === "nothing-answered") {
+      return NextResponse.json({ error: "Answer at least one question before ending the interview." }, { status: 409 });
+    }
+    return NextResponse.json(outcome.body);
   } catch (err) {
     return serverError(`[report] session ${id}: ${(err as Error).message}`, "Couldn't build your scorecard. Please try again.");
   }
 }
 
 function reportStore(supabase: Supabase, id: string): ReportStore {
-  let endedAt: string | null = null;
-
   return {
     async loadSession() {
       const { data, error } = await supabase
@@ -51,14 +52,12 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
         .maybeSingle();
       if (error) throw new Error(`load session: ${error.message}`);
       if (!data) return null;
-      endedAt = data.ended_at ?? null;
-      // The role as the turns saw it, so feedback is judged against the same job.
-      const plan = QuestionPlan.safeParse(data.question_plan);
-      const role = plan.success ? plan.data.role : null;
       return {
         status: data.status,
         overallScores: data.overall_scores ?? null,
-        roleText: role ? formatRoleForPrompt(role) : (data.role_text ?? null),
+        endedAt: data.ended_at ?? null,
+        // The role as the turns saw it, so feedback is judged against the same job.
+        roleText: jobForPrompt(parsePlan(data.question_plan), data.role_text ?? null),
       };
     },
 
@@ -69,13 +68,7 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
         .eq("session_id", id)
         .maybeSingle();
       if (error) throw new Error(`load report: ${error.message}`);
-      if (!data) return null;
-      return {
-        summary: data.summary ?? "",
-        weakestTurnId: data.weakest_turn_id ?? null,
-        rewrite: data.rewrite_text ?? null,
-        stats: data.stats,
-      } satisfies StoredReport;
+      return data ? (reportFromRow(data) satisfies StoredReport) : null;
     },
 
     async loadTurns() {
@@ -95,7 +88,7 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
         source: row.question_source ?? null,
         questionText: row.question_text ?? "",
         answerTranscript: row.answer_transcript ?? "",
-        scores: (row.scores ?? null) as StoredScores | null,
+        scores: pickScores(row.scores),
         primaryGap: row.primary_gap ?? null,
         captureMs: row.capture_ms ?? null,
       }));
@@ -115,14 +108,13 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
       return "inserted";
     },
 
-    async completeSession(overallScores) {
+    async completeSession(overallScores, endedAt) {
       const { error } = await supabase
         .from("interview_sessions")
         .update({
           status: "completed",
           overall_scores: overallScores,
-          // The turn route stamps this on a natural wrap; End early does not.
-          ended_at: endedAt ?? new Date().toISOString(),
+          ended_at: endedAt,
         })
         .eq("id", id);
       if (error) throw new Error(`complete session: ${error.message}`);

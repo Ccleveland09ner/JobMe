@@ -11,22 +11,16 @@
  * dependencies (the route wires the real ones).
  */
 
-import {
-  orderResumeItems,
-  plannedBankOpening,
-  QUICK_PLAN_RESUME_ITEMS,
-  usableJobText,
-  type PlanInputs,
-} from "../ai/question-plan";
+import { QUICK_PLAN_RESUME_ITEMS, wantsPlan, type PlanInputs } from "../ai/question-plan";
 import { questionFor } from "../engine/bank";
 import { introLineFor } from "../engine/notepad";
 import { initState } from "../engine/policy";
 import { inferSeniority, roleFamily, type RoleFamily } from "../engine/roles";
 import type { EngineState, Question, ResumeItem, TopicId } from "../engine/types";
-import { formatRoleForPrompt, type RoleProfile } from "../jd/distill";
+import { formatRoleForPrompt, type RoleProfile } from "../jd/profile";
 import { JobLinkError, type JobPosting } from "../job-posting";
-import { formatFactsForPrompt } from "../resume/distill";
-import type { ResumeFacts } from "../resume/store";
+import { formatFactsForPrompt, type ResumeFacts } from "../resume/facts";
+import { orderResumeItems, plannedBankOpening, usableJobText } from "../plan";
 import type { CreateSessionBody, QuestionPlan } from "../schemas";
 
 /** Bank threads per session, before resume coverage. */
@@ -131,7 +125,7 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
   // Quick mode plans only a few resume threads; later ones get the fixed opening.
   const planItems = body.mode === "full" ? uploadRanked : uploadRanked.slice(0, QUICK_PLAN_RESUME_ITEMS);
 
-  const plan = await deps.generatePlan({
+  const planInputs: PlanInputs = {
     topics: defaults,
     family,
     resumeItems: planItems.map((item) => ({ item, excerpt: excerptFor(item, chunks) })),
@@ -142,7 +136,8 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
     roleSummary: resume?.role_profile ? formatRoleForPrompt(resume.role_profile as RoleProfile) : null,
     resumeFacts: resume?.resume_facts ? formatFactsForPrompt(resume.resume_facts as ResumeFacts) : null,
     seniority: inferSeniority(targetRole, jobText),
-  });
+  };
+  const plan = await deps.generatePlan(planInputs);
 
   const topics = plan.order?.length ? plan.order : defaults;
   const resumeItems = orderResumeItems(uploadRanked, plan);
@@ -161,7 +156,9 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
     role_text: jobText,
     job_url: body.jobUrl ?? null,
     question_plan: plan,
-    resume_id: body.resumeId ?? null,
+    // Only a resume that was read: one that failed, or isn't this user's, would
+    // later feed turns facts the plan never had.
+    resume_id: resume ? (body.resumeId ?? null) : null,
     engine_state: state,
     question_count: state.questionCount,
   });
@@ -174,7 +171,8 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
     state,
     firstQuestion,
     plan,
-    introLine: introLineFor(body.displayName, Boolean(targetRole || jobText || planItems.length) && !personalized),
+    // Job details were given, so the plan was wanted, but the model couldn't tailor it.
+    introLine: introLineFor(body.displayName, wantsPlan(planInputs) && !personalized),
     personalized,
     posting,
     coverageTotal: resumeItems.length,

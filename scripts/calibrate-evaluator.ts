@@ -13,13 +13,18 @@
  * Ref: docs/Scoring-Rubric.md > Calibration; scripts/calibration-fixtures.ts
  */
 
+import "./_load-env";
+
 import { writeFileSync } from "node:fs";
 
 import { evaluateAndDraft, type RawEvaluation } from "../src/lib/ai/evaluate";
-import { checkDraft, preClassify } from "../src/lib/ai/questions";
+import { fallbackPlan } from "../src/lib/ai/question-plan";
+import { checkDraft } from "../src/lib/ai/questions";
 import { BANK } from "../src/lib/engine/bank";
-import { classifyBand, resolveGap } from "../src/lib/engine/classify";
+import { roleFamily } from "../src/lib/engine/roles";
 import { weightedScore, type TopicId } from "../src/lib/engine/types";
+import { judgeAnswer } from "../src/lib/interview/turn";
+import { jobForPrompt } from "../src/lib/plan";
 import {
   ANSWERS,
   FOLLOW_UP_CASE,
@@ -27,18 +32,16 @@ import {
   type AnswerFixture,
   type RoleContext,
 } from "./calibration-fixtures";
-import { loadEnv, requireEnv } from "./_env";
+import { requireEnv } from "./_env";
+import { PACE_MS, sleep } from "./_pace";
 
-loadEnv();
 requireEnv("GEMINI_API_KEY");
 
-const PACE_MS = 4300;
 const RUNS = Number(process.env.CALIBRATE_RUNS ?? 2);
 const OUT = process.argv.includes("--out")
   ? process.argv[process.argv.indexOf("--out") + 1]
   : null;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let calls = 0;
 
 interface Scored {
@@ -52,10 +55,12 @@ interface Scored {
   draftsOk: boolean;
 }
 
+/** What a turn tells the evaluator about the job: the plan a session for this role starts from. */
 const roleTextFor = (r: RoleContext) =>
-  [`Target role: ${r.title} (${r.seniority})`, r.company ? `Company: ${r.company}` : null]
-    .filter(Boolean)
-    .join("\n");
+  jobForPrompt(
+    fallbackPlan({ topics: [], family: roleFamily(r.title), resumeItems: [], targetRole: r.title, company: r.company, seniority: r.seniority }),
+    null,
+  );
 
 async function score(args: {
   fixture: Pick<AnswerFixture, "kind" | "topic" | "question" | "answer"> & { role: RoleContext["id"] };
@@ -77,12 +82,20 @@ async function score(args: {
     roleText: roleTextFor(role),
     seniority: role.seniority,
   });
-  const forced = preClassify(args.fixture.answer, type);
+  // The band and gap exactly as a live turn decides them.
+  const judged = judgeAnswer({
+    transcript: args.fixture.answer,
+    questionType: type,
+    kind: args.fixture.kind,
+    scores: e.scores,
+    modelOffTopic: e.off_topic,
+    modelGap: e.clarify_gap,
+  });
   return {
     score: Number((weightedScore(e.scores, args.fixture.kind) ?? 1).toFixed(2)),
-    band: forced ?? classifyBand(e.scores, args.fixture.kind, e.off_topic),
+    band: judged.band,
     status: e.status,
-    gap: resolveGap(e.scores, args.fixture.kind, e.clarify_gap).gap,
+    gap: judged.primaryGap,
     scores: e.scores,
     observation: e.observation,
     clarify: e.drafts.clarify,

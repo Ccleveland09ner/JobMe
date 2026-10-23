@@ -3,8 +3,9 @@
 /**
  * Lays a document's blocks out on fixed-size pages: renders them once,
  * hidden, at the page's content width, measures them (after the fonts have
- * loaded), and packs them (lib/frontend/paginate.ts). Measured once per
- * `documentKey`, so turning pages never re-measures.
+ * loaded), and packs them (lib/frontend/paginate.ts). Each `documentKey` is
+ * measured once and its layout kept, so turning pages, or coming back to a
+ * document (another folder tab, then this one), never re-measures.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -26,10 +27,13 @@ export interface PaginateOptions {
   isLeft?: (pageIndex: number) => boolean;
 }
 
+/** Layouts kept; the oldest is dropped first. */
+const KEPT_LAYOUTS = 24;
+
 export function usePaginatedPages(blocks: DocBlock[], { documentKey, width, capacity, gap, firstPage, isLeft }: PaginateOptions) {
   const box = useRef<HTMLDivElement>(null);
-  const [plan, setPlan] = useState<{ key: string; pages: PagePlan[] } | null>(null);
-  const pages = plan?.key === documentKey ? plan.pages : null;
+  const [plans, setPlans] = useState<ReadonlyMap<string, PagePlan[]>>(() => new Map());
+  const pages = plans.get(documentKey) ?? null;
 
   const latest = useRef({ blocks, capacity, gap, firstPage, isLeft });
   useEffect(() => {
@@ -68,9 +72,14 @@ export function usePaginatedPages(blocks: DocBlock[], { documentKey, width, capa
         keepWithNext: b.keepWithNext,
         height: heights.get(b.id) ?? 0,
       }));
-      setPlan({
-        key: documentKey,
-        pages: packPages(flow, { capacity: now.capacity, gap: now.gap, firstPage: now.firstPage, isLeft: now.isLeft }),
+      const packed = packPages(flow, { capacity: now.capacity, gap: now.gap, firstPage: now.firstPage, isLeft: now.isLeft });
+      setPlans((kept) => {
+        const next = new Map(kept).set(documentKey, packed);
+        for (const key of next.keys()) {
+          if (next.size <= KEPT_LAYOUTS) break;
+          next.delete(key);
+        }
+        return next;
       });
     })();
     return () => {

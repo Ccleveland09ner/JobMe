@@ -12,9 +12,13 @@
 
 import {
   dimensionsFor,
+  isFollowUpType,
   type Dimension,
   type QuestionKind,
+  type QuestionType,
 } from "../engine/types";
+
+import { MAX_DRAFT_WORDS } from "./questions";
 
 /** Marks candidate text as data, not orders. */
 export function asUntrustedData(label: string, text: string): string {
@@ -208,6 +212,9 @@ HOW TO SCORE FAIRLY
 - Each score must be justified by something in the answer.
 `.trim();
 
+/** The notepad's one-line observation; the evaluator is told the same limit. */
+export const OBSERVATION_MAX_CHARS = 90;
+
 const OUTPUTS = `
 Also return:
 - status, exactly one of:
@@ -216,7 +223,7 @@ Also return:
     incorrect     — contains a substantive factual or technical error
     off_topic     — answers a different question
     no_experience — says they have no relevant experience, or do not know
-- observation: one line, max 90 chars, naming the single most important thing
+- observation: one line, max ${OBSERVATION_MAX_CHARS} chars, naming the single most important thing
   you noticed — a specific strength OR the biggest gap — in plain, neutral
   words. Example: "Clear reason for choosing Postgres; outcome only implied".
 - clarify_gap: the scored dimension (never communication) where missing
@@ -226,7 +233,7 @@ Also return:
   strong — reasoning, trade-offs, alternatives, or what they would change.
 
 Rules for both drafts:
-- One question. Max 25 words. End with a question mark.
+- One question. Max ${MAX_DRAFT_WORDS} words. End with a question mark.
 - Build on the candidate's OWN words, so it lands as listening.
 - Ask for what is missing; do not demand numbers. "How did you know it had
   worked?" rather than "What was the metric?".
@@ -273,9 +280,9 @@ const DATA_LINE = [
 /** The system prompt for one turn: the rubric for its kind, opening or follow-up. */
 export function evaluatorSystemFor(
   kind: QuestionKind,
-  questionType: string,
+  questionType: QuestionType,
 ): string {
-  const isFollowUp = questionType === "clarify" || questionType === "deepen";
+  const isFollowUp = isFollowUpType(questionType);
   const anchors = dimensionsFor(kind)
     .map((d) => ANCHORS[kind][d])
     .filter(Boolean)
@@ -297,7 +304,8 @@ export function evaluatorSystemFor(
 export const ASKED_IN_PROMPT = 12;
 
 /** Context first, then the ask. */
-export function buildTurnPrompt(args: {
+/** What one turn's prompt is built from. */
+export interface TurnPromptArgs {
   kind: QuestionKind;
   /** The competency, e.g. "Persuasion". */
   topic: string;
@@ -316,7 +324,9 @@ export function buildTurnPrompt(args: {
   seniority?: string | null;
   resumeFacts?: string | null;
   askedQuestions?: string[];
-}): string {
+}
+
+export function buildTurnPrompt(args: TurnPromptArgs): string {
   const parts: string[] = [];
 
   if (args.resumeFacts) {

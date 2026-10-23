@@ -5,30 +5,39 @@
  * through RLS; the shaping and the layout are pure.
  */
 
-import type { ReportStats } from "@/lib/ai/report";
 import type { RowReader } from "@/lib/supabase/reader";
 
-import { purposeFor } from "../engine/bank";
+import type { ReportBody } from "../interview/report";
+import { purposeFor } from "../engine/topics";
 import type { AnyDimension, InterviewMode, StoredScores, TopicId } from "../engine/types";
-import { QuestionPlan } from "../schemas";
-import { groupIntoQuestions, rollupQuestions } from "../stats";
+import {
+  groupIntoQuestions,
+  questionRef,
+  rankDimensions,
+  reportFromRow,
+  rollupQuestions,
+  type FeedbackItem,
+  type ReportRow,
+  type ReportStats,
+} from "../stats";
 import {
   findEvidence,
   modeFromRow,
   pickOverall,
   pickScores,
   reportTurnFromRow,
-  scoreEntries,
   SESSION_JSON_COLUMNS,
   type TurnRow,
 } from "./adapters";
 import { topicLabel } from "./labels";
+import { parsePlan } from "../plan";
+import type { QuestionPlan } from "../schemas";
 import { splitText, type FlowBlock, type PagePlan } from "./paginate";
 import type { ReportQuestionView, ReportTurnView, SessionStatus } from "./types";
 
 const SESSION_COLUMNS = `id, status, overall_scores, started_at, ${SESSION_JSON_COLUMNS}`;
 const TURN_COLUMNS =
-  "id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text, wpm, filler_count";
+  "id, seq, topic, question_type, question_source, question_text, answer_transcript, scores, band, primary_gap, evidence, notepad_text, reason_text";
 
 /** Reports the folder keeps a tab for, newest first. */
 export const REPORT_INDEX_LIMIT = 60;
@@ -74,7 +83,6 @@ export interface ReportTab {
   startedAt: string;
   mode: InterviewMode | null;
   title: string | null;
-  overall: number | null;
 }
 
 interface SessionRow {
@@ -88,18 +96,11 @@ interface SessionRow {
   question_plan?: unknown;
 }
 
-interface ReportRow {
-  summary: string | null;
-  weakest_turn_id: string | null;
-  rewrite_text: string | null;
-  stats: ReportStats | null;
-}
-
 /** Numbered Q1, Q2… with the competency and what it assessed for this job. */
 export function questionsOf(turns: ReportTurn[], plan: QuestionPlan | null): ReportQuestion[] {
   return groupIntoQuestions(turns).map((g, i) => ({
     ...g,
-    ref: `Q${i + 1}`,
+    ref: questionRef(i),
     label: topicLabel(g.opening.topic),
     purpose: g.opening.topic ? purposeFor(plan, g.opening.topic as TopicId) : "",
   }));
@@ -114,8 +115,7 @@ export function reportDocumentFromRows(
     .sort((a, b) => a.seq - b.seq)
     .map((t) => ({ ...reportTurnFromRow(t), note: t.notepad_text?.trim() || null, reason: t.reason_text?.trim() || null }));
   // A malformed plan only costs each purpose its wording for this job.
-  const plan = QuestionPlan.safeParse(session.question_plan);
-  const questions = questionsOf(ordered, plan.success ? plan.data : null);
+  const questions = questionsOf(ordered, parsePlan(session.question_plan));
   return {
     id: session.id,
     status: session.status === "completed" ? "completed" : "in_progress",
@@ -126,12 +126,7 @@ export function reportDocumentFromRows(
     overallScores: pickScores(session.overall_scores),
     turns: ordered,
     questions,
-    report: report && {
-      summary: report.summary ?? "",
-      weakestTurnId: report.weakest_turn_id,
-      rewrite: report.rewrite_text,
-      stats: report.stats,
-    },
+    report: report && reportFromRow(report),
   };
 }
 
@@ -159,7 +154,6 @@ export function reportTabsFromRows(rows: SessionRow[]): ReportTab[] {
     startedAt: r.started_at,
     mode: modeFromRow(r.mode),
     title: r.role_title?.trim() || null,
-    overall: pickOverall(r.overall_scores),
   }));
 }
 
@@ -175,19 +169,26 @@ export async function loadReportIndex(supabase: RowReader): Promise<ReportTab[]>
   return reportTabsFromRows((data ?? []) as unknown as SessionRow[]);
 }
 
-/** The tab for a document, for one the index doesn't list (an unfinished one). */
-export function tabFor(doc: ReportDocument): ReportTab {
-  return { id: doc.id, startedAt: doc.startedAt, mode: doc.mode, title: doc.title, overall: doc.overall };
+/** The newest finished interview, which the bare reports folder opens at; null when there is none. */
+export async function latestFiledReportId(supabase: RowReader): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("interview_sessions")
+    .select("id")
+    .eq("status", "completed")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`reports: ${error.message}`);
+  return (data as { id: string } | null)?.id ?? null;
 }
 
-/** What POST /api/sessions/[id]/report returns (lib/interview/report.ts ReportBody). */
-export interface GeneratedReport {
-  summary: string;
-  weakestTurnId: string | null;
-  rewrite: string | null;
-  stats: ReportStats;
-  overallScores: Record<string, number> | null;
+/** The tab for a document, for one the index doesn't list (an unfinished one). */
+export function tabFor(doc: ReportDocument): ReportTab {
+  return { id: doc.id, startedAt: doc.startedAt, mode: doc.mode, title: doc.title };
 }
+
+/** What POST /api/sessions/[id]/report returns. */
+export type GeneratedReport = ReportBody;
 
 /** The document once its report has been written; the session is then complete. */
 export function withGeneratedReport(doc: ReportDocument, body: GeneratedReport): ReportDocument {
@@ -213,12 +214,13 @@ export function questionCounts(doc: ReportDocument): { answered: number; scored:
   return { answered: doc.questions.length, scored: doc.questions.filter((q) => q.score !== null).length };
 }
 
-/** The two strongest and two weakest averages. */
+/** The two strongest and two weakest averages, ranked as the fallback report ranks them. */
 export function strengths(scores: StoredScores | null): { strongest: [AnyDimension, number][]; weakest: [AnyDimension, number][] } {
-  const ranked = scoreEntries(scores ?? {}).sort((a, b) => b[1] - a[1]);
-  if (ranked.length < 2) return { strongest: ranked, weakest: [] };
-  const n = Math.min(2, Math.floor(ranked.length / 2));
-  return { strongest: ranked.slice(0, n), weakest: ranked.slice(-n).reverse() };
+  const { best, worst } = rankDimensions(scores ?? {});
+  if (best.length < 2) return { strongest: best, weakest: [] };
+  const n = Math.min(2, Math.floor(best.length / 2));
+  const strongest = best.slice(0, n);
+  return { strongest, weakest: worst.filter(([d]) => !strongest.some(([s]) => s === d)).slice(0, n) };
 }
 
 // The sheets
@@ -235,6 +237,12 @@ export type FolderSection = (typeof FOLDER_SECTIONS)[number]["id"];
 
 export const FEEDBACK_LISTS = ["strengths", "improvements"] as const;
 export type FeedbackListId = (typeof FEEDBACK_LISTS)[number];
+
+/** One list of a report's feedback. Stats are stored JSON: a list the row lacks has no items. */
+export function feedbackItems(doc: ReportDocument, list: FeedbackListId): FeedbackItem[] {
+  const items = doc.report?.stats?.feedback?.[list];
+  return Array.isArray(items) ? items : [];
+}
 
 /** Pieces of long text: summaries, rewrites and answers run on across sheets. */
 export const FOLDER_TEXT_CHARS = 600;
@@ -308,28 +316,30 @@ export function folderFlow(doc: ReportDocument): FolderBlock[] {
   blocks.push({ id: "speaking", kind: "speaking" });
 
   section("feedback");
-  const feedback = report.stats?.feedback;
   // Reports written before feedback existed say so rather than lose the section.
-  if (!feedback) blocks.push({ id: "feedback-none", kind: "feedback-none" });
+  if (!report.stats?.feedback) blocks.push({ id: "feedback-none", kind: "feedback-none" });
   else
     for (const list of FEEDBACK_LISTS) {
-      blocks.push({ id: `fl-${list}`, kind: "feedback-list", list, keepWithNext: feedback[list].length > 0 });
-      feedback[list].forEach((_, item) => blocks.push({ id: `fi-${list}-${item}`, kind: "feedback-item", list, item }));
+      const items = feedbackItems(doc, list);
+      blocks.push({ id: `fl-${list}`, kind: "feedback-list", list, keepWithNext: items.length > 0 });
+      items.forEach((_, item) => blocks.push({ id: `fi-${list}-${item}`, kind: "feedback-item", list, item }));
     }
 
   section("rewrite");
   const weakest = weakestQuestion(doc);
   if (!weakest) blocks.push({ id: "rewrite-none", kind: "rewrite-none" });
   else {
-    blocks.push({ id: "rewrite-question", kind: "rewrite-question", question: questions.indexOf(weakest), keepWithNext: true });
+    const question = questions.indexOf(weakest);
+    blocks.push({ id: "rewrite-question", kind: "rewrite-question", question, keepWithNext: true });
     // What was said to it, follow-ups included, then the rewrite.
     weakest.turns.forEach((t) => {
       const said = pieces(t.answer);
       (said.length ? said : [""]).forEach((text, k) =>
-        blocks.push({ id: `said-${t.id}-${k}`, kind: "rewrite-said", turn: at.get(t.id), text, first: k === 0 }),
+        blocks.push({ id: `said-${t.id}-${k}`, kind: "rewrite-said", question, turn: at.get(t.id), text, first: k === 0 }),
       );
     });
-    if (report.rewrite) pieces(report.rewrite).forEach((text, k) => blocks.push({ id: `rewrite-${k}`, kind: "rewrite-text", text }));
+    if (report.rewrite)
+      pieces(report.rewrite).forEach((text, k) => blocks.push({ id: `rewrite-${k}`, kind: "rewrite-text", text, first: k === 0 }));
     else blocks.push({ id: "rewrite-missing", kind: "rewrite-missing" });
   }
 
@@ -384,6 +394,14 @@ export function sectionStarts(pages: FolderPage[]): { id: FolderSection; title: 
     const page = pages.findIndex((p) => p.kind === "flow" && p.ids.includes(s.id));
     return page < 0 ? [] : [{ id: s.id, title: s.title, page }];
   });
+}
+
+/** Where a report is read: the folder, opened at it. */
+export const reportPath = (id: string) => `/interview/${id}/report`;
+
+/** The report a path names; null for any other path (the bare /reports, say). */
+export function reportIdIn(pathname: string): string | null {
+  return pathname.match(/^\/interview\/([^/]+)\/report\/?$/)?.[1] ?? null;
 }
 
 /** "Pages 4–5 of 17", counting the report's sheets: the flap carries no number. */

@@ -5,11 +5,9 @@
  * like a network error), and has the schema actually been applied?
  */
 
+import "./_load-env";
+
 import { createClient } from "@supabase/supabase-js";
-
-import { loadEnv } from "./_env";
-
-loadEnv();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key =

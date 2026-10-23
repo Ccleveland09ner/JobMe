@@ -129,16 +129,13 @@ export const DIMENSIONS: readonly Dimension[] = [
  */
 export type LegacyDimension = "situation" | "task" | "action" | "result" | "impact";
 
-export const LEGACY_DIMENSIONS: readonly LegacyDimension[] = [
-  "situation",
-  "task",
-  "action",
-  "result",
-  "impact",
-] as const;
-
 /** Any key a stored score set may carry. */
 export type AnyDimension = Dimension | LegacyDimension;
+
+/** The question level (1-3) a difficulty asks for; anything below 2 is the opening level. */
+export function levelFor(difficulty: number): 1 | 2 | 3 {
+  return difficulty >= 3 ? 3 : difficulty === 2 ? 2 : 1;
+}
 
 /** Display order for any score set, current or legacy. */
 export const DISPLAY_DIMENSIONS: readonly AnyDimension[] = [
@@ -276,17 +273,28 @@ function legacyScore(s: StoredScores): number | null {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
+// Each list is declared once; the types, the request schemas and the row
+// readers all derive from it, so a new value can't be accepted in one place
+// and rejected in another.
+
 /** Answer quality band. Drives the next move. */
-export type Band = "weak" | "mediocre" | "great";
+export const BANDS = ["weak", "mediocre", "great"] as const;
+export type Band = (typeof BANDS)[number];
 
 /** What kind of question was asked. Mirrors `turns.question_type`. */
-export type QuestionType = "opening" | "deepen" | "clarify";
+export const QUESTION_TYPES = ["opening", "deepen", "clarify"] as const;
+export type QuestionType = (typeof QUESTION_TYPES)[number];
+
+/** A clarify or deepen adds to the question before it; only an opening starts one. */
+export const isFollowUpType = (type: QuestionType) => type !== "opening";
 
 /** Where a question came from, so the policy can alternate like a real screen. */
-export type QuestionSource = "bank" | "resume";
+export const QUESTION_SOURCES = ["bank", "resume"] as const;
+export type QuestionSource = (typeof QUESTION_SOURCES)[number];
 
 /** Quick: bank-led and bounded. Full: covers every role and project. */
-export type InterviewMode = "quick" | "full";
+export const INTERVIEW_MODES = ["quick", "full"] as const;
+export type InterviewMode = (typeof INTERVIEW_MODES)[number];
 
 /** A role or project from the resume that the interview should cover. */
 export interface ResumeItem {
@@ -359,6 +367,20 @@ export const QUICK_QUESTION_CAP = 10;
 /** Full mode never exceeds this, however long the resume. */
 export const FULL_QUESTION_CAP_MAX = 30;
 
+/** Where an interview stands, as the turn route and the room report it. */
+export function progressOf(state: EngineState) {
+  const items = state.resumeItems ?? [];
+  return {
+    questionCount: state.questionCount,
+    questionCap: state.questionCap,
+    topicIndex: state.topicIndex,
+    // Optional for engine states saved before topics were stored.
+    topicsTotal: state.topics?.length,
+    coverageDone: items.filter((i) => i.covered).length,
+    coverageTotal: items.length,
+  };
+}
+
 /** Full mode is at least this long even for a one-line resume. */
 export const FULL_QUESTION_CAP_MIN = 8;
 
@@ -387,44 +409,4 @@ export function maxCoverableItems(): number {
     (FULL_QUESTION_CAP_MAX - FULL_BANK_THREADS * TURNS_PER_BANK_THREAD - 1) /
       TURNS_PER_RESUME_THREAD,
   );
-}
-
-/** Items still needing at least one question. */
-export function uncoveredItems(state: EngineState): ResumeItem[] {
-  return state.resumeItems.filter((i) => !i.covered);
-}
-
-/** One scored answer; `scores` blends the model's judgement with embedding relevance. */
-export interface Evaluation {
-  scores: Scores;
-  primaryGap: Dimension;
-  /** Verbatim quote from the answer, <= 20 words. */
-  evidence: string;
-  /** Notepad observation line, <= 90 chars. */
-  observation: string;
-  offTopic: boolean;
-  band: Band;
-  drafts: { deepen: string; clarify: string };
-}
-
-/** What `policy.step()` returns. `question` is null only when move is `wrap`. */
-export interface StepResult {
-  state: EngineState;
-  move: Move;
-  question: Question | null;
-}
-
-/** One rendered notepad entry, as returned by the turn route. */
-export interface NotepadEntry {
-  seq: number;
-  topic: TopicId;
-  questionType: QuestionType;
-  scores: Scores | null;
-  band: Band | null;
-  primaryGap: Dimension | null;
-  evidence: string | null;
-  /** What the recruiter noticed (from the LLM). */
-  observation: string;
-  /** Why this next move (deterministic, built in notepad.ts). */
-  reason: string;
 }
