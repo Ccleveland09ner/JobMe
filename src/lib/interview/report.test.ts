@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ReportDraft } from "../ai/report";
+import { TOPICS } from "../engine/topics";
 import type { Scores } from "../engine/types";
+import { groupIntoQuestions } from "../stats";
 import {
+  reportQuestionsFor,
   runReport,
   type ReportOutcome,
   type ReportSessionRow,
@@ -298,5 +301,24 @@ describe("runReport — a follow-up adds to the question it came from", () => {
     const { store, db } = memoryStore({ turns: [turn(1, flat(2))] });
     await runReport(store, { generateText: async () => ({ ...DRAFT, feedback }) });
     expect(db.report?.stats.feedback).toEqual(feedback);
+  });
+});
+
+describe("reportQuestionsFor", () => {
+  it("cites each original question with its competency, everything said to it, and its score", () => {
+    const questions = reportQuestionsFor(groupIntoQuestions([turn(1, flat(2)), turn(2, flat(3), "clarify"), turn(3, null, "opening", "conflict")]));
+    expect(questions.map((q) => [q.ref, q.openingId, q.competency, q.parts.length])).toEqual([
+      ["Q1", "turn-1", TOPICS.teamwork.label, 2],
+      ["Q2", "turn-3", TOPICS.conflict.label, 1],
+    ]);
+    expect(questions[0].parts[1]).toEqual({ question: "Question 2?", answer: "Answer number 2 about the checkout service." });
+    // The latest cumulative evaluation, so the follow-up's.
+    expect(questions[0].scores).toEqual(flat(3));
+    expect(questions[1].score).toBeNull();
+  });
+
+  it("names a topic it doesn't know by its id, and a missing one General", () => {
+    const groups = groupIntoQuestions([turn(1, flat(2), "opening", "brand_new_topic"), { ...turn(2, flat(2)), topic: null }]);
+    expect(reportQuestionsFor(groups).map((q) => q.competency)).toEqual(["brand_new_topic", "General"]);
   });
 });

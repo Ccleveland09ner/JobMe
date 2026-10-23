@@ -8,16 +8,18 @@
  * Ref: PRD > Success Metrics
  */
 
+import "./_load-env";
+
 import { evaluateAndDraft, extractEvidence } from "../src/lib/ai/evaluate";
 import { checkDraft, preClassify } from "../src/lib/ai/questions";
-import { average, classifyBand, minimum } from "../src/lib/engine/classify";
+import { average, minimum } from "../src/lib/engine/classify";
 import { dimensionsFor } from "../src/lib/engine/types";
-import { loadEnv, requireEnv } from "./_env";
+import { judgeAnswer } from "../src/lib/interview/turn";
+import { requireEnv } from "./_env";
+import { PACE_MS, sleep } from "./_pace";
 
-loadEnv();
 requireEnv("GEMINI_API_KEY");
 
-const PACE_MS = 4200;
 const RUNS = Number(process.env.PROBE_RUNS ?? 2);
 
 const QUESTION = "Tell me about a time you worked on a team to ship something.";
@@ -92,7 +94,6 @@ const FIXTURES: Fixture[] = [
   },
 ];
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   console.log(`Evaluator smoke test — ${RUNS} run(s) per fixture\n`);
@@ -119,7 +120,7 @@ async function main() {
           answer: fixture.answer,
         });
 
-        // The same functions the turn pipeline bands with.
+        // Banded exactly as a live turn bands it.
         const s = evaluation.scores;
         const avg = average(s, "behavioral");
         const min = minimum(s, "behavioral");
@@ -129,7 +130,13 @@ async function main() {
           ownership: s.ownership ?? 1,
           offTopic: evaluation.off_topic,
           dims: dimensionsFor("behavioral").map((d) => `${d.slice(0, 4)}${s[d]}`).join(" "),
-          band: pre ?? classifyBand(s, "behavioral", evaluation.off_topic),
+          band: judgeAnswer({
+            transcript: fixture.answer,
+            questionType: "opening",
+            kind: "behavioral",
+            scores: s,
+            modelOffTopic: evaluation.off_topic,
+          }).band,
         };
         bands.push(result.band);
 

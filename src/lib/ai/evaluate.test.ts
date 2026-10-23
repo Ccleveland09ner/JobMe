@@ -1,8 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { evaluateAndDraft } from "./evaluate";
+import { gapCandidates } from "../engine/classify";
+import { dimensionsFor, QUESTION_KINDS } from "../engine/types";
+import { evalSchemaFor, evaluateAndDraft } from "./evaluate";
 import { LlmError, type generateJson } from "./llm";
 import { FOLLOWUP_GUIDANCE } from "./prompts";
+
+describe("evalSchemaFor", () => {
+  // The model is only ever asked for the dimensions a kind is scored on.
+  it("asks for exactly the dimensions each kind is scored on, and a gap only among them", () => {
+    for (const kind of QUESTION_KINDS) {
+      const { scores, clarify_gap } = evalSchemaFor(kind).properties;
+      expect(Object.keys(scores.properties), kind).toEqual(dimensionsFor(kind));
+      expect(scores.required, kind).toEqual(dimensionsFor(kind));
+      expect(clarify_gap.enum, kind).toEqual(gapCandidates(kind));
+    }
+  });
+
+  it("never asks about ownership of a technical answer", () => {
+    expect(evalSchemaFor("technical").properties.scores.properties).not.toHaveProperty("ownership");
+  });
+});
 
 const ARGS = {
   kind: "behavioral" as const,

@@ -129,14 +129,6 @@ export const DIMENSIONS: readonly Dimension[] = [
  */
 export type LegacyDimension = "situation" | "task" | "action" | "result" | "impact";
 
-export const LEGACY_DIMENSIONS: readonly LegacyDimension[] = [
-  "situation",
-  "task",
-  "action",
-  "result",
-  "impact",
-] as const;
-
 /** Any key a stored score set may carry. */
 export type AnyDimension = Dimension | LegacyDimension;
 
@@ -417,44 +409,4 @@ export function maxCoverableItems(): number {
     (FULL_QUESTION_CAP_MAX - FULL_BANK_THREADS * TURNS_PER_BANK_THREAD - 1) /
       TURNS_PER_RESUME_THREAD,
   );
-}
-
-/** Items still needing at least one question. */
-export function uncoveredItems(state: EngineState): ResumeItem[] {
-  return state.resumeItems.filter((i) => !i.covered);
-}
-
-/** One scored answer; `scores` blends the model's judgement with embedding relevance. */
-export interface Evaluation {
-  scores: Scores;
-  primaryGap: Dimension;
-  /** Verbatim quote from the answer, <= 20 words. */
-  evidence: string;
-  /** Notepad observation line, <= 90 chars. */
-  observation: string;
-  offTopic: boolean;
-  band: Band;
-  drafts: { deepen: string; clarify: string };
-}
-
-/** What `policy.step()` returns. `question` is null only when move is `wrap`. */
-export interface StepResult {
-  state: EngineState;
-  move: Move;
-  question: Question | null;
-}
-
-/** One rendered notepad entry, as returned by the turn route. */
-export interface NotepadEntry {
-  seq: number;
-  topic: TopicId;
-  questionType: QuestionType;
-  scores: Scores | null;
-  band: Band | null;
-  primaryGap: Dimension | null;
-  evidence: string | null;
-  /** What the recruiter noticed (from the LLM). */
-  observation: string;
-  /** Why this next move (deterministic, built in notepad.ts). */
-  reason: string;
 }

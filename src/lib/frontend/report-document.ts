@@ -7,6 +7,7 @@
 
 import type { RowReader } from "@/lib/supabase/reader";
 
+import type { ReportBody } from "../interview/report";
 import { purposeFor } from "../engine/topics";
 import type { AnyDimension, InterviewMode, StoredScores, TopicId } from "../engine/types";
 import {
@@ -82,7 +83,6 @@ export interface ReportTab {
   startedAt: string;
   mode: InterviewMode | null;
   title: string | null;
-  overall: number | null;
 }
 
 interface SessionRow {
@@ -154,7 +154,6 @@ export function reportTabsFromRows(rows: SessionRow[]): ReportTab[] {
     startedAt: r.started_at,
     mode: modeFromRow(r.mode),
     title: r.role_title?.trim() || null,
-    overall: pickOverall(r.overall_scores),
   }));
 }
 
@@ -185,17 +184,11 @@ export async function latestFiledReportId(supabase: RowReader): Promise<string |
 
 /** The tab for a document, for one the index doesn't list (an unfinished one). */
 export function tabFor(doc: ReportDocument): ReportTab {
-  return { id: doc.id, startedAt: doc.startedAt, mode: doc.mode, title: doc.title, overall: doc.overall };
+  return { id: doc.id, startedAt: doc.startedAt, mode: doc.mode, title: doc.title };
 }
 
-/** What POST /api/sessions/[id]/report returns (lib/interview/report.ts ReportBody). */
-export interface GeneratedReport {
-  summary: string;
-  weakestTurnId: string | null;
-  rewrite: string | null;
-  stats: ReportStats;
-  overallScores: Record<string, number> | null;
-}
+/** What POST /api/sessions/[id]/report returns. */
+export type GeneratedReport = ReportBody;
 
 /** The document once its report has been written; the session is then complete. */
 export function withGeneratedReport(doc: ReportDocument, body: GeneratedReport): ReportDocument {

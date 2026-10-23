@@ -254,7 +254,6 @@ describe("fallbackReport", () => {
   const rollup = (over: Partial<SessionRollup> = {}): SessionRollup => ({
     overall: 2.7,
     dimensions: { relevance: 3, specificity: 3, ownership: 3.5, reasoning: 2.5, outcome: 1.5, communication: 1 },
-    competencies: [],
     questionsAsked: 2,
     questionsScored: 2,
     ...over,

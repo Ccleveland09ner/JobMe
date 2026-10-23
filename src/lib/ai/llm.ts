@@ -110,6 +110,3 @@ export const EMBED_MODEL = process.env.EMBED_MODEL ?? "gemini-embedding-001";
 
 /** Embedding width. Configurable on this model via `outputDimensionality`. */
 export const EMBED_DIMS = 768;
-
-/** `generateContent` (default) | `interactions` — see the note above. */
-export const LLM_SURFACE = process.env.LLM_SURFACE ?? "generateContent";

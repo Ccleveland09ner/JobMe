@@ -16,10 +16,12 @@
  * Ref: TechDesign > Latency Plan
  */
 
-import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
-import { loadEnv, percentiles, requireEnv } from "./_env";
+import "./_load-env";
 
-loadEnv();
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
+
+import { percentiles, requireEnv } from "./_env";
+import { PACE_MS, sleep } from "./_pace";
 
 const ai = new GoogleGenAI({ apiKey: requireEnv("GEMINI_API_KEY") });
 
@@ -123,10 +125,7 @@ function heading(title: string): void {
  * some reports claimed. Enough for one call per turn across an 8-minute
  * interview; not enough for an unpaced probe, hence the spacing below.
  */
-const FREE_TIER_RPM = 15;
-const PACE_MS = Math.ceil(60_000 / FREE_TIER_RPM) + 200;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Gemini errors arrive as a wall of JSON; keep the useful part. */
 function briefError(err: unknown): string {

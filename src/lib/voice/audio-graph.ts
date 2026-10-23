@@ -13,10 +13,7 @@ import { getSharedAudio } from "./tts";
 export interface AudioGraph {
   /** 0..1, smoothed. Feed straight to the avatar's `mouth` prop. */
   readMouth: () => number;
-  /** Browser speech synthesis exposes no stream; this drives a sine instead. */
-  setSyntheticSpeaking: (speaking: boolean) => void;
   resume: () => Promise<void>;
-  dispose: () => void;
 }
 
 let context: AudioContext | null = null;
@@ -37,9 +34,7 @@ export function createAudioGraph(
     // No Web Audio: no lip-sync, everything else works.
     return {
       readMouth: () => 0,
-      setSyntheticSpeaking: () => {},
       resume: async () => {},
-      dispose: () => {},
     };
   }
 
@@ -60,27 +55,17 @@ export function createAudioGraph(
   analyser.connect(ctx.destination);
 
   const buffer = new Uint8Array(analyser.frequencyBinCount);
-  let synthetic = false;
   let smoothed = 0;
-  let disposed = false;
 
   function readMouth(): number {
-    if (disposed) return 0;
-
-    let target: number;
-    if (synthetic) {
-      // The browser voice has no stream to analyse.
-      target = 0.35 + 0.3 * Math.abs(Math.sin(performance.now() / 90));
-    } else {
-      analyser.getByteTimeDomainData(buffer);
-      let sum = 0;
-      for (let i = 0; i < buffer.length; i++) {
-        const v = (buffer[i] - 128) / 128;
-        sum += v * v;
-      }
-      const rms = Math.sqrt(sum / buffer.length);
-      target = Math.min(1, rms * 4);
+    analyser.getByteTimeDomainData(buffer);
+    let sum = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      const v = (buffer[i] - 128) / 128;
+      sum += v * v;
     }
+    const rms = Math.sqrt(sum / buffer.length);
+    const target = Math.min(1, rms * 4);
 
     smoothed += (target - smoothed) * 0.35;
     return prefersReducedMotion() ? Math.min(smoothed, 0.5) : smoothed;
@@ -88,21 +73,8 @@ export function createAudioGraph(
 
   return {
     readMouth,
-    setSyntheticSpeaking: (speaking) => {
-      synthetic = speaking;
-      if (!speaking) smoothed = 0;
-    },
     resume: async () => {
       if (ctx.state === "suspended") await ctx.resume();
-    },
-    dispose: () => {
-      disposed = true;
-      try {
-        source?.disconnect(analyser);
-        analyser.disconnect();
-      } catch {
-        /* already torn down */
-      }
     },
   };
 }

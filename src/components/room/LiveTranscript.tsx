@@ -1,22 +1,12 @@
-/** The answer as it is recognised, so a misheard word can be corrected out loud. */
+/**
+ * The answer as it is recognised, so a misheard word can be corrected out
+ * loud. Inside the candidate's speech bubble, which is its frame.
+ */
 
-export function LiveTranscript({ interim, final, bare = false }: { interim: string; final: string; bare?: boolean }) {
-  const empty = !interim && !final;
+export function LiveTranscript({ text }: { text: string }) {
   return (
-    <div
-      aria-live="polite"
-      aria-label="Your answer so far"
-      // bare: inside the candidate's speech bubble, which is the frame.
-      className={bare ? "text-base leading-relaxed" : "min-h-24 rounded-lg border border-line bg-sunken p-3 text-base leading-relaxed"}
-    >
-      {empty ? (
-        <span className="text-muted">Your words will appear here as you speak.</span>
-      ) : (
-        <>
-          <span className="text-ink">{final}</span>
-          {interim && <span className="text-muted"> {interim}</span>}
-        </>
-      )}
+    <div aria-live="polite" aria-label="Your answer so far" className="text-base leading-relaxed">
+      {text ? <span className="text-ink">{text}</span> : <span className="text-muted">Your words will appear here as you speak.</span>}
     </div>
   );
 }

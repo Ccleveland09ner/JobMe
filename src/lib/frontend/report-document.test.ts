@@ -18,6 +18,7 @@ import {
   latestFiledReportId,
   loadReportDocument,
   loadReportIndex,
+  questionsOf,
   reportDocumentFromRows,
   reportIdIn,
   reportPath,
@@ -130,9 +131,8 @@ describe("reportDocumentFromRows", () => {
     expect(written.overallScores).toEqual(SCORES);
   });
 
-  it("gives each tab its overall score", () => {
-    expect(reportTabsFromRows([session])[0]).toMatchObject({ id: "s1", title: "Backend Intern", overall: 2.7 });
-    expect(reportTabsFromRows([{ ...session, overall_scores: { task: 2, action: 3 } }])[0].overall).toBe(2.5);
+  it("gives each tab its date, length and title", () => {
+    expect(reportTabsFromRows([session])[0]).toEqual({ id: "s1", startedAt: "2026-10-18T10:00:00Z", mode: "quick", title: "Backend Intern" });
   });
 });
 
@@ -289,7 +289,7 @@ describe("loadReportDocument and loadReportIndex", () => {
   it("lists finished interviews, newest first, as tabs", async () => {
     const db = fakeSupabase(() => ({ data: [session] }));
     expect(await loadReportIndex(db.client as never)).toEqual([
-      { id: "s1", startedAt: session.started_at, mode: "quick", title: "Backend Intern", overall: 2.7 },
+      { id: "s1", startedAt: session.started_at, mode: "quick", title: "Backend Intern" },
     ]);
     expect(db.queries[0].filters).toContainEqual(["eq", "status", "completed"]);
     expect(db.queries[0].modifiers).toContain("limit:60");
@@ -303,5 +303,15 @@ describe("latestFiledReportId", () => {
     expect(db.queries[0].filters).toContainEqual(["eq", "status", "completed"]);
     expect(await latestFiledReportId(fakeSupabase(() => ({ data: null })).client as never)).toBeNull();
     await expect(latestFiledReportId(fakeSupabase(() => ({ error: { message: "down" } })).client as never)).rejects.toThrow("reports: down");
+  });
+});
+
+describe("questionsOf", () => {
+  it("numbers the original questions and says what each assessed", () => {
+    const questions = questionsOf(doc().turns, null);
+    expect(questions.map((q) => [q.ref, q.label, q.purpose, q.turns.map((t) => t.id)])).toEqual([
+      ["Q1", topicLabel("teamwork"), BANK.teamwork.purpose, ["t1", "t2"]],
+      ["Q2", topicLabel("conflict"), BANK.conflict.purpose, ["t3"]],
+    ]);
   });
 });

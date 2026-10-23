@@ -51,6 +51,24 @@ export interface CleanupResult {
   errors: string[];
 }
 
+type ListedUser = { id: string; email?: string };
+type ListUsers = (page: {
+  page: number;
+  perPage: number;
+}) => Promise<{ data: { users: ListedUser[] } | null; error: { message: string } | null }>;
+
+/** Every user, page by page: one listUsers call returns a single page (50 by default). */
+export async function allUsers(list: ListUsers, perPage = 1000): Promise<ListedUser[]> {
+  const users: ListedUser[] = [];
+  for (let page = 1; ; page++) {
+    const { data, error } = await list({ page, perPage });
+    if (error) throw new Error(error.message);
+    const batch = data?.users ?? [];
+    users.push(...batch);
+    if (batch.length < perPage) return users;
+  }
+}
+
 async function main() {
   loadEnv();
   const dryRun = process.argv.includes("--dry-run");
@@ -61,13 +79,15 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data, error } = await admin.auth.admin.listUsers();
-  if (error) {
-    console.error(`FAIL listing users: ${error.message}`);
+  let users: ListedUser[];
+  try {
+    users = await allUsers((page) => admin.auth.admin.listUsers(page));
+  } catch (err) {
+    console.error(`FAIL listing users: ${(err as Error).message}`);
     process.exit(1);
   }
 
-  const targets = (data?.users ?? []).filter((u) => isTestEmail(u.email));
+  const targets = users.filter((u) => isTestEmail(u.email));
   console.log(
     `${targets.length} test user(s)${dryRun ? " — dry run, nothing will be deleted" : ""}`,
   );

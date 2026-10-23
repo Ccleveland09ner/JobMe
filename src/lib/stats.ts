@@ -138,14 +138,6 @@ export function groupIntoQuestions<T extends GroupableTurn>(
   });
 }
 
-export interface CompetencyResult {
-  topic: string;
-  kind: QuestionKind;
-  /** Mean of this competency's question scores, 1-4. */
-  score: number;
-  questions: number;
-}
-
 export interface SessionRollup {
   /** Mean of the question scores, 1-4; null when nothing was scored. */
   overall: number | null;
@@ -155,7 +147,6 @@ export interface SessionRollup {
    * a zero in its average.
    */
   dimensions: Partial<Record<AnyDimension, number>>;
-  competencies: CompetencyResult[];
   questionsAsked: number;
   questionsScored: number;
 }
@@ -177,25 +168,11 @@ export function rollupQuestions<T extends GroupableTurn>(
     }
   }
 
-  const byTopic = new Map<string, { kind: QuestionKind; scores: number[] }>();
-  for (const g of scored) {
-    const topic = g.opening.topic ?? "general";
-    const entry = byTopic.get(topic) ?? { kind: g.kind, scores: [] };
-    entry.scores.push(g.score!);
-    byTopic.set(topic, entry);
-  }
-
   return {
     overall: scored.length
       ? round2(scored.reduce((sum, g) => sum + g.score!, 0) / scored.length)
       : null,
     dimensions,
-    competencies: [...byTopic].map(([topic, { kind, scores }]) => ({
-      topic,
-      kind,
-      score: round2(scores.reduce((a, b) => a + b, 0) / scores.length),
-      questions: scores.length,
-    })),
     questionsAsked: groups.length,
     questionsScored: scored.length,
   };

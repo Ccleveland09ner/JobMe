@@ -10,7 +10,6 @@ import type {
   Move,
   QuestionSource,
   QuestionType,
-  QuestionKind,
   StoredScores,
   TopicId,
 } from "../engine/types";
@@ -49,8 +48,6 @@ export interface NoteView {
   /** The type of the question that was answered. */
   questionType: QuestionType;
   source: QuestionSource | null;
-  /** The rubric it was scored on; absent on rows rebuilt from the database. */
-  kind?: QuestionKind;
   /**
    * Null when unscored. Only the dimensions its kind is scored on; legacy
    * rows carry the old STAR keys. A follow-up's scores are cumulative: the

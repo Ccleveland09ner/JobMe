@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DELETE_ORDER,
+  allUsers,
   TEST_EMAIL_PATTERN,
   isTestEmail,
   ownerColumn,
@@ -78,5 +79,38 @@ describe("ownerColumn", () => {
     for (const t of DELETE_ORDER.filter((x) => x !== "profiles")) {
       expect(ownerColumn(t)).toBe("user_id");
     }
+  });
+});
+
+describe("allUsers", () => {
+  const user = (n: number) => ({ id: `u${n}`, email: `user${n}@example.com` });
+  const pages = (sizes: number[]) => {
+    let next = 0;
+    const calls: number[] = [];
+    const list = async ({ page }: { page: number; perPage: number }) => {
+      calls.push(page);
+      const size = sizes[page - 1] ?? 0;
+      const users = Array.from({ length: size }, () => user(next++));
+      return { data: { users }, error: null };
+    };
+    return { list, calls };
+  };
+
+  // One call returns one page: a test user on the second page would never be cleaned.
+  it("reads every page until a short one", async () => {
+    const { list, calls } = pages([2, 2, 1]);
+    expect((await allUsers(list, 2)).map((u) => u.id)).toEqual(["u0", "u1", "u2", "u3", "u4"]);
+    expect(calls).toEqual([1, 2, 3]);
+  });
+
+  it("stops at an empty page after a full one", async () => {
+    const { list, calls } = pages([2]);
+    expect(await allUsers(list, 2)).toHaveLength(2);
+    expect(calls).toEqual([1, 2]);
+  });
+
+  it("fails loudly rather than cleaning a partial list", async () => {
+    const list = async () => ({ data: null, error: { message: "not allowed" } });
+    await expect(allUsers(list)).rejects.toThrow("not allowed");
   });
 });

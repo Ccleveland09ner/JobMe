@@ -54,11 +54,6 @@ export function packPages(blocks: FlowBlock[], { capacity, gap, firstPage = 0, i
   return pages;
 }
 
-/** Ids of blocks that are taller than a page on their own: content to split. */
-export function oversized(blocks: FlowBlock[], capacity: number): string[] {
-  return blocks.filter((b) => b.height > capacity).map((b) => b.id);
-}
-
 /**
  * Splits text into pieces of at most `maxChars`, at sentence ends where it
  * can and between words where it must, so a long answer can run on.

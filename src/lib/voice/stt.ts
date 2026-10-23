@@ -25,9 +25,6 @@ export interface SttResult {
 }
 
 export interface RecognizerCallbacks {
-  onInterim?: (text: string) => void;
-  /** A final chunk arrived — NOT "the hold finished". */
-  onSegment?: (text: string) => void;
   onState?: (state: MachineState) => void;
 }
 
@@ -228,14 +225,6 @@ export function createRecognizer(callbacks: RecognizerCallbacks = {}) {
         timers.set(effect.timer, timer);
         return;
       }
-
-      case "EMIT_INTERIM":
-        callbacks.onInterim?.(effect.text);
-        return;
-
-      case "EMIT_SEGMENT":
-        callbacks.onSegment?.(effect.text);
-        return;
 
       case "RESOLVE": {
         for (const name of [...timers.keys()]) clearTimer(name);

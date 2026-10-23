@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { isLeftPage } from "./book-layout";
-import { oversized, packPages, splitText, type FlowBlock, type PagePlan } from "./paginate";
+import { packPages, splitText, type FlowBlock, type PagePlan } from "./paginate";
 
 const block = (id: string, height: number, extra: Partial<FlowBlock> = {}): FlowBlock => ({ id, height, ...extra });
 const ids = (pages: PagePlan[]) => pages.map((p) => (p.kind === "blank" ? "·" : p.ids.join(",")));
@@ -31,10 +31,9 @@ describe("packPages", () => {
     expect(covers(5 + 2)).toBe(true);
   });
 
-  it("gives a block taller than a page a page of its own, and reports it", () => {
+  it("gives a block taller than a page a page of its own", () => {
     const blocks = [block("a", 50), block("big", 600), block("b", 50)];
     expect(ids(packPages(blocks, { capacity: 450, gap: 10 }))).toEqual(["a", "big", "b"]);
-    expect(oversized(blocks, 450)).toEqual(["big"]);
   });
 });
 

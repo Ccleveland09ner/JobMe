@@ -140,7 +140,7 @@ export function PushToTalk({
         <div className="pointer-events-auto absolute inset-x-3 bottom-[15.5rem] mx-auto max-w-2xl">
           <SpeechBubble tail="down" label="You">
             <div className="max-h-[22vh] overflow-y-auto">
-              <LiveTranscript final={draft} interim="" bare />
+              <LiveTranscript text={draft} />
             </div>
           </SpeechBubble>
         </div>

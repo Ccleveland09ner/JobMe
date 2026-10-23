@@ -38,8 +38,3 @@ export function readSpokenWord(text: string): { charStart: number; charEnd: numb
   const frame = speechFrame();
   return frame && frame.text === text.trim() ? frame.word : null;
 }
-
-/** Browser speech synthesis exposes no stream; animate the mouth instead. */
-export function setSyntheticSpeaking(speaking: boolean): void {
-  graph?.setSyntheticSpeaking(speaking);
-}

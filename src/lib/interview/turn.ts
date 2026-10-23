@@ -35,10 +35,7 @@ import {
 
 import { EvalError, evaluateAndDraft, extractEvidence } from "../ai/evaluate";
 import { chooseQuestionText, heuristicScores, preClassify } from "../ai/questions";
-import {
-  fallbackResumeQuestion,
-  type generateResumeQuestion,
-} from "../ai/resume-questions";
+import { fallbackResumeQuestion } from "../ai/resume-questions";
 import type { RoleProfile } from "../jd/profile";
 import { formatFactsForPrompt, type ResumeFacts } from "../resume/facts";
 import { jobForPrompt, parsePlan, plannedBankOpening, plannedResumeOpening } from "../plan";
@@ -74,13 +71,6 @@ export interface TurnContext {
   plan?: QuestionPlan | null;
   /** Test seam: the rehearsal harness scripts the evaluator. */
   evaluate?: typeof evaluateAndDraft;
-  /**
-   * @deprecated Unused: openings are pre-generated in the question plan.
-   * TODO(integration): drop once scripts/rehearse.ts stops passing it.
-   */
-  excerptFor?: (itemId: string) => Promise<string>;
-  /** @deprecated As `excerptFor`. */
-  generateQuestion?: typeof generateResumeQuestion;
 }
 
 export interface NotepadEntry {
