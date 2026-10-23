@@ -9,6 +9,7 @@ import { topicLabel } from "./labels";
 import { packPages } from "./paginate";
 import {
   describeFolder,
+  feedbackItems,
   folderBook,
   folderFlow,
   FOLDER_COMPETENCY_ROWS,
@@ -18,6 +19,8 @@ import {
   loadReportDocument,
   loadReportIndex,
   reportDocumentFromRows,
+  reportIdIn,
+  reportPath,
   reportTabsFromRows,
   sectionStarts,
   strengths,
@@ -200,6 +203,20 @@ describe("folderFlow and folderBook", () => {
     expect(kinds(folderFlow(doc({ report: { weakest_turn_id: null } })), "rewrite-").map((b) => b.kind)).toEqual(["rewrite-none"]);
   });
 
+  it("ties what was said to the question rewritten, and marks where the rewrite starts", () => {
+    const flow = folderFlow(doc());
+    expect(kinds(flow, "rewrite-said").map((b) => b.question)).toEqual([0, 0]);
+    expect(kinds(flow, "rewrite-text").map((b) => b.first)).toEqual([true]);
+  });
+
+  // Stats are stored JSON: a report missing one list still files.
+  it("treats a feedback list the report lacks as empty", () => {
+    const feedback = { strengths: [{ question: "Q1", point: "Named the number." }] } as unknown as ReportStats["feedback"];
+    const filed = doc({ report: { stats: { ...STATS, feedback } } });
+    expect(kinds(folderFlow(filed), "feedback-").map((b) => b.id)).toEqual(["fl-strengths", "fi-strengths-0", "fl-improvements"]);
+    expect(feedbackItems(filed, "improvements")).toEqual([]);
+  });
+
   it("lists the competencies a few to a block, once anything was scored", () => {
     const many = Array.from({ length: FOLDER_COMPETENCY_ROWS + 1 }, (_, i) => turn(i + 1));
     expect(kinds(folderFlow(doc({ turns: many })), "competencies").map((b) => b.range)).toEqual([
@@ -228,6 +245,15 @@ describe("windowStart", () => {
     expect(windowStart(20, 5, 1, 3)).toBe(1);
     expect(windowStart(20, 5, 19, 0)).toBe(15);
     expect(windowStart(3, 5, 2, 4)).toBe(0);
+  });
+});
+
+describe("reportPath and reportIdIn", () => {
+  it("reads back the report a path names, and nothing from any other path", () => {
+    expect(reportIdIn(reportPath("s1"))).toBe("s1");
+    expect(reportIdIn("/interview/s1/report/")).toBe("s1");
+    expect(reportIdIn("/reports")).toBeNull();
+    expect(reportIdIn("/interview/s1")).toBeNull();
   });
 });
 

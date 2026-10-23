@@ -11,26 +11,20 @@ import { useEffect, useRef } from "react";
 import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
+import { RECRUITER_STATE_TEXT, type RecruiterState } from "./types";
 
 export interface AvatarProps {
-  state: "idle" | "listening" | "thinking" | "speaking";
+  state: RecruiterState;
   /** Live mouth openness 0..1, or null when no audio signal is available. */
   readMouth?: () => number | null;
 }
-
-const STATE_TEXT: Record<AvatarProps["state"], string> = {
-  idle: "Waiting for your answer",
-  listening: "Listening",
-  thinking: "Thinking",
-  speaking: "Speaking",
-};
 
 /** Openness at rest: a friendly, slightly open smile like the reference. */
 const MOUTH_REST = 0.2;
 const EYE_RY = 2.8;
 
 /** The mouth path: the lower lip drops with `open`; at 0 it's a closed smile. */
-export function mouthPath(open: number): string {
+function mouthPath(open: number): string {
   const o = Math.max(0, Math.min(1, open));
   return `M110 97 Q120 102 130 97 Q120 ${(102 + o * 12).toFixed(2)} 110 97 Z`;
 }
@@ -204,7 +198,7 @@ export function Avatar({ state, readMouth }: AvatarProps) {
         <DeskMic listening={listening} />
       </svg>
       {/* Not a live region: the captions and controls already announce changes. */}
-      <figcaption className="text-xs text-muted">Interviewer · {STATE_TEXT[state]}</figcaption>
+      <figcaption className="text-xs text-muted">Interviewer · {RECRUITER_STATE_TEXT[state]}</figcaption>
     </figure>
   );
 }

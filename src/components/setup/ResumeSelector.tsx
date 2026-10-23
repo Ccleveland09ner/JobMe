@@ -7,16 +7,15 @@
  * is ready.
  */
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
 import { Button } from "@/components/ui/Button";
+import { FieldError } from "@/components/ui/Field";
 import { Spinner } from "@/components/ui/Spinner";
 import { uploadResume } from "@/lib/frontend/api";
 import type { ResumeState } from "@/lib/frontend/setup";
 import type { ResumeSummary, ResumeUploadResponse } from "@/lib/frontend/types";
-
-import { FieldError } from "./JobDescriptionField";
 
 type Choice = ResumeState["choice"];
 
@@ -30,21 +29,27 @@ type Upload =
 export function ResumeSelector({
   latest,
   roleText,
+  value,
   onChange,
   error,
 }: {
   latest: ResumeSummary | null;
   /** Pasted job description at upload time, for coverage ranking. */
   roleText: string;
+  /** The choice, as the form holds it; the upload's own progress stays here. */
+  value: ResumeState;
   onChange: (state: ResumeState) => void;
   /** Why the sheet can't turn yet. */
   error?: string;
 }) {
   const id = useId();
-  const [choice, setChoice] = useState<Choice>(latest ? "existing" : "none");
+  const choice = value.choice;
   const [upload, setUploadState] = useState<Upload>({ status: "idle" });
   // An upload can finish after the choice has moved on.
   const chosen = useRef(choice);
+  useEffect(() => {
+    chosen.current = choice;
+  }, [choice]);
 
   function report(next: Choice, state: Upload) {
     if (next === "existing" && latest) onChange({ choice: "existing", resumeId: latest.id });
@@ -54,7 +59,6 @@ export function ResumeSelector({
   }
 
   function choose(next: Choice) {
-    setChoice(next);
     chosen.current = next;
     report(next, upload);
   }
@@ -120,17 +124,19 @@ export function ResumeSelector({
             type="file"
             accept="application/pdf,.pdf"
             disabled={upload.status === "uploading"}
-            aria-invalid={error && upload.status !== "review" ? true : undefined}
+            aria-invalid={error && upload.status !== "review" && upload.status !== "uploading" ? true : undefined}
             aria-describedby={error ? `${id}-error` : undefined}
             onChange={(e) => {
               const file = e.target.files?.[0];
+              // Cleared, so choosing the same file again (after an error, say) uploads it again.
+              e.target.value = "";
               if (file) void uploadFile(file);
             }}
             className="text-sm file:mr-3 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm file:text-ink"
           />
           <div aria-live="polite" className="text-sm">
             {upload.status === "uploading" && (
-              <p className="flex items-center gap-2 text-muted">
+              <p tabIndex={-1} data-invalid={error ? "" : undefined} className="flex items-center gap-2 text-muted outline-none">
                 <Spinner /> Reading your resume… this can take a few seconds.
               </p>
             )}
@@ -155,6 +161,7 @@ export function ResumeSelector({
                 <Button
                   size="sm"
                   data-invalid={error ? "" : undefined}
+                  aria-describedby={error ? `${id}-error` : undefined}
                   onClick={() => setUpload({ status: "ready", result: upload.result })}
                 >
                   This looks right

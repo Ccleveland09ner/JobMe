@@ -3,10 +3,12 @@
 /**
  * Deleting an interview, behind a confirmation; the page is then refreshed
  * from the server. A 404 counts as success: the row is gone either way.
+ * `onDeleted` runs once the dialog has closed, so it can place focus: the
+ * button that opened the dialog is about to disappear.
  */
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
 import { Button } from "@/components/ui/Button";
@@ -20,11 +22,17 @@ export function useDeleteSession(onDeleted?: () => void) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, startRefresh] = useTransition();
+  // A delete went through; the dialog's close then calls onDeleted.
+  const deleted = useRef(false);
 
   function close() {
     if (deleting) return;
     setTarget(null);
     setError(null);
+    if (deleted.current) {
+      deleted.current = false;
+      onDeleted?.();
+    }
   }
 
   async function confirmDelete() {
@@ -38,9 +46,9 @@ export function useDeleteSession(onDeleted?: () => void) {
         setError(result.offline ? OFFLINE_MESSAGE : result.message);
         return;
       }
+      deleted.current = true;
       setTarget(null);
       startRefresh(() => router.refresh());
-      onDeleted?.();
     } catch {
       setError(OFFLINE_MESSAGE);
     } finally {

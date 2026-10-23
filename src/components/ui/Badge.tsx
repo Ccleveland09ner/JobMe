@@ -2,16 +2,18 @@
 
 import type { HTMLAttributes } from "react";
 
+import { SCORE_LEVEL_CLASSES } from "@/components/score/levels";
+
 export type BadgeTone = "neutral" | "accent" | "danger" | "score-1" | "score-2" | "score-3" | "score-4";
 
 const TONES: Record<BadgeTone, string> = {
   neutral: "border-line bg-sunken text-ink",
   accent: "border-accent/30 bg-accent-soft text-accent-strong",
   danger: "border-danger/30 bg-danger-soft text-danger",
-  "score-1": "border-score-1/30 bg-surface text-score-1",
-  "score-2": "border-score-2/30 bg-surface text-score-2",
-  "score-3": "border-score-3/30 bg-surface text-score-3",
-  "score-4": "border-score-4/30 bg-surface text-score-4",
+  "score-1": SCORE_LEVEL_CLASSES[1].badge,
+  "score-2": SCORE_LEVEL_CLASSES[2].badge,
+  "score-3": SCORE_LEVEL_CLASSES[3].badge,
+  "score-4": SCORE_LEVEL_CLASSES[4].badge,
 };
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {

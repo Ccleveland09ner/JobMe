@@ -8,15 +8,17 @@
  * are in later volumes (`?page=`).
  */
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDeleteSession } from "@/components/dashboard/useDeleteSession";
-import { CloseTag, useHeldShell } from "@/components/held/Held";
-import { BookSlider, FlipSafe, type BookSliderHandle, type BookState } from "@/components/ui/book-slider";
-import { DOC_BODY_HEIGHT, DOC_BODY_WIDTH, DOC_PAGE, DocumentPage } from "@/components/ui/DocumentPage";
+import { CloseTag, HeldDocument, useHeldDocument } from "@/components/held/Held";
+import { BookSlider, type BookSliderHandle, type BookState } from "@/components/ui/book-slider";
+import { FlowPage } from "@/components/ui/DocumentParts";
+import { DOC_BODY_HEIGHT, DOC_BODY_WIDTH, DOC_PAGE, DOC_PAGE_SIZE } from "@/components/ui/DocumentPage";
+import { useLastReady } from "@/components/ui/useLastReady";
 import { usePaginatedPages, type DocBlock } from "@/components/ui/usePaginatedPages";
 import { isLeftPage } from "@/lib/frontend/book-layout";
+import { interviewTitle } from "@/lib/frontend/labels";
 import {
   describeLedger,
   entryNumber,
@@ -40,14 +42,12 @@ import {
   CoverPage,
   EmptyPage,
   EndPage,
-  entryTitle,
   LedgerBlockView,
   NotesPage,
   ProgressPage,
   TrendsPage,
 } from "./LedgerPages";
 
-const PAGE_SIZE = { width: DOC_PAGE.width, height: DOC_PAGE.height };
 const leftPage = (i: number) => isLeftPage(i, true);
 /** The cover opens once the ledger has settled in the hands (held-in). */
 const OPEN_DELAY_MS = 380;
@@ -68,10 +68,7 @@ export function Ledger({
   /** Where the URL asks the book to open. */
   link: { section?: string; entry?: string };
 }) {
-  const router = useRouter();
-  const close = useCallback(() => router.push("/dashboard"), [router]);
-  const { closing, heading } = useHeldShell("ledger", close);
-  const headingId = useId();
+  const { close, closing, heading, headingId } = useHeldDocument("ledger");
   const slider = useRef<BookSliderHandle>(null);
   const { request: requestDelete, dialog } = useDeleteSession(() => heading.current?.focus({ preventScroll: true }));
 
@@ -116,72 +113,69 @@ export function Ledger({
   // A contents line turns to its page, then hands focus to what it names.
   const openAt = useCallback((page: number, focus: string) => slider.current?.turnTo(page, { focus }), []);
 
-  const nodes = new Map(blocks.map((b) => [b.id, b.node]));
-  const entryOf = new Map(flow.map((b) => [b.id, b.entry]));
-  const pages = book?.map((p, i) => {
-    switch (p.kind) {
-      case "cover":
-        return <CoverPage volume={volume} owner={owner} />;
-      case "bookplate":
-        return <BookplatePage owner={owner} volume={volume} shown={entries.length} />;
-      case "contents":
-        return (
-          <ContentsPage
-            volume={volume}
-            entries={entries}
-            overviewPages={entries.map((e) => pageOf(book, `ov-${e.id}`))}
-            onOpen={openAt}
-          />
-        );
-      case "progress":
-        return <ProgressPage progress={progress} />;
-      case "trends":
-        return <TrendsPage trend={trend} />;
-      case "flow": {
-        const at = entryOf.get(p.ids[0]) ?? 0;
-        return (
-          <DocumentPage
-            face="ledger"
-            number={i}
-            running={
-              <span className="min-w-0 truncate">
-                No. {entryNumber(volume, at)} · {entryTitle(entries[at])}
-              </span>
-            }
-          >
-            {p.ids.map((id) => (
-              <FlipSafe key={id}>{nodes.get(id)}</FlipSafe>
-            ))}
-          </DocumentPage>
-        );
+  const pages = useMemo(() => {
+    if (!book) return null;
+    const nodes = new Map(blocks.map((b) => [b.id, b.node]));
+    const entryOf = new Map(flow.map((b) => [b.id, b.entry]));
+    return book.map((p, i) => {
+      switch (p.kind) {
+        case "cover":
+          return <CoverPage volume={volume} owner={owner} />;
+        case "bookplate":
+          return <BookplatePage owner={owner} volume={volume} shown={entries.length} />;
+        case "contents":
+          return (
+            <ContentsPage
+              volume={volume}
+              entries={entries}
+              overviewPages={entries.map((e) => pageOf(book, `ov-${e.id}`))}
+              onOpen={openAt}
+            />
+          );
+        case "progress":
+          return <ProgressPage progress={progress} />;
+        case "trends":
+          return <TrendsPage trend={trend} />;
+        case "flow": {
+          const at = entryOf.get(p.ids[0]) ?? 0;
+          return (
+            <FlowPage
+              face="ledger"
+              number={i}
+              ids={p.ids}
+              nodes={nodes}
+              running={
+                <span className="min-w-0 truncate">
+                  No. {entryNumber(volume, at)} · {interviewTitle(entries[at].title, entries[at].mode)}
+                </span>
+              }
+            />
+          );
+        }
+        case "notes":
+          return <NotesPage number={i} />;
+        case "end":
+          return <EndPage volume={volume} number={i} />;
+        case "empty":
+          return <EmptyPage />;
+        case "back":
+          return <BackCoverPage />;
       }
-      case "notes":
-        return <NotesPage number={i} />;
-      case "end":
-        return <EndPage volume={volume} number={i} />;
-      case "empty":
-        return <EmptyPage />;
-      case "back":
-        return <BackCoverPage />;
-    }
-  });
+    });
+  }, [book, blocks, flow, volume, owner, entries, progress, trend, openAt]);
+  // After a delete or a refresh, the book on screen stays open while the changed one is measured.
+  const shown = useLastReady(documentKey, pages);
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className={`relative flex w-full max-w-6xl flex-col items-center ${closing ? "held-out" : "held-in"}`}
-    >
-      <h1 id={headingId} ref={heading} tabIndex={-1} className="sr-only">
-        Performance record
-      </h1>
+    <HeldDocument title="Performance record" headingId={headingId} heading={heading} closing={closing}>
       {measurer}
-      {pages && (
+      {shown && (
         <BookSlider
           ref={slider}
           mode="book"
-          pages={pages}
-          pageSize={PAGE_SIZE}
-          documentKey={documentKey}
+          pages={shown.value}
+          pageSize={DOC_PAGE_SIZE}
+          documentKey={shown.key}
           label={`Performance record, volume ${volume.number}`}
           startPage={startPage}
           reserveHeight={200}
@@ -195,6 +189,6 @@ export function Ledger({
         </BookSlider>
       )}
       {dialog}
-    </section>
+    </HeldDocument>
   );
 }

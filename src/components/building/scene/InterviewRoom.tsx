@@ -2,7 +2,7 @@
 
 /** The interview room: whiteboard, window, plant, and the table with the mic and notepad. */
 
-import type { RefObject } from "react";
+import { memo, type RefObject } from "react";
 
 import type { Speaker } from "@/components/room/types";
 
@@ -12,7 +12,8 @@ import { TableNotepad } from "./Objects";
 import { OfficeChair } from "./OfficeChair";
 import { CeilingLight, Pane, PottedPlant, Scribbles, Slab } from "./parts";
 
-export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> }) {
+/** Memoized: its props rarely change, and it reads no context itself. */
+export const InterviewRoomScene = memo(function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> }) {
   const { left, right, front, back, height } = ROOM;
   const tableTop = TABLE.height;
   return (
@@ -56,4 +57,4 @@ export function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> })
       <TableNotepad />
     </group>
   );
-}
+});

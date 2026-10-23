@@ -1,38 +1,38 @@
 "use client";
 
 /**
- * The live interview's orchestrator: owns the phase machine (roomMachine.ts),
- * the voice wiring and the network calls; the other room components are
- * presentational. A 409 with `state` means a stale turn: the page re-renders
- * from the server's history.
+ * The live interview's orchestrator: owns the phase machine (roomMachine.ts)
+ * and wires the candidate's voice (useVoiceAnswer), the interviewer's
+ * (useRoomSpeech) and the sending of answers (useTurnSubmission); the other
+ * room components are presentational. A 409 with `state` means a stale turn:
+ * the page re-renders from the server's history.
  */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useReducer } from "react";
 
-import { useBuilding } from "@/components/building/BuildingProvider";
-import { domVisible } from "@/components/building/heldMachine";
 import { LoadingState } from "@/components/common/LoadingState";
+import { useBrowserValue } from "@/components/common/useBrowserValue";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { noteFromResponse } from "@/lib/frontend/adapters";
-import { submitTurn } from "@/lib/frontend/api";
-import { takeIntro } from "@/lib/frontend/handoff";
 import type { InputMode, NoteView, ProgressView, QuestionView } from "@/lib/frontend/types";
 import { readMouth, readSpokenWord, readVisemes, unlockAudio } from "@/lib/frontend/voiceSession";
 import { isSttSupported } from "@/lib/voice/stt";
 import type { SttErrorCode } from "@/lib/voice/sttMachine";
-import { playAck, speak, stopSpeaking } from "@/lib/voice/tts";
+import { stopSpeaking } from "@/lib/voice/tts";
 
-import type { MicControl, MicState } from "./types";
+import type { MicControl } from "./types";
 import { RecruiterStage } from "./RecruiterStage";
 import { Captions } from "./Captions";
 import { EndInterviewDialog } from "./EndInterviewDialog";
 import { HeldNotepad } from "./HeldNotepad";
 import { ProgressPill } from "./ProgressPill";
 import { PushToTalk } from "./PushToTalk";
-import { avatarState, initRoom, roomReducer } from "./roomMachine";
+import { avatarState, initRoom, micStateFor, roomReducer } from "./roomMachine";
 import { SpeechBubble } from "./SpeechBubble";
+import { useNotepadHold } from "./useNotepadHold";
+import { useRoomSpeech } from "./useRoomSpeech";
+import { useTurnSubmission } from "./useTurnSubmission";
 import { useVoiceAnswer } from "./useVoiceAnswer";
 
 /** Why voice answers stopped, by the recognizer's fatal error. */
@@ -45,9 +45,6 @@ const FALLBACK_REASON: Partial<Record<SttErrorCode, string>> = {
   unknown: "Voice answers stopped working.",
 };
 
-/** Upper bound on any one spoken line, so a stuck audio path can never stall the room. */
-const SPEECH_TIMEOUT_MS = 30_000;
-
 export interface InterviewRoomProps {
   sessionId: string;
   question: QuestionView;
@@ -58,15 +55,6 @@ export interface InterviewRoomProps {
   requestedInput: InputMode;
 }
 
-const noSubscribe = () => () => {};
-
-/** Says the lines; always resolves, whichever audio path (or none) worked. */
-async function sayLines(lines: string[]): Promise<void> {
-  const text = lines.join(" ").trim();
-  if (!text) return;
-  await Promise.race([speak(text), new Promise((r) => setTimeout(r, SPEECH_TIMEOUT_MS))]);
-}
-
 export function InterviewRoom(props: InterviewRoomProps) {
   const { sessionId, requestedInput } = props;
   const router = useRouter();
@@ -75,7 +63,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
   const [state, dispatch] = useReducer(roomReducer, { ...props, inputMode: requestedInput }, initRoom);
 
   // Voice needs the Web Speech API; a refresh can land here in any browser.
-  const sttSupported = useSyncExternalStore(noSubscribe, isSttSupported, () => true);
+  const sttSupported = useBrowserValue(isSttSupported, true);
   useEffect(() => {
     if (state.inputMode === "voice" && !sttSupported) {
       dispatch({
@@ -104,132 +92,18 @@ export function InterviewRoom(props: InterviewRoomProps) {
       }),
   });
 
-  // Speaking: say the queued lines, then hand over the turn.
-  const firstSpeech = useRef(true);
-  useEffect(() => {
-    if (state.phase !== "speaking") return;
-    let cancelled = false;
-    void (async () => {
-      if (firstSpeech.current) {
-        firstSpeech.current = false;
-        const intro = props.turnSeq === 0 ? takeIntro(sessionId) : null;
-        if (intro) {
-          dispatch({ type: "INTRO", line: intro });
-          return; // INTRO re-queues speech; this effect runs again for it.
-        }
-      }
-      await sayLines(state.speech);
-      if (!cancelled) dispatch({ type: "SPEECH_DONE" });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [state.phase, state.speech, props.turnSeq, sessionId]);
-
-  // Done: say the wrap line, then go to the scorecard.
-  useEffect(() => {
-    if (state.phase !== "done") return;
-    let cancelled = false;
-    void (async () => {
-      await sayLines(state.speech);
-      if (!cancelled) router.push(reportHref);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [state.phase, state.speech, router, reportHref]);
-
-  // Silence everything if the candidate leaves mid-sentence.
-  useEffect(() => () => stopSpeaking(), []);
-
-  // Submitting: one request per SUBMIT, guarded by phase and seq.
-  const submittedSeq = useRef<number | null>(null);
-  /** Timings of the last voice answer, for a retry after a failed send. */
-  const lastVoiceTimings = useRef<{ holdMs: number; captureMs?: number } | null>(null);
-  useEffect(() => {
-    if (state.phase !== "submitting") return;
-    const clientTurnSeq = state.turnSeq + 1;
-    if (submittedSeq.current === clientTurnSeq) return;
-    submittedSeq.current = clientTurnSeq;
-
-    void (async () => {
-      // A live recording is stopped and flushed; otherwise send the draft.
-      let transcript = state.draft.trim();
-      let timings: { holdMs: number; captureMs?: number } = { holdMs: 0 };
-      if (voice.isActive()) {
-        const answer = await voice.finish();
-        transcript = answer.transcript.trim();
-        timings = { holdMs: answer.holdMs, captureMs: answer.captureMs };
-        lastVoiceTimings.current = timings;
-      } else if (state.inputMode === "voice" && lastVoiceTimings.current) {
-        timings = lastVoiceTimings.current;
-      }
-      // Typed answers send no capture time, so the server reports no wpm.
-
-      if (!transcript) {
-        submittedSeq.current = null;
-        dispatch({
-          type: "RECORD_CANCEL",
-          notice: "We didn't catch any words. Press the mic and try again.",
-        });
-        return;
-      }
-
-      // Covers the scoring wait (~0.3s target). Silent if clips are missing.
-      playAck();
-
-      const offline = () => {
-        submittedSeq.current = null;
-        dispatch({ type: "SUBMIT_FAILED", message: "We couldn't reach the server. Your answer is kept — try sending again." });
-      };
-      try {
-        const outcome = await submitTurn(sessionId, { transcript, clientTurnSeq, ...timings });
-        switch (outcome.kind) {
-          case "stale":
-            dispatch({ type: "STALE" });
-            router.refresh();
-            return;
-          case "finished":
-            // Already finished elsewhere: the scorecard is the right place.
-            router.push(reportHref);
-            return;
-          case "failed":
-            submittedSeq.current = null;
-            dispatch({ type: "SUBMIT_FAILED", message: outcome.message });
-            return;
-          case "offline":
-            return offline();
-          case "nudge":
-            submittedSeq.current = null;
-            dispatch({ type: "NUDGE", line: outcome.line });
-            return;
-        }
-        const { turn } = outcome;
-        lastVoiceTimings.current = null;
-        // The note renders before the next question is spoken.
-        dispatch({
-          type: "TURN_OK",
-          note: noteFromResponse(turn.notepad),
-          next: turn.next
-            ? {
-                text: turn.next.text,
-                type: turn.next.type,
-                topic: turn.next.topic,
-                source: turn.next.source,
-                lead: turn.next.lead,
-              }
-            : null,
-          done: turn.done,
-          wrapLine: turn.wrapLine ?? null,
-          progress: turn.progress,
-        });
-      } catch {
-        offline();
-      }
-    })();
-    // `voice` is stable in behaviour; its identity changes every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase, state.turnSeq, state.draft, state.inputMode, sessionId, router, reportHref]);
+  useRoomSpeech({ phase: state.phase, speech: state.speech, openedAt: props.turnSeq, sessionId, reportHref, dispatch });
+  useTurnSubmission({
+    phase: state.phase,
+    turnSeq: state.turnSeq,
+    draft: state.draft,
+    inputMode: state.inputMode,
+    sessionId,
+    reportHref,
+    dispatch,
+    voiceActive: voice.isActive,
+    finishVoice: voice.finish,
+  });
 
   // Controls.
   const onDraftChange = useCallback((text: string) => dispatch({ type: "DRAFT_CHANGED", text }), []);
@@ -246,15 +120,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
     startVoice();
   }, [state.phase, state.inputMode, startVoice]);
 
-  // The candidate's mic, as both the panel button and the 3D desk mic show it.
-  const micState: MicState =
-    state.inputMode !== "voice"
-      ? "off"
-      : state.phase === "recording"
-        ? "recording"
-        : state.phase === "awaitingAnswer"
-          ? "ready"
-          : "disabled";
+  const micState = micStateFor(state.inputMode, state.phase);
   const mic = useMemo<MicControl>(
     () => ({
       state: micState,
@@ -263,26 +129,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
     [micState, onSubmit, onRecordStart],
   );
 
-  // The notepad: a held object in the building (heldMachine.ts); otherwise it just opens.
-  const building = useBuilding();
-  const dispatchHeld = building?.dispatchHeld;
-  const setAction = building?.setAction;
-  const [notesOpenLocally, setNotesOpenLocally] = useState(false);
-  const notesOpen = building ? building.held.held === "notepad" && domVisible(building.held) : notesOpenLocally;
-  const openNotes = useCallback(() => {
-    if (dispatchHeld) dispatchHeld({ type: "REQUEST", want: "notepad" });
-    else setNotesOpenLocally(true);
-  }, [dispatchHeld]);
-  const closeNotes = useCallback(() => {
-    if (dispatchHeld) dispatchHeld({ type: "REQUEST", want: null });
-    else setNotesOpenLocally(false);
-  }, [dispatchHeld]);
-  // Clicking the 3D notepad does the same as the Notes button.
-  useEffect(() => {
-    if (!setAction) return;
-    setAction("notepad", openNotes);
-    return () => setAction("notepad", null);
-  }, [setAction, openNotes]);
+  const { open: notesOpen, openNotes, closeNotes } = useNotepadHold();
 
   const endInterview = () => {
     voice.abort();
@@ -372,7 +219,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
           <LoadingState label="Catching up with your interview…" className="py-1" />
         </div>
       ) : state.phase === "done" ? (
-        <div role="status" className={`pointer-events-auto absolute inset-x-0 bottom-8 mx-auto w-fit bg-paper ${slip}`}>
+        <div className={`pointer-events-auto absolute inset-x-0 bottom-8 mx-auto w-fit bg-paper ${slip}`}>
           <LoadingState label="Preparing your scorecard…" className="py-1" />
         </div>
       ) : (

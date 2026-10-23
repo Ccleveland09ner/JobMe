@@ -9,16 +9,18 @@
  * in step without leaving the folder.
  */
 
-import { useRouter } from "next/navigation";
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
-import { CloseTag, useHeldShell } from "@/components/held/Held";
-import { BookSlider, FlipSafe, type BookSliderHandle } from "@/components/ui/book-slider";
-import { DOC_BODY_HEIGHT, DOC_BODY_WIDTH, DOC_PAGE, DocumentPage } from "@/components/ui/DocumentPage";
+import { CloseTag, HeldDocument, useHeldDocument } from "@/components/held/Held";
+import { BookSlider, type BookSliderHandle } from "@/components/ui/book-slider";
+import { FlowPage } from "@/components/ui/DocumentParts";
+import { DOC_BODY_HEIGHT, DOC_BODY_WIDTH, DOC_PAGE, DOC_PAGE_SIZE } from "@/components/ui/DocumentPage";
 import { DocumentTabs } from "@/components/ui/DocumentTabs";
+import { useLastReady } from "@/components/ui/useLastReady";
 import { usePaginatedPages, type DocBlock } from "@/components/ui/usePaginatedPages";
-import { MODE_LABELS } from "@/lib/frontend/labels";
+import { interviewTitle } from "@/lib/frontend/labels";
 import type { PagePlan } from "@/lib/frontend/paginate";
 import {
   describeFolder,
@@ -28,6 +30,8 @@ import {
   FOLDER_SECTIONS,
   isFiled,
   loadReportDocument,
+  reportIdIn,
+  reportPath,
   sectionStarts,
   tabFor,
   withGeneratedReport,
@@ -40,21 +44,15 @@ import { createClient } from "@/lib/supabase/client";
 
 import { BlankPage, EmptyFolderPage, FlapPage, FolderBlockView, GeneratePage } from "./ReportSheets";
 
-const PAGE_SIZE = { width: DOC_PAGE.width, height: DOC_PAGE.height };
-
 /** A laid-out file: what the folder shows. */
 interface Filed {
-  key: string;
   doc: ReportDocument | null;
   plan: PagePlan[];
   blocks: DocBlock[];
 }
 
 export function ReportsFolder({ initial, index }: { initial: ReportDocument | null; index: ReportTab[] }) {
-  const router = useRouter();
-  const close = useCallback(() => router.push("/dashboard"), [router]);
-  const { closing, heading } = useHeldShell("reports", close);
-  const headingId = useId();
+  const { close, closing, heading, headingId } = useHeldDocument("reports");
   const panelId = useId();
   const tabsId = useId();
   const slider = useRef<BookSliderHandle>(null);
@@ -98,14 +96,14 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
   });
 
   // The last file laid out stays in the folder while the next is measured.
-  const [shown, setShown] = useState<Filed | null>(null);
-  if (plan && shown?.key !== documentKey) setShown({ key: documentKey, doc, plan, blocks });
-  const view: Filed | null = plan ? { key: documentKey, doc, plan, blocks } : shown;
+  const ready = useMemo<Filed | null>(() => (plan ? { doc, plan, blocks } : null), [plan, doc, blocks]);
+  const shown = useLastReady(documentKey, ready);
+  const view = shown?.value ?? null;
 
   function show(id: string) {
     setActiveId(id);
     // Same folder, another file: no navigation, no server round trip.
-    window.history.replaceState(null, "", `/interview/${id}/report`);
+    window.history.replaceState(null, "", reportPath(id));
   }
 
   async function openTab(id: string) {
@@ -126,6 +124,17 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
     }
   }
 
+  // The URL names the file on top. Back or Forward can return to an entry
+  // whose page was laid out for another file (Next restores the page it
+  // copied into that entry), so when the URL changes, the folder follows it.
+  const routeId = reportIdIn(usePathname());
+  const followed = useRef(activeId);
+  useEffect(() => {
+    if (!routeId || routeId === followed.current) return;
+    followed.current = routeId;
+    if (routeId !== wanted.current) void openTab(routeId);
+  });
+
   const onGenerated = useCallback(
     (body: GeneratedReport) => {
       if (!doc) return;
@@ -137,70 +146,62 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
   // A contents line turns to its page, then hands focus to what it names.
   const openAt = useCallback((page: number, focus: string) => slider.current?.turnTo(page, { focus }), []);
 
-  const pages = view && folderBook(view.doc, view.plan);
-  const nodes = new Map(view?.blocks.map((b) => [b.id, b.node]));
-  // Each flow page runs under the section it belongs to.
-  const sectionAt = (ids: string[]): FolderSection | null => {
+  const pageNodes = useMemo(() => {
     if (!view) return null;
+    const pages = folderBook(view.doc, view.plan);
+    const nodes = new Map(view.blocks.map((b) => [b.id, b.node]));
+    // Each flow page runs under the section it belongs to.
     const flowIds = view.blocks.map((b) => b.id);
-    const at = flowIds.indexOf(ids[0]);
-    for (let i = at; i >= 0; i--) {
-      const s = FOLDER_SECTIONS.find((x) => x.id === flowIds[i]);
-      if (s) return s.id;
-    }
-    return null;
-  };
-  const pageNodes = pages?.map((p, i) => {
-    switch (p.kind) {
-      case "flap":
-        return <FlapPage doc={view?.doc ?? null} starts={sectionStarts(pages)} onOpen={openAt} />;
-      case "generate":
-        return view?.doc ? <GeneratePage doc={view.doc} onGenerated={onGenerated} /> : <BlankPage number={i} />;
-      case "empty":
-        return <EmptyFolderPage />;
-      case "blank":
-        return <BlankPage number={i} />;
-      case "flow": {
-        const section = sectionAt(p.ids);
-        return (
-          <DocumentPage number={i} running={FOLDER_SECTIONS.find((s) => s.id === section)?.title}>
-            {p.ids.map((id) => (
-              <FlipSafe key={id}>{nodes.get(id)}</FlipSafe>
-            ))}
-          </DocumentPage>
-        );
+    const sectionAt = (ids: string[]): FolderSection | null => {
+      const at = flowIds.indexOf(ids[0]);
+      for (let i = at; i >= 0; i--) {
+        const s = FOLDER_SECTIONS.find((x) => x.id === flowIds[i]);
+        if (s) return s.id;
       }
-    }
-  });
+      return null;
+    };
+    return pages.map((p, i) => {
+      switch (p.kind) {
+        case "flap":
+          return <FlapPage doc={view.doc} starts={sectionStarts(pages)} onOpen={openAt} />;
+        case "generate":
+          return view.doc ? <GeneratePage doc={view.doc} onGenerated={onGenerated} /> : <BlankPage number={i} />;
+        case "empty":
+          return <EmptyFolderPage />;
+        case "blank":
+          return <BlankPage number={i} />;
+        case "flow": {
+          const section = sectionAt(p.ids);
+          return <FlowPage number={i} ids={p.ids} nodes={nodes} running={FOLDER_SECTIONS.find((s) => s.id === section)?.title} />;
+        }
+      }
+    });
+  }, [view, openAt, onGenerated]);
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className={`relative flex w-full max-w-6xl flex-col items-center ${closing ? "held-out" : "held-in"}`}
-    >
-      <h1 id={headingId} ref={heading} tabIndex={-1} className="sr-only">
-        Interview reports
-      </h1>
+    <HeldDocument title="Interview reports" headingId={headingId} heading={heading} closing={closing}>
       {measurer}
       {pageNodes && (
-        <div id={panelId} role={tabs.length ? "tabpanel" : undefined} aria-labelledby={activeId ? `${tabsId}-${activeId}` : undefined} className="w-full">
+        <div className="w-full">
           <BookSlider
             ref={slider}
             mode="folder"
             pages={pageNodes}
-            pageSize={PAGE_SIZE}
-            documentKey={view?.key ?? "report:none"}
-            label={view?.doc ? `Report: ${view.doc.title ?? "Behavioral interview"}` : "Reports folder"}
+            pageSize={DOC_PAGE_SIZE}
+            documentKey={shown?.key ?? "report:none"}
+            // Also the tab panel's name: a tab may be paged out of view.
+            label={view?.doc ? `Report: ${interviewTitle(view.doc.title, view.doc.mode)}` : "Reports folder"}
+            tabPanelId={tabs.length ? panelId : undefined}
             reserveHeight={230}
             describe={describeFolder}
-              className="pt-24 sm:pt-14"
+            className="pt-24 sm:pt-14"
           >
             {tabs.length > 0 && (
               <DocumentTabs
                 tabs={tabs.map((t) => ({
                   id: t.id,
                   label: <LocalDate iso={t.startedAt} format="short" />,
-                  detail: t.title ?? (t.mode ? MODE_LABELS[t.mode] : "Interview"),
+                  detail: interviewTitle(t.title, t.mode),
                 }))}
                 active={activeId}
                 onSelect={openTab}
@@ -226,6 +227,6 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
           )}
         </div>
       )}
-    </section>
+    </HeldDocument>
   );
 }

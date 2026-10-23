@@ -67,6 +67,9 @@ function letters(text: string): number {
 /** Bumped when playback is superseded, so a late neural response stays silent. */
 let playbackEpoch = 0;
 
+/** Settles the neural line now playing, when it is superseded or stopped. */
+let settleCurrent: ((played: boolean) => void) | null = null;
+
 let sharedAudio: HTMLAudioElement | null = null;
 let voicesReady: Promise<SpeechSynthesisVoice[]> | null = null;
 
@@ -79,10 +82,10 @@ export function getSharedAudio(): HTMLAudioElement {
   return sharedAudio;
 }
 
-/** Chrome's getVoices() starts empty: await voiceschanged once. */
-export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
+/** Chrome's getVoices() starts empty: await voiceschanged once. An empty list isn't kept, so a later line tries again. */
+function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   if (voicesReady) return voicesReady;
-  voicesReady = new Promise((resolve) => {
+  voicesReady = new Promise<SpeechSynthesisVoice[]>((resolve) => {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       resolve([]);
       return;
@@ -104,47 +107,36 @@ export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
       },
       { once: true },
     );
+  }).then((voices) => {
+    if (!voices.length) voicesReady = null;
+    return voices;
   });
   return voicesReady;
 }
 
-export interface SpeakOptions {
-  /** Abort playback, e.g. when the candidate ends the interview early. */
-  signal?: AbortSignal;
-  onFallback?: (reason: string) => void;
-}
-
-/** Resolves when the line has finished, whichever path produced the sound. */
-export async function speak(
-  text: string,
-  options: SpeakOptions = {},
-): Promise<void> {
+/** Resolves when the line has finished, whichever path produced the sound, or when it is superseded or stopped. */
+export async function speak(text: string): Promise<void> {
   const epoch = ++playbackEpoch;
   const clean = text.trim();
   if (!clean) return;
 
   try {
-    const played = await playNeural(clean, epoch, options);
+    const played = await playNeural(clean, epoch);
     if (played) return;
-  } catch (err) {
-    options.onFallback?.((err as Error).message);
+  } catch {
+    // The browser voice stands in.
   }
 
   if (epoch !== playbackEpoch) return;
-  await playBrowser(clean, epoch, options);
+  await playBrowser(clean, epoch);
 }
 
-async function playNeural(
-  text: string,
-  epoch: number,
-  options: SpeakOptions,
-): Promise<boolean> {
+async function playNeural(text: string, epoch: number): Promise<boolean> {
   const audio = getSharedAudio();
 
   // Probe first, so a 503 or a stall costs only the first-byte timeout.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TTS_ALIGNED_TIMEOUT_MS);
-  options.signal?.addEventListener("abort", () => controller.abort());
 
   let response: Response;
   try {
@@ -156,10 +148,7 @@ async function playNeural(
     clearTimeout(timer);
   }
 
-  if (!response.ok) {
-    options.onFallback?.(`tts ${response.status}`);
-    return false;
-  }
+  if (!response.ok) return false;
 
   // JSON when aligned ({ audio: base64 mp3, alignment }), plain audio otherwise.
   let blob: Blob;
@@ -187,59 +176,45 @@ async function playNeural(
   // The mouth runs on the audio's own clock: exact, whatever the buffering.
   const entry: LiveSpeech | null = timeline ? { timeline, now: () => audio.currentTime } : null;
 
-  return new Promise<boolean>((resolve) => {
-    const cleanup = () => {
-      URL.revokeObjectURL(url);
-      audio.onended = null;
-      audio.onerror = null;
-      audio.onplaying = null;
-      if (live === entry) live = null;
-    };
-    audio.onplaying = () => {
-      if (entry && epoch === playbackEpoch) live = entry;
-    };
+  // The previous line, if any, is over: settle it before this one takes the element.
+  settleCurrent?.(false);
 
+  return new Promise<boolean>((resolve) => {
+    // This line's own listeners, removed together: the element is shared, and
+    // clearing another line's handlers would leave its promise hanging.
+    const listeners = new AbortController();
+    const own = { signal: listeners.signal };
+    const settle = (played: boolean) => {
+      if (listeners.signal.aborted) return;
+      listeners.abort();
+      clearTimeout(soundTimer);
+      URL.revokeObjectURL(url);
+      if (live === entry) live = null;
+      if (settleCurrent === settle) settleCurrent = null;
+      resolve(played);
+    };
+    settleCurrent = settle;
+
+    audio.addEventListener("playing", () => {
+      if (entry && epoch === playbackEpoch) live = entry;
+    }, own);
+    audio.addEventListener("ended", () => settle(true), own);
+    audio.addEventListener("error", () => settle(false), own);
+    // Declared after settle, which only ever runs later, from an event or a timer.
     const soundTimer = setTimeout(() => {
-      if (audio.currentTime === 0) {
-        cleanup();
-        options.onFallback?.("no audible sound");
-        resolve(false);
-      }
+      if (audio.currentTime === 0) settle(false);
     }, TTS_FIRST_SOUND_TIMEOUT_MS);
 
-    audio.onended = () => {
-      clearTimeout(soundTimer);
-      cleanup();
-      resolve(true);
-    };
-    audio.onerror = () => {
-      clearTimeout(soundTimer);
-      cleanup();
-      options.onFallback?.("audio element error");
-      resolve(false);
-    };
-
-    void audio.play().catch(() => {
-      clearTimeout(soundTimer);
-      cleanup();
-      resolve(false);
-    });
+    void audio.play().catch(() => settle(false));
   });
 }
 
-async function playBrowser(
-  text: string,
-  epoch: number,
-  options: SpeakOptions,
-): Promise<void> {
+async function playBrowser(text: string, epoch: number): Promise<void> {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
 
+  // Nothing can speak without voices; the captions carry the line.
   const voices = await loadVoices();
-  if (!voices.length) {
-    // Nothing can speak; the captions carry it.
-    options.onFallback?.("no voices available");
-    return;
-  }
+  if (!voices.length) return;
   if (epoch !== playbackEpoch) return;
 
   await new Promise<void>((resolve) => {
@@ -296,23 +271,20 @@ async function playBrowser(
       wordEnd = timeline.words[i].end;
     };
     utterance.onend = finish;
+    // stopSpeaking() cancels synthesis, which ends here.
     utterance.onerror = () => {
       if (live === entry) live = null;
       resolve();
     };
-    options.signal?.addEventListener("abort", () => {
-      window.speechSynthesis.cancel();
-      if (live === entry) live = null;
-      resolve();
-    });
     window.speechSynthesis.speak(utterance);
   });
 }
 
-/** Cancels anything currently speaking and invalidates in-flight requests. */
+/** Cancels anything currently speaking, settles its `speak()`, and invalidates in-flight requests. */
 export function stopSpeaking(): void {
   playbackEpoch++;
   live = null;
+  settleCurrent?.(false);
   if (sharedAudio) {
     sharedAudio.pause();
     sharedAudio.currentTime = 0;

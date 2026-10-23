@@ -2,13 +2,16 @@
 
 /** The hall from the lobby to the interview room, ending at the room's door. */
 
+import { memo } from "react";
+
 import { CORRIDOR, ROOM } from "../world";
 import { CeilingLight, Slab } from "./parts";
 import { SwingDoor } from "./SwingDoor";
 
 export const ROOM_DOOR_WIDTH = 1;
 
-export function Corridor({ doorOpen }: { doorOpen: boolean }) {
+/** Memoized: its props rarely change, and it reads no context itself. */
+export const Corridor = memo(function Corridor({ doorOpen }: { doorOpen: boolean }) {
   const { x, width, front, back, height } = CORRIDOR;
   const l = x - width / 2;
   const r = x + width / 2;
@@ -32,4 +35,4 @@ export function Corridor({ doorOpen }: { doorOpen: boolean }) {
       <SwingDoor at={[x + d, 0, ROOM.front - 0.08]} width={ROOM_DOOR_WIDTH} height={2.2} hinge="right" open={doorOpen} />
     </group>
   );
-}
+});

@@ -8,14 +8,22 @@ import Link from "next/link";
 
 import { LocalDate } from "@/components/common/LocalDate";
 import { TrendChart } from "@/components/dashboard/TrendChart";
+import { CandidateQuote } from "@/components/report/CandidateQuote";
 import { BandBadge } from "@/components/score/BandBadge";
 import { ScoreList } from "@/components/score/ScoreList";
 import { Badge } from "@/components/ui/Badge";
-import { FlipSafe } from "@/components/ui/book-slider";
+import { FlipSafe } from "@/components/ui/FlipSafe";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { ContentsList, kickerClass, PaperStat } from "@/components/ui/DocumentParts";
+import {
+  ContentsList,
+  kickerClass,
+  PaperStat,
+  SessionDateLine,
+  SpeakingStats,
+  StartInterviewLink,
+} from "@/components/ui/DocumentParts";
 import { DocumentPage } from "@/components/ui/DocumentPage";
-import { dimensionLabel, MODE_LABELS, scoreLevelLabel, topicLabel } from "@/lib/frontend/labels";
+import { gapLabel, interviewTitle, scoreLevelLabel, scoreOutOf, topicLabel } from "@/lib/frontend/labels";
 import {
   entryNumber,
   LEDGER_CONTENTS_PAGE,
@@ -31,14 +39,10 @@ import {
 import type { SessionSummary, TrendPoint } from "@/lib/frontend/types";
 import { unlockAudio } from "@/lib/frontend/voiceSession";
 
-export function entryTitle(entry: LedgerEntry): string {
-  return entry.title ?? "Behavioral interview";
-}
-
 /** Focus targets for the contents links. */
-export const entryHeadingId = (id: string) => `ledger-entry-${id}`;
-export const PROGRESS_HEADING_ID = "ledger-progress";
-export const TRENDS_HEADING_ID = "trend-title";
+const entryHeadingId = (id: string) => `ledger-entry-${id}`;
+const PROGRESS_HEADING_ID = "ledger-progress";
+const TRENDS_HEADING_ID = "trend-title";
 
 const EMBOSSED = "text-leather-light [text-shadow:0_2px_0_var(--color-leather-dark)]";
 
@@ -146,9 +150,7 @@ export function ContentsPage({
       </FlipSafe>
       <FlipSafe className="mt-auto flex flex-col gap-3">
         <VolumeLinks volume={volume} />
-        <Link href="/interview/new" className={buttonClasses({ size: "sm", className: "self-start" })}>
-          Start an interview
-        </Link>
+        <StartInterviewLink size="sm" className="self-start" />
       </FlipSafe>
     </DocumentPage>
   );
@@ -167,7 +169,7 @@ export function ProgressPage({ progress }: { progress: LedgerProgress }) {
           <PaperStat label="In progress" value={String(progress.inProgress)} />
           <PaperStat
             label="Latest overall"
-            value={latest === null ? "—" : `${latest} / 4`}
+            value={latest === null ? "—" : scoreOutOf(latest)}
             note={latest === null ? undefined : scoreLevelLabel(latest)}
           />
         </dl>
@@ -188,7 +190,7 @@ export function TrendsPage({ trend }: { trend: TrendPoint[] }) {
   return (
     <DocumentPage face="ledger" running="Score trends" number={LEDGER_PROGRESS_PAGE + 1}>
       <FlipSafe>
-        <TrendChart points={trend} />
+        <TrendChart points={trend} headingId={TRENDS_HEADING_ID} />
       </FlipSafe>
     </DocumentPage>
   );
@@ -204,12 +206,11 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
       <div className="flex flex-col gap-1">
         <p className={kickerClass}>Interview no. {number}</p>
         <h2 id={entryHeadingId(entry.id)} tabIndex={-1} className="line-clamp-2 text-xl font-bold leading-snug text-ink outline-none">
-          {entryTitle(entry)}
+          {interviewTitle(entry.title, entry.mode)}
         </h2>
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
           <span>
-            <LocalDate iso={entry.startedAt} format="dateTime" />
-            {entry.mode && ` · ${MODE_LABELS[entry.mode]}`}
+            <SessionDateLine startedAt={entry.startedAt} mode={entry.mode} titled={entry.title !== null} />
           </span>
           {completed ? <Badge>Completed</Badge> : <Badge tone="accent">In progress</Badge>}
         </p>
@@ -218,7 +219,7 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
         <PaperStat label={completed ? "Questions answered" : "Reached question"} value={String(entry.questionCount)} />
         <PaperStat
           label="Overall"
-          value={!completed ? "—" : overall === null ? "Not scored" : `${overall} / 4`}
+          value={!completed ? "—" : overall === null ? "Not scored" : scoreOutOf(overall)}
           note={completed && overall !== null ? scoreLevelLabel(overall) : undefined}
         />
       </dl>
@@ -252,8 +253,9 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
 }
 
 function QuestionEntry({ question: q }: { question: LedgerQuestion }) {
+  const gap = gapLabel(q.primaryGap);
   return (
-    <article className="flex flex-col gap-1.5 border-b-2 border-dashed border-ink/15 pb-3">
+    <article aria-label={`Q${q.seq} · ${topicLabel(q.topic)}`} className="flex flex-col gap-1.5 border-b-2 border-dashed border-ink/15 pb-3">
       <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
         <span className="font-bold text-ink">Q{q.seq}</span>
         <span>{topicLabel(q.topic)}</span>
@@ -261,7 +263,9 @@ function QuestionEntry({ question: q }: { question: LedgerQuestion }) {
       </p>
       <p className="text-sm font-semibold leading-snug text-ink">{q.questionText}</p>
       {q.answer ? (
-        <blockquote className="border-l-2 border-ink/25 pl-3 text-sm leading-snug text-ink/80">“{q.answer}”</blockquote>
+        <CandidateQuote block className="border-l-2 border-ink/25 pl-3 text-sm leading-snug text-ink/80">
+          {q.answer}
+        </CandidateQuote>
       ) : (
         <p className="text-sm text-muted">No answer recorded.</p>
       )}
@@ -271,7 +275,7 @@ function QuestionEntry({ question: q }: { question: LedgerQuestion }) {
           {q.note}
         </p>
       )}
-      {q.primaryGap && <p className="text-xs text-muted">To work on: {dimensionLabel(q.primaryGap)}</p>}
+      {gap && <p className="text-xs text-muted">To work on: {gap}</p>}
     </article>
   );
 }
@@ -299,10 +303,11 @@ export function LedgerBlockView({
       );
     case "metrics":
       return (
-        <dl className="grid grid-cols-2 gap-3 rounded-md border-2 border-ink/15 px-3 py-2">
-          <PaperStat label="Words per minute" value={entry.wpm ? String(entry.wpm) : "—"} />
-          <PaperStat label="Filler words (approx.)" value={entry.fillers === null ? "—" : String(entry.fillers)} />
-        </dl>
+        <SpeakingStats
+          wpm={entry.wpm}
+          fillers={entry.fillers}
+          className="grid grid-cols-2 gap-3 rounded-md border-2 border-ink/15 px-3 py-2"
+        />
       );
     case "questions":
       return <h3 className={kickerClass}>Questions and answers</h3>;
@@ -342,9 +347,7 @@ export function EndPage({ volume, number }: { volume: LedgerVolume; number: numb
           <>
             <p className="text-lg font-bold text-ink">End of the record</p>
             <p className="text-sm text-muted">That&apos;s every interview so far.</p>
-            <Link href="/interview/new" className={buttonClasses({ size: "sm" })}>
-              Start an interview
-            </Link>
+            <StartInterviewLink size="sm" />
           </>
         )}
       </FlipSafe>
@@ -360,9 +363,7 @@ export function EmptyPage() {
         <p className="text-sm text-muted">
           Your first interview takes about 8 minutes. You&apos;ll see what the recruiter noticed after every answer.
         </p>
-        <Link href="/interview/new" className={buttonClasses()}>
-          Start interview
-        </Link>
+        <StartInterviewLink />
       </FlipSafe>
     </DocumentPage>
   );

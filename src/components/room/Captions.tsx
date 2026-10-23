@@ -53,13 +53,17 @@ export function Captions({
   const active = spoken ? word : null;
 
   return (
-    <div aria-live="polite" aria-atomic="true" className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
+      {/* Screen readers hear each line once; the captions below change with every word spoken. */}
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {[before, text].filter(Boolean).join(" ")}
+      </p>
       {before && (
-        <p className="text-base text-muted">
+        <p aria-hidden="true" className="text-base text-muted">
           <Highlighted line={before} offset={beforeAt} word={active} />
         </p>
       )}
-      <p className="text-xl leading-relaxed text-ink sm:text-2xl">
+      <p aria-hidden="true" className="text-xl leading-relaxed text-ink sm:text-2xl">
         <Highlighted line={text} offset={textAt} word={active} />
       </p>
     </div>

@@ -7,6 +7,14 @@ import type { VisemeWeights } from "@/lib/voice/lipsync";
 
 export type RecruiterState = "idle" | "listening" | "thinking" | "speaking";
 
+/** What the recruiter is doing, in words, under each way of drawing them. */
+export const RECRUITER_STATE_TEXT: Record<RecruiterState, string> = {
+  idle: "Waiting for your answer",
+  listening: "Listening",
+  thinking: "Thinking",
+  speaking: "Speaking",
+};
+
 /** The candidate's mic, shown as the panel button and the 3D desk mic. */
 export type MicState = "off" | "disabled" | "ready" | "recording";
 

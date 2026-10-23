@@ -23,14 +23,21 @@ const PAD = { left: 36, right: 16, top: 16, bottom: 36 };
 const MIN = 1;
 const MAX = 4;
 
-export function TrendChart({ points }: { points: TrendPoint[] }) {
+export function TrendChart({
+  points,
+  headingId,
+}: {
+  points: TrendPoint[];
+  /** The heading's id, so a contents line can send focus to it. */
+  headingId: string;
+}) {
   const [series, setSeries] = useState<Series>("average");
   const groupName = useId();
 
   return (
-    <section aria-labelledby="trend-title" className="flex flex-col gap-3">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 id="trend-title" className="text-base font-semibold text-ink">
+        <h2 id={headingId} className="text-base font-semibold text-ink">
           Score trends
         </h2>
         <p className="text-sm text-muted">Completed interviews, oldest to newest. Scores run 1–4.</p>

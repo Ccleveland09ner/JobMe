@@ -1,6 +1,9 @@
 "use client";
 
-/** A modal on the native <dialog> (inert page, Escape, top layer); returns focus on close. */
+/**
+ * A modal on the native <dialog> (inert page, Escape, top layer). On close,
+ * focus goes back to what opened it, unless `onClose` moved focus itself.
+ */
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
@@ -48,8 +51,9 @@ export function Dialog({
       aria-describedby={description ? descId : undefined}
       // Escape and form[method=dialog] both land here.
       onClose={() => {
+        const focused = document.activeElement;
         onClose();
-        returnFocus.current?.focus();
+        if (document.activeElement === focused) returnFocus.current?.focus();
       }}
       // Escape fires `cancel` before `close`; blocking it keeps a busy dialog open.
       onCancel={(e) => {

@@ -18,7 +18,7 @@ import { TableMic } from "./TableMic";
 import type { Phase } from "./roomMachine";
 
 /** True when a key event belongs to something the user is typing into or operating (Space presses a button). */
-export function isTypingTarget(target: EventTarget | null): boolean {
+function isTypingTarget(target: EventTarget | null): boolean {
   return isTextEntry(target) || (target instanceof HTMLElement && ["BUTTON", "A"].includes(target.tagName));
 }
 

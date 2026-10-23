@@ -5,13 +5,29 @@
 
 export type BookOrientation = "landscape" | "portrait";
 
+/** The logical size a page's content is laid out at, px. */
+export interface PageSize {
+  width: number;
+  height: number;
+}
+
+/** Where a book is open. */
+export interface BookState {
+  /** First page of the spread on screen. */
+  page: number;
+  /** Pages on screen. */
+  spread: number[];
+  total: number;
+  orientation: BookOrientation;
+}
+
 export interface BookFitInput {
   /** Width available for the book, px. */
   availableWidth: number;
   /** Height available for the pages, px. */
   availableHeight: number;
   /** The logical page size content is laid out at. */
-  page: { width: number; height: number };
+  page: PageSize;
   /** Below this page width a spread no longer fits: one page at a time. */
   minPageWidth: number;
   maxPageWidth: number;
@@ -59,4 +75,29 @@ export function spreadAt(page: number, total: number, orientation: BookOrientati
  */
 export function isLeftPage(index: number, covers: boolean): boolean {
   return covers ? index % 2 === 1 : index % 2 === 0;
+}
+
+/** A box placed in its parent, turned about its centre. */
+export interface TurnedBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** Degrees, clockwise. */
+  rotate: number;
+}
+
+/**
+ * The clipboard's sheets are laid out sideways and turned upright, so the
+ * engine's one-page turn lifts a sheet over the top edge. The engine's block
+ * is the page turned a quarter right, and each page's content is turned back
+ * inside it; both turn about the page's centre, or the sheet lands askew.
+ */
+export function clipboardFrame(page: PageSize): { block: TurnedBox; content: TurnedBox } {
+  const dx = (page.width - page.height) / 2;
+  const dy = (page.height - page.width) / 2;
+  return {
+    block: { left: dx, top: dy, width: page.height, height: page.width, rotate: 90 },
+    content: { left: -dx, top: -dy, width: page.width, height: page.height, rotate: -90 },
+  };
 }

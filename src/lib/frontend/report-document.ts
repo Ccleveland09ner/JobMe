@@ -9,7 +9,16 @@ import type { RowReader } from "@/lib/supabase/reader";
 
 import { purposeFor } from "../engine/topics";
 import type { AnyDimension, InterviewMode, StoredScores, TopicId } from "../engine/types";
-import { groupIntoQuestions, questionRef, rankDimensions, reportFromRow, rollupQuestions, type ReportRow, type ReportStats } from "../stats";
+import {
+  groupIntoQuestions,
+  questionRef,
+  rankDimensions,
+  reportFromRow,
+  rollupQuestions,
+  type FeedbackItem,
+  type ReportRow,
+  type ReportStats,
+} from "../stats";
 import {
   findEvidence,
   modeFromRow,
@@ -236,6 +245,12 @@ export type FolderSection = (typeof FOLDER_SECTIONS)[number]["id"];
 export const FEEDBACK_LISTS = ["strengths", "improvements"] as const;
 export type FeedbackListId = (typeof FEEDBACK_LISTS)[number];
 
+/** One list of a report's feedback. Stats are stored JSON: a list the row lacks has no items. */
+export function feedbackItems(doc: ReportDocument, list: FeedbackListId): FeedbackItem[] {
+  const items = doc.report?.stats?.feedback?.[list];
+  return Array.isArray(items) ? items : [];
+}
+
 /** Pieces of long text: summaries, rewrites and answers run on across sheets. */
 export const FOLDER_TEXT_CHARS = 600;
 /** Questions on one block of the competency list. */
@@ -308,28 +323,30 @@ export function folderFlow(doc: ReportDocument): FolderBlock[] {
   blocks.push({ id: "speaking", kind: "speaking" });
 
   section("feedback");
-  const feedback = report.stats?.feedback;
   // Reports written before feedback existed say so rather than lose the section.
-  if (!feedback) blocks.push({ id: "feedback-none", kind: "feedback-none" });
+  if (!report.stats?.feedback) blocks.push({ id: "feedback-none", kind: "feedback-none" });
   else
     for (const list of FEEDBACK_LISTS) {
-      blocks.push({ id: `fl-${list}`, kind: "feedback-list", list, keepWithNext: feedback[list].length > 0 });
-      feedback[list].forEach((_, item) => blocks.push({ id: `fi-${list}-${item}`, kind: "feedback-item", list, item }));
+      const items = feedbackItems(doc, list);
+      blocks.push({ id: `fl-${list}`, kind: "feedback-list", list, keepWithNext: items.length > 0 });
+      items.forEach((_, item) => blocks.push({ id: `fi-${list}-${item}`, kind: "feedback-item", list, item }));
     }
 
   section("rewrite");
   const weakest = weakestQuestion(doc);
   if (!weakest) blocks.push({ id: "rewrite-none", kind: "rewrite-none" });
   else {
-    blocks.push({ id: "rewrite-question", kind: "rewrite-question", question: questions.indexOf(weakest), keepWithNext: true });
+    const question = questions.indexOf(weakest);
+    blocks.push({ id: "rewrite-question", kind: "rewrite-question", question, keepWithNext: true });
     // What was said to it, follow-ups included, then the rewrite.
     weakest.turns.forEach((t) => {
       const said = pieces(t.answer);
       (said.length ? said : [""]).forEach((text, k) =>
-        blocks.push({ id: `said-${t.id}-${k}`, kind: "rewrite-said", turn: at.get(t.id), text, first: k === 0 }),
+        blocks.push({ id: `said-${t.id}-${k}`, kind: "rewrite-said", question, turn: at.get(t.id), text, first: k === 0 }),
       );
     });
-    if (report.rewrite) pieces(report.rewrite).forEach((text, k) => blocks.push({ id: `rewrite-${k}`, kind: "rewrite-text", text }));
+    if (report.rewrite)
+      pieces(report.rewrite).forEach((text, k) => blocks.push({ id: `rewrite-${k}`, kind: "rewrite-text", text, first: k === 0 }));
     else blocks.push({ id: "rewrite-missing", kind: "rewrite-missing" });
   }
 
@@ -384,6 +401,14 @@ export function sectionStarts(pages: FolderPage[]): { id: FolderSection; title: 
     const page = pages.findIndex((p) => p.kind === "flow" && p.ids.includes(s.id));
     return page < 0 ? [] : [{ id: s.id, title: s.title, page }];
   });
+}
+
+/** Where a report is read: the folder, opened at it. */
+export const reportPath = (id: string) => `/interview/${id}/report`;
+
+/** The report a path names; null for any other path (the bare /reports, say). */
+export function reportIdIn(pathname: string): string | null {
+  return pathname.match(/^\/interview\/([^/]+)\/report\/?$/)?.[1] ?? null;
 }
 
 /** "Pages 4–5 of 17", counting the report's sheets: the flap carries no number. */

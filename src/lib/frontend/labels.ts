@@ -75,14 +75,20 @@ export const MODE_LABELS: Record<InterviewMode, string> = {
   full: "Full interview",
 };
 
+/** What an interview is called: the job it was for, else its length. */
+export function interviewTitle(title: string | null, mode: InterviewMode | null): string {
+  return title ?? (mode ? MODE_LABELS[mode] : "Interview");
+}
+
 /** Unknown values (e.g. a topic added server-side later) fall back to raw text. */
 export function topicLabel(topic: string | null | undefined): string {
   if (!topic) return "Question";
   return TOPIC_LABELS[topic as TopicId] ?? topic.replace(/_/g, " ");
 }
 
-export function dimensionLabel(dim: string): string {
-  return DIMENSION_LABELS[dim as AnyDimension] ?? dim;
+/** The name of an answer's main gap; null when it has none. */
+export function gapLabel(gap: AnyDimension | null | undefined): string | null {
+  return gap ? DIMENSION_LABELS[gap] : null;
 }
 
 /** The level a 1-4 score reads as, matching the bands. */
@@ -90,4 +96,17 @@ export function scoreLevelLabel(score: number): string {
   if (score < WEAK_CEILING) return BAND_LABELS.weak;
   if (score >= GREAT_FLOOR) return BAND_LABELS.great;
   return BAND_LABELS.mediocre;
+}
+
+/** The top of the 1-4 scale every score uses. */
+export const SCORE_MAX = 4;
+
+/** A dimension's value as the bars print it: whole numbers bare, others to one decimal. */
+export function formatScore(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+/** A headline or question score, out of 4 to one decimal: "3.0 / 4". */
+export function scoreOutOf(value: number): string {
+  return `${value.toFixed(1)} / ${SCORE_MAX}`;
 }

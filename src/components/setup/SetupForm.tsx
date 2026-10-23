@@ -2,25 +2,23 @@
 
 /**
  * Interview setup on the desk clipboard: a few sheets, filled in one at a
- * time. Each sheet is checked before it turns (lib/frontend/setup.ts); values
- * stay put when turning back. Only Begin, on the last sheet, creates the
- * session (POST /api/sessions) while walking to the room, then opens
- * /interview/[id].
+ * time. Each sheet is checked before it turns (useSheetTurner); values stay
+ * put when turning back. Only Begin, on the last sheet, creates the session
+ * (POST /api/sessions) while walking to the room, then opens /interview/[id]
+ * (useBeginInterview).
  */
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
-import { useBuilding } from "@/components/building/BuildingProvider";
 import { CloseTag } from "@/components/held/Held";
 import { useHeld } from "@/components/held/useHeld";
-import { BookSlider, type BookSliderHandle, type BookState } from "@/components/ui/book-slider";
+import { BookSlider, type BookState } from "@/components/ui/book-slider";
 import { Button } from "@/components/ui/Button";
 import { Clipboard, paperField } from "@/components/ui/Clipboard";
+import { FieldError } from "@/components/ui/Field";
 import { ScaleToFit } from "@/components/ui/ScaleToFit";
 import type { InterviewMode } from "@/lib/engine/types";
-import { createSession, OFFLINE_MESSAGE } from "@/lib/frontend/api";
-import { saveIntro } from "@/lib/frontend/handoff";
 import { useDefaults } from "@/lib/frontend/preferences";
 import {
   REVIEW_SHEET,
@@ -28,21 +26,20 @@ import {
   sessionBody,
   SETUP_SHEETS,
   validateSetup,
-  validateSetupSheet,
   type JobValue,
   type ResumeState,
-  type SetupErrors,
   type SetupValues,
 } from "@/lib/frontend/setup";
-import { unlockAudio } from "@/lib/frontend/voiceSession";
 import type { InputMode, ResumeSummary } from "@/lib/frontend/types";
 import { LIMITS } from "@/lib/schemas";
 
-import { FieldError, JobDescriptionField } from "./JobDescriptionField";
+import { JobDescriptionField } from "./JobDescriptionField";
 import { MicCheck } from "./MicCheck";
 import { ModeSelector } from "./ModeSelector";
 import { ResumeSelector } from "./ResumeSelector";
-import { ReviewList, SetupSheet, SHEET_SIZE, sheetHeadingId } from "./SetupSheets";
+import { ReviewList, SetupSheet, SHEET_SIZE } from "./SetupSheets";
+import { useBeginInterview } from "./useBeginInterview";
+import { useSheetTurner } from "./useSheetTurner";
 
 /** Fields a turn of the sheet can't leave behind: everything but buttons and choices. */
 const NOT_TEXT = new Set(["checkbox", "radio", "file", "button", "submit", "reset"]);
@@ -62,12 +59,11 @@ export function SetupForm({
   latestResume: ResumeSummary | null;
 }) {
   const router = useRouter();
-  const building = useBuilding();
   // A held object: it plays its closing before the 3D clipboard goes back.
   const { closing } = useHeld("clipboard");
 
   const [displayName, setDisplayName] = useState(defaultName);
-  // The board's defaults start the form; a choice here wins. Preferring to type wins over a working mic.
+  // The board's defaults start the form; a choice here wins.
   const defaults = useDefaults();
   const [chosenMode, setMode] = useState<InterviewMode | null>(null);
   const mode = chosenMode ?? defaults?.mode ?? "quick";
@@ -75,107 +71,22 @@ export function SetupForm({
     latestResume ? { choice: "existing", resumeId: latestResume.id } : { choice: "none" },
   );
   const [job, setJob] = useState<JobValue>({ targetRole: "", company: "", source: "paste", roleText: "", jobUrl: "" });
-  const [micMode, setInputMode] = useState<InputMode>("typed");
-  const inputMode: InputMode = defaults?.inputMode === "typed" ? "typed" : micMode;
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The mic sheet decides, starting from the saved default (MicCheck).
+  const [inputMode, setInputMode] = useState<InputMode>("typed");
   const values: SetupValues = { displayName, job, resume, mode };
 
-  // The sheet on top, its problems, and how many turns were refused.
-  const [sheet, setSheet] = useState(0);
-  const [errors, setErrors] = useState<SetupErrors>({});
-  const [attempt, setAttempt] = useState(0);
-  const slider = useRef<BookSliderHandle>(null);
-  const stack = useRef<HTMLDivElement>(null);
-  // Begin sends once, whatever happens to the button.
-  const sending = useRef(false);
-  // One turn at a time: a second click mid-turn would skip a sheet's check.
-  const turning = useRef<number | undefined>(undefined);
-  // What to focus once the sheet on top, or its problems, have rendered.
-  const focusNext = useRef<"heading" | "problem" | null>(null);
+  const { begin: beginInterview, submitting, error } = useBeginInterview();
+  const { attempt, slider, stack, problemsOn, onPageChange, refuse, next, back, change } = useSheetTurner({
+    values,
+    busy: submitting,
+  });
 
   const onInputModeChange = useCallback((m: InputMode) => setInputMode(m), []);
 
-  useEffect(() => {
-    const what = focusNext.current;
-    focusNext.current = null;
-    if (what === "heading") document.getElementById(sheetHeadingId(sheet))?.focus({ preventScroll: true });
-    if (what === "problem")
-      stack.current?.querySelector<HTMLElement>(`[data-sheet="${sheet}"] :is([aria-invalid="true"], [data-invalid])`)?.focus();
-  }, [sheet, attempt]);
-  useEffect(() => () => window.clearTimeout(turning.current), []);
-
-  function turn(to: (s: BookSliderHandle) => void, focus: "heading" | "problem" = "heading") {
-    const s = slider.current;
-    if (!s || turning.current !== undefined) return;
-    focusNext.current = focus;
-    // Cleared when the sheet lands, or after a while if it never turns.
-    turning.current = window.setTimeout(() => (turning.current = undefined), 1500);
-    to(s);
-  }
-
-  function onPageChange(state: BookState) {
-    window.clearTimeout(turning.current);
-    turning.current = undefined;
-    setSheet(state.page);
-  }
-
-  function refuse(problems: SetupErrors, at: number) {
-    setErrors(problems);
-    setAttempt((n) => n + 1);
-    if (at === sheet) focusNext.current = "problem";
-    else turn((s) => s.turnTo(at), "problem");
-  }
-
-  function next() {
-    if (submitting || sheet >= REVIEW_SHEET || turning.current !== undefined) return;
-    const problems = validateSetupSheet(sheet, values);
-    if (Object.keys(problems).length) return refuse(problems, sheet);
-    setErrors({});
-    turn((s) => s.next());
-  }
-
-  function back() {
-    if (submitting) return;
-    setErrors({});
-    turn((s) => s.prev());
-  }
-
-  function change(to: number) {
-    if (submitting) return;
-    setErrors({});
-    turn((s) => s.turnTo(to));
-  }
-
-  async function begin() {
-    if (sending.current) return;
+  function begin() {
     const problem = validateSetup(values);
     if (problem) return refuse(problem.errors, problem.sheet);
-    sending.current = true;
-    // Audio must be unlocked inside the click (a user gesture).
-    unlockAudio();
-    setSubmitting(true);
-    setError(null);
-    // Walk to the room while the session is created; the walk holds at the door.
-    building?.walkTo("room", { hold: true });
-
-    const failed = (message: string) => {
-      building?.fail(message);
-      setError(message);
-      setSubmitting(false);
-      sending.current = false;
-    };
-    try {
-      const created = await createSession(sessionBody(values));
-      if (!created.ok) return failed(created.offline ? OFFLINE_MESSAGE : created.message);
-      const { sessionId, introLine } = created.data;
-      saveIntro(sessionId, introLine);
-      building?.release();
-      // Stay "submitting" through navigation so Begin cannot fire again.
-      router.push(`/interview/${sessionId}?input=${inputMode}`);
-    } catch {
-      failed(OFFLINE_MESSAGE);
-    }
+    void beginInterview(sessionBody(values), inputMode);
   }
 
   // Enter in a field turns the sheet; it never submits.
@@ -187,8 +98,6 @@ export function SetupForm({
       next();
     }
   }
-
-  const problemsOn = (at: number) => (at === sheet ? errors : {});
 
   const sheets = [
     <SetupSheet
@@ -242,6 +151,7 @@ export function SetupForm({
       <ResumeSelector
         latest={latestResume}
         roleText={job.source === "paste" ? job.roleText : ""}
+        value={resume}
         onChange={setResume}
         error={problemsOn(2).resume}
       />
@@ -254,7 +164,7 @@ export function SetupForm({
       onBack={back}
       onNext={next}
     >
-      <MicCheck onInputModeChange={onInputModeChange} />
+      <MicCheck typedByDefault={defaults?.inputMode === "typed"} onInputModeChange={onInputModeChange} />
       <p className="text-xs text-muted">
         Your voice is transcribed by your browser; we store text, never audio. Note that Chrome&rsquo;s speech
         recognition sends audio to Google to transcribe it. Prefer not to? Type your answers instead.

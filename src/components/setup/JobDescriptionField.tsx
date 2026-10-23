@@ -6,6 +6,7 @@
 import { useId } from "react";
 
 import { paperArea, paperField } from "@/components/ui/Clipboard";
+import { describedBy, FieldError } from "@/components/ui/Field";
 import type { JobValue, SetupErrors } from "@/lib/frontend/setup";
 import { LIMITS } from "@/lib/schemas";
 
@@ -25,7 +26,6 @@ export function JobDescriptionField({
 }) {
   const id = useId();
   const set = (patch: Partial<JobValue>) => onChange({ ...value, ...patch });
-  const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(" ") || undefined;
 
   return (
     <fieldset className="flex flex-col gap-4">
@@ -133,15 +133,5 @@ export function JobDescriptionField({
         </div>
       )}
     </fieldset>
-  );
-}
-
-/** A field's problem, under it; the sheet announces them together. */
-export function FieldError({ id, message }: { id: string; message?: string }) {
-  if (!message) return null;
-  return (
-    <p id={id} className="text-sm font-medium text-danger">
-      {message}
-    </p>
   );
 }

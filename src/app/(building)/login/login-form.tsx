@@ -12,11 +12,13 @@ import { useId, useState } from "react";
 import { useBuilding } from "@/components/building/BuildingProvider";
 import { Button } from "@/components/ui/Button";
 import { paperField } from "@/components/ui/Clipboard";
-import { friendlyAuthError, MIN_PASSWORD, usernameProblem, validateSignUp, type SignUpErrors } from "@/lib/frontend/account";
+import { describedBy } from "@/components/ui/Field";
+import { friendlyAuthError, MIN_PASSWORD, validateSignUp, type SignUpErrors } from "@/lib/frontend/account";
 import { createClient } from "@/lib/supabase/client";
 
+import { useUsernameCheck } from "./useUsernameCheck";
+
 type Mode = "signin" | "signup";
-type NameCheck = "idle" | "checking" | "available" | "taken";
 
 function Field({
   id,
@@ -27,13 +29,18 @@ function Field({
 }: React.InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; error?: string; hint?: React.ReactNode }) {
   // An error replaces the hint rather than stacking under it.
   if (error) hint = undefined;
-  const describedBy = [error && `${id}-error`, hint && `${id}-hint`].filter(Boolean).join(" ") || undefined;
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
-      <input id={id} className={paperField} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...input} />
+      <input
+        id={id}
+        className={paperField}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(error && `${id}-error`, !!hint && `${id}-hint`)}
+        {...input}
+      />
       {hint && (
         <p id={`${id}-hint`} className="text-xs text-muted" aria-live="polite">
           {hint}
@@ -59,7 +66,6 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [nameCheck, setNameCheck] = useState<NameCheck>("idle");
   const [fieldErrors, setFieldErrors] = useState<SignUpErrors>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,18 +91,7 @@ export function LoginForm() {
     const { data, error: rpcError } = await supabase.rpc("username_available", { name: name.trim() });
     return rpcError ? null : Boolean(data);
   }
-
-  async function checkUsername() {
-    const name = username.trim();
-    if (!name || usernameProblem(name)) {
-      setNameCheck("idle");
-      return;
-    }
-    setNameCheck("checking");
-    const free = await isAvailable(name);
-    // Unknown (the check itself failed): say nothing; the sign-up decides.
-    setNameCheck(free === null ? "idle" : free ? "available" : "taken");
-  }
+  const nameCheck = useUsernameCheck(isAvailable);
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
@@ -122,7 +117,7 @@ export function LoginForm() {
 
     setLoading(true);
     if ((await isAvailable(username)) === false) {
-      setNameCheck("taken");
+      nameCheck.taken();
       setFieldErrors({ username: "That username is taken. Pick another." });
       setLoading(false);
       return;
@@ -147,15 +142,16 @@ export function LoginForm() {
     enter();
   }
 
+  const nameStatus = nameCheck.status;
   const nameHint =
-    nameCheck === "checking"
+    nameStatus === "checking"
       ? "Checking…"
-      : nameCheck === "available"
+      : nameStatus === "available"
         ? "That username is free."
-        : nameCheck === "taken"
+        : nameStatus === "taken"
           ? undefined
           : "3–20 letters, numbers, dots or underscores. Yours alone.";
-  const nameError = fieldErrors.username ?? (nameCheck === "taken" ? "That username is taken. Pick another." : undefined);
+  const nameError = fieldErrors.username ?? (nameStatus === "taken" ? "That username is taken. Pick another." : undefined);
 
   return (
     <div className="flex flex-col gap-5">
@@ -218,10 +214,10 @@ export function LoginForm() {
             value={username}
             onChange={(e) => {
               setUsername(e.target.value);
-              setNameCheck("idle");
+              nameCheck.edited();
               setFieldErrors((errors) => ({ ...errors, username: undefined }));
             }}
-            onBlur={checkUsername}
+            onBlur={() => nameCheck.check(username)}
             hint={nameHint}
             error={nameError}
           />
@@ -263,7 +259,7 @@ export function LoginForm() {
               {error}
             </p>
           )}
-          <Button type="submit" disabled={loading || nameCheck === "taken"} className="mt-2">
+          <Button type="submit" disabled={loading || nameStatus === "taken"} className="mt-2">
             {loading ? "Creating your account…" : "Create account"}
           </Button>
         </form>
