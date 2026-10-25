@@ -235,6 +235,55 @@ describe("guards", () => {
   });
 });
 
+describe("the greeting: small talk before question 1", () => {
+  const GREETING = "Hi Dani, thanks for making the time today. How are you doing?";
+  const INTRO = "I'm Jordan, a software engineer on the team. Let's get started.";
+  const greeted = (s: RoomState) => run(s, { type: "INTRO", line: INTRO, greeting: GREETING });
+
+  it("asks how the candidate is, and nothing else, until they answer", () => {
+    const s = greeted(voice());
+    expect(s.speech).toEqual([GREETING]);
+    expect(s.greeting).toEqual({ line: GREETING, intro: INTRO });
+    expect(s.intro).toBeNull();
+  });
+
+  it("takes the answer through the usual phases without counting it as a turn", () => {
+    const answered = run(
+      greeted(voice()),
+      { type: "SPEECH_DONE" },
+      { type: "RECORD_START" },
+      { type: "LIVE_TEXT", text: "good and you" },
+      { type: "SUBMIT" },
+      { type: "GREETED", reply: "I'm doing great, thanks for asking." },
+    );
+    expect(answered.phase).toBe("speaking");
+    expect(answered.greeting).toBeNull();
+    expect(answered.turnSeq).toBe(0);
+    expect(answered.notes).toEqual([]);
+    expect(answered.draft).toBe("");
+    // The reply, the introduction, then question 1.
+    expect(answered.intro).toBe(`I'm doing great, thanks for asking. ${INTRO}`);
+    expect(answered.speech).toEqual([answered.intro, Q1.text]);
+  });
+
+  it("lets a typed candidate answer it too", () => {
+    const s = run(greeted(room()), { type: "SPEECH_DONE" }, { type: "DRAFT_CHANGED", text: "Good, you?" }, { type: "SUBMIT" });
+    expect(s.phase).toBe("submitting");
+    expect(run(s, { type: "GREETED", reply: "Glad to hear it." }).speech[1]).toBe(Q1.text);
+  });
+
+  it("ignores a greeting reply when no greeting is waiting, and a second intro while one is", () => {
+    const submitting = room({ phase: "submitting", draft: "x" });
+    expect(run(submitting, { type: "GREETED", reply: "Hi" })).toBe(submitting);
+    const waiting = greeted(room());
+    expect(run(waiting, { type: "INTRO", line: "again", greeting: "again" })).toBe(waiting);
+  });
+
+  it("opens straight on question 1 when the handoff carries no greeting", () => {
+    expect(run(room(), { type: "INTRO", line: INTRO, greeting: null }).speech).toEqual([INTRO, Q1.text]);
+  });
+});
+
 describe("idleStatus", () => {
   it("is quiet for the first 7 seconds", () => {
     expect(idleStatus(6_999, 0)).toEqual({ expired: false, secondsLeft: null });

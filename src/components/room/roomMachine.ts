@@ -6,6 +6,9 @@
  * The mic is disabled while the interviewer speaks; an answer is sent on Send
  * or after IDLE_SEND_MS of silence. It sequences the screen, never the
  * interview: nothing here branches on scores.
+ *
+ * A fresh interview opens with a greeting the candidate answers through the
+ * same phases; that answer goes nowhere (GREETED), then question 1 is asked.
  */
 
 import type { InputMode, NoteView, ProgressView, QuestionView } from "@/lib/frontend/types";
@@ -36,8 +39,14 @@ export interface RoomState {
   question: QuestionView;
   /** Lines to say on entering `speaking`, in order. */
   speech: string[];
-  /** The greeting from setup, shown above the first question. */
+  /** The line from setup that leads into the first question, shown above it. */
   intro: string | null;
+  /**
+   * The recruiter's greeting, while it waits for the candidate's reply. That
+   * reply is answered in the room (GREETED) and never sent as a turn; `intro`
+   * is what follows it.
+   */
+  greeting: { line: string; intro: string } | null;
   /** Answered turns. The next submit sends `turnSeq + 1`. */
   turnSeq: number;
   progress: ProgressView;
@@ -55,7 +64,10 @@ export interface RoomState {
 }
 
 export type RoomEvent =
-  | { type: "INTRO"; line: string }
+  /** The opening from setup; with a greeting, the candidate answers it before the first question. */
+  | { type: "INTRO"; line: string; greeting?: string | null }
+  /** The candidate answered the greeting; `reply` is the recruiter's answer to them. */
+  | { type: "GREETED"; reply: string }
   | { type: "SPEECH_DONE" }
   | { type: "DRAFT_CHANGED"; text: string }
   | { type: "RECORD_START" }
@@ -91,6 +103,7 @@ export function initRoom(input: {
     question: input.question,
     speech: spokenQuestion(input.question),
     intro: null,
+    greeting: null,
     turnSeq: input.turnSeq,
     progress: input.progress,
     notes: input.notes,
@@ -110,8 +123,24 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
   switch (event.type) {
     case "INTRO":
       // Only before the first answer.
-      if (state.turnSeq > 0 || state.phase !== "speaking") return state;
+      if (state.turnSeq > 0 || state.phase !== "speaking" || state.greeting) return state;
+      if (event.greeting) {
+        return { ...state, greeting: { line: event.greeting, intro: event.line }, speech: [event.greeting] };
+      }
       return { ...state, intro: event.line, speech: [event.line, ...state.speech] };
+
+    case "GREETED": {
+      if (state.phase !== "submitting" || !state.greeting) return state;
+      const intro = `${event.reply} ${state.greeting.intro}`.trim();
+      return {
+        ...state,
+        phase: "speaking",
+        greeting: null,
+        intro,
+        speech: [intro, ...spokenQuestion(state.question)],
+        draft: "",
+      };
+    }
 
     case "SPEECH_DONE":
       if (state.phase !== "speaking") return state;

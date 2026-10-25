@@ -13,7 +13,7 @@
 
 import { QUICK_PLAN_RESUME_ITEMS, wantsPlan, type PlanInputs } from "../ai/question-plan";
 import { questionFor } from "../engine/bank";
-import { introLineFor } from "../engine/notepad";
+import { greetingLineFor, introLineFor } from "../engine/opening";
 import { initState } from "../engine/policy";
 import { inferSeniority, roleFamily, type RoleFamily } from "../engine/roles";
 import type { EngineState, Question, ResumeItem, TopicId } from "../engine/types";
@@ -73,7 +73,9 @@ export type StartOutcome =
       state: EngineState;
       firstQuestion: Question;
       plan: QuestionPlan;
-      /** Spoken first; says so when job details were given but couldn't be used. */
+      /** Spoken first; the candidate's reply to it is answered in the room, never scored. */
+      greetingLine: string;
+      /** Spoken after the greeting: who is interviewing; says so when job details were given but couldn't be used. */
       introLine: string;
       /** The model tailored the plan; false means the role-family defaults. */
       personalized: boolean;
@@ -172,7 +174,13 @@ export async function startInterview(body: CreateSessionBody, deps: StartDeps): 
     firstQuestion,
     plan,
     // Job details were given, so the plan was wanted, but the model couldn't tailor it.
-    introLine: introLineFor(body.displayName, wantsPlan(planInputs) && !personalized),
+    greetingLine: greetingLineFor(body.displayName),
+    introLine: introLineFor({
+      family,
+      seniority: planInputs.seniority,
+      role: targetRole,
+      notTailored: wantsPlan(planInputs) && !personalized,
+    }),
     personalized,
     posting,
     coverageTotal: resumeItems.length,

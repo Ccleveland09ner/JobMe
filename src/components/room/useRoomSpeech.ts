@@ -51,7 +51,7 @@ export function useRoomSpeech({
         firstSpeech.current = false;
         const intro = openedAt === 0 ? takeIntro(sessionId) : null;
         if (intro) {
-          dispatch({ type: "INTRO", line: intro });
+          dispatch({ type: "INTRO", line: intro.line, greeting: intro.greeting });
           return; // INTRO re-queues speech; this effect runs again for it.
         }
       }

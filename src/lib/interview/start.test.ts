@@ -49,7 +49,9 @@ describe("startInterview", () => {
     expect(outcome.firstQuestion).toEqual({ text: questionFor("motivation", 1), type: "opening", topic: "motivation", difficulty: 1, source: "bank" });
     expect(outcome.personalized).toBe(false);
     // Nothing to tailor to, so nothing to apologise for.
-    expect(outcome.introLine).toMatch(/^Thanks for making the time, Kazu\./);
+    // Greeted by name first; the introduction comes after the candidate answers.
+    expect(outcome.greetingLine).toBe("Hi Kazu, thanks for making the time today. How are you doing?");
+    expect(outcome.introLine).toMatch(/^I'm Jordan, part of the hiring team, and I'll be interviewing you today\./);
     expect(outcome.introLine).not.toContain(NOT_TAILORED);
     // No title given: none is written over the one already saved.
     expect(profiles).toEqual([{ display_name: "Kazu" }]);
@@ -64,8 +66,12 @@ describe("startInterview", () => {
 
   it("chooses topics and the level from the job title", async () => {
     const { deps: d, profiles } = deps();
-    await startInterview(body({ targetRole: "Backend Engineering Intern" }), d);
+    const outcome = await startInterview(body({ targetRole: "Backend Engineering Intern" }), d);
     expect(d.defaultTopics).toHaveBeenCalledWith("software", QUICK_TOPICS);
+    // The interviewer does the job, and names the role.
+    expect(outcome.kind === "created" && outcome.introLine).toMatch(
+      /^I'm Jordan, a software engineer on the team, and I'll be interviewing you for the Backend Engineering Intern role today\./,
+    );
     expect(vi.mocked(d.generatePlan).mock.calls[0][0]).toMatchObject({ family: "software", seniority: "intern", targetRole: "Backend Engineering Intern" });
     expect(profiles).toEqual([{ display_name: "Kazu", target_role: "Backend Engineering Intern" }]);
   });

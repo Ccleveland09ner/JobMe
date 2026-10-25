@@ -45,8 +45,8 @@ export function useBeginInterview() {
     try {
       const created = await createSession(body);
       if (!created.ok) return failed(created.offline ? OFFLINE_MESSAGE : created.message);
-      const { sessionId, introLine } = created.data;
-      saveIntro(sessionId, introLine);
+      const { sessionId, greetingLine, introLine } = created.data;
+      saveIntro(sessionId, { greeting: greetingLine, line: introLine });
       // Left the page meanwhile: the route change already ended the walk, and the session waits in the ledger.
       if (!alive.current) return;
       building?.release();

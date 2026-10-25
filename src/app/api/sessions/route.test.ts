@@ -119,8 +119,9 @@ describe("POST /api/sessions", () => {
     expect(await res.json()).toEqual({
       sessionId: "new-session",
       mode: "quick",
+      greetingLine: "Hi Kazu, thanks for making the time today. How are you doing?",
       introLine:
-        "Thanks for making the time, Kazu. When I ask about your experience, examples from school, work, clubs or personal projects all count. Let's get started.",
+        "I'm Jordan, part of the hiring team, and I'll be interviewing you today. When I ask about your experience, examples from school, work, clubs or personal projects all count. Let's get started.",
       question: first,
       personalized: false,
       job: null,
