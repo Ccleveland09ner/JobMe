@@ -7,7 +7,8 @@
 
 import * as THREE from "three";
 
-import { INK, toonGradient } from "@/components/three/toon";
+import { INK } from "@/components/three/palette";
+import { toonGradient } from "@/components/three/toon";
 import { VISEMES, openness, type VisemeWeights } from "@/lib/voice/lipsync";
 
 import type { Look, RecruiterState, Speaker } from "./types";
@@ -134,6 +135,8 @@ export class RecruiterRig {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.frustumCulled = false; // skinned bounds lag the pose; never pop out
+      // Grounded by the building's key light; no shadow falls on the character itself.
+      mesh.castShadow = true;
       if (mesh.morphTargetDictionary) this.morphMeshes.push(mesh);
       const old = mesh.material as THREE.MeshStandardMaterial;
       const isGlasses = old.name === "Wolf3D_Glasses";

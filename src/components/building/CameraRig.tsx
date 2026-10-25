@@ -236,6 +236,8 @@ export function CameraRig() {
     }
     persp.position.set(c.tx + (c.px - c.tx) * back, c.ty + (c.py - c.ty) * back, c.tz + (c.pz - c.tz) * back);
     persp.lookAt(scratch.set(c.tx, c.ty, c.tz));
+    // What the camera looks at, for the key light's shadows (scene/Lighting.tsx).
+    (persp.userData.target ??= new THREE.Vector3()).copy(scratch);
     if (l.yaw || l.pitch) {
       persp.rotateY(-l.yaw);
       persp.rotateX(-l.pitch);

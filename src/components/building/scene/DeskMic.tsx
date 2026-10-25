@@ -105,10 +105,10 @@ export function DeskMic({ speaker, at }: { speaker: RefObject<Speaker>; at: Vec3
   return (
     <group position={at} scale={0.85}>
       {/* Base, stem and yoke */}
-      <mesh geometry={cylinder} material={m.metal} position={[0, 0.008, 0]} scale={[0.075, 0.016, 0.075]} />
+      <mesh geometry={cylinder} material={m.metal} position={[0, 0.008, 0]} scale={[0.075, 0.016, 0.075]} castShadow receiveShadow />
       <mesh geometry={cylinder} material={m.body} position={[0, 0.019, 0]} scale={[0.066, 0.006, 0.066]} />
-      <mesh geometry={cylinder} material={m.metal} position={[0, 0.05, 0]} scale={[0.013, 0.06, 0.013]} />
-      <mesh geometry={yoke} material={m.metal} position={[0, 0.135, 0]} rotation={[0, 0, Math.PI]} />
+      <mesh geometry={cylinder} material={m.metal} position={[0, 0.05, 0]} scale={[0.013, 0.06, 0.013]} castShadow />
+      <mesh geometry={yoke} material={m.metal} position={[0, 0.135, 0]} rotation={[0, 0, Math.PI]} castShadow />
       {[-1, 1].map((side) => (
         <group key={side}>
           <mesh geometry={cylinder} material={m.metal} position={[side * 0.058, 0.16, 0]} scale={[0.0065, 0.05, 0.0065]} />
@@ -117,8 +117,8 @@ export function DeskMic({ speaker, at }: { speaker: RefObject<Speaker>; at: Vec3
       ))}
 
       {/* Body, grille and the seam between them */}
-      <mesh geometry={body} material={m.body} position={[0, 0.18, 0]} />
-      <mesh geometry={grille} material={m.grille} position={[0, 0.29, 0]} />
+      <mesh geometry={body} material={m.body} position={[0, 0.18, 0]} castShadow receiveShadow />
+      <mesh geometry={grille} material={m.grille} position={[0, 0.29, 0]} castShadow receiveShadow />
       <mesh geometry={grilleMesh} material={grilleWire} position={[0, 0.29, 0]} />
       <mesh geometry={seam} material={m.metal} position={[0, 0.255, 0]} rotation={[Math.PI / 2, 0, 0]} />
 

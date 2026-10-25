@@ -1,9 +1,48 @@
 /**
- * Rounded rectangles extruded with a small bevel, cached per size (never
- * mutate one). XY plane, extruded toward +Z, back face at z = 0.
+ * The building's shapes, cached per size (never mutate one): boxes, and
+ * rounded rectangles extruded with a small bevel (XY plane, extruded toward
+ * +Z, back face at z = 0). UVs are in metres, so a detail texture keeps one
+ * scale on every surface.
  */
 
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+
+type Size = readonly [number, number, number];
+
+/** Which sizes each face's UVs run along: BoxGeometry builds ±X, ±Y, ±Z, in that order. */
+const FACE_AXES = [
+  [2, 1],
+  [2, 1],
+  [0, 2],
+  [0, 2],
+  [0, 1],
+  [0, 1],
+] as const;
+
+const boxes = new Map<string, THREE.BufferGeometry>();
+
+/**
+ * A box of `size` (full extents, centred), its edges rounded by `round`.
+ * uv1 keeps the 0–1 span across each face, for corner shade.
+ */
+export function box(size: Size, round = 0): THREE.BufferGeometry {
+  const key = `${size.join("|")}|${round}`;
+  let geometry = boxes.get(key);
+  if (!geometry) {
+    const [w, h, d] = size;
+    geometry = round > 0 ? new RoundedBoxGeometry(w, h, d, 2, round) : new THREE.BoxGeometry(w, h, d);
+    const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
+    geometry.setAttribute("uv1", uv.clone());
+    const perFace = uv.count / 6;
+    for (let i = 0; i < uv.count; i++) {
+      const [a, b] = FACE_AXES[Math.floor(i / perFace)];
+      uv.setXY(i, uv.getX(i) * size[a], uv.getY(i) * size[b]);
+    }
+    boxes.set(key, geometry);
+  }
+  return geometry;
+}
 
 function roundedRectPath<T extends THREE.Path>(path: T, w: number, h: number, r: number): T {
   const x = -w / 2;
@@ -52,6 +91,29 @@ export function roundedSlab({ w, h, r, depth, bevel = 0, hole }: SlabSpec): THRE
     // The bevel reaches past both faces; put the back face on z = 0.
     geometry.translate(0, 0, bevel);
     cache.set(key, geometry);
+  }
+  return geometry;
+}
+
+const crowns = new Map<number, THREE.BufferGeometry>();
+
+/** A low-poly crown of leaves, unit radius: an icosahedron nudged out of round, one variant per seed. */
+export function crown(seed: number): THREE.BufferGeometry {
+  let geometry = crowns.get(seed);
+  if (!geometry) {
+    geometry = new THREE.IcosahedronGeometry(1, 1);
+    const position = geometry.getAttribute("position");
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i);
+      const y = position.getY(i);
+      const z = position.getZ(i);
+      // A corner shared by several faces moves the same way in each.
+      const bulge = 1 + 0.12 * Math.sin(x * 12.99 + y * 78.23 + z * 37.72 + seed * 4.1);
+      position.setXYZ(i, x * bulge, y * bulge, z * bulge);
+    }
+    // Every face has its own corners, so this keeps the facets flat.
+    geometry.computeVertexNormals();
+    crowns.set(seed, geometry);
   }
   return geometry;
 }

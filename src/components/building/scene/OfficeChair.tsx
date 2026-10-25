@@ -36,32 +36,42 @@ export function OfficeChair({ at, rotationY = 0 }: { at: Vec3; rotationY?: numbe
   return (
     <group position={at} rotation={[0, rotationY, 0]}>
       {/* Base */}
-      <mesh geometry={columnGeometry} material={m.plastic} position={[0, 0.075, 0]} scale={[0.05, 0.05, 0.05]} />
+      <mesh geometry={columnGeometry} material={m.plastic} position={[0, 0.075, 0]} scale={[0.05, 0.05, 0.05]} castShadow receiveShadow />
       {legs.map((a) => (
         <group key={a} rotation={[0, a, 0]}>
-          <mesh geometry={legGeometry} material={m.plastic} position={[0, 0.065, 0.15]} rotation={[0.08, 0, 0]} scale={[0.045, 0.03, 0.3]} />
+          <mesh
+            geometry={legGeometry}
+            material={m.plastic}
+            position={[0, 0.065, 0.15]}
+            rotation={[0.08, 0, 0]}
+            scale={[0.045, 0.03, 0.3]}
+            castShadow
+            receiveShadow
+          />
           <mesh
             geometry={casterGeometry}
             material={m.plastic}
             position={[0, 0.028, 0.29]}
             rotation={[0, 0, Math.PI / 2]}
             scale={[0.028, 0.03, 0.028]}
+            castShadow
+            receiveShadow
           />
         </group>
       ))}
 
       {/* Gas lift: a shroud and the chrome column, then the seat mechanism. */}
-      <mesh geometry={columnGeometry} material={m.plastic} position={[0, 0.15, 0]} scale={[0.036, 0.12, 0.036]} />
-      <mesh geometry={columnGeometry} material={m.metal} position={[0, 0.3, 0]} scale={[0.024, 0.2, 0.024]} />
-      <mesh geometry={legGeometry} material={m.plastic} position={[0, 0.41, 0]} scale={[0.22, 0.04, 0.22]} />
+      <mesh geometry={columnGeometry} material={m.plastic} position={[0, 0.15, 0]} scale={[0.036, 0.12, 0.036]} castShadow receiveShadow />
+      <mesh geometry={columnGeometry} material={m.metal} position={[0, 0.3, 0]} scale={[0.024, 0.2, 0.024]} castShadow receiveShadow />
+      <mesh geometry={legGeometry} material={m.plastic} position={[0, 0.41, 0]} scale={[0.22, 0.04, 0.22]} castShadow receiveShadow />
 
       {/* Seat cushion */}
-      <RoundedBox args={[0.52, 0.1, 0.5]} radius={0.045} smoothness={4} position={[0, 0.47, 0.01]} material={m.fabric} />
+      <RoundedBox args={[0.52, 0.1, 0.5]} radius={0.045} smoothness={4} position={[0, 0.47, 0.01]} material={m.fabric} castShadow receiveShadow />
 
       {/* Back: a support spine, then the padded back with two seams, reclined a touch. */}
-      <mesh geometry={legGeometry} material={m.plastic} position={[0, 0.5, -0.24]} scale={[0.07, 0.12, 0.04]} />
+      <mesh geometry={legGeometry} material={m.plastic} position={[0, 0.5, -0.24]} scale={[0.07, 0.12, 0.04]} castShadow receiveShadow />
       <group position={[0, 0.86, -0.27]} rotation={[-0.12, 0, 0]}>
-        <RoundedBox args={[0.47, 0.58, 0.08]} radius={0.04} smoothness={4} material={m.fabric} />
+        <RoundedBox args={[0.47, 0.58, 0.08]} radius={0.04} smoothness={4} material={m.fabric} castShadow receiveShadow />
         <mesh geometry={legGeometry} material={m.seam} position={[0, 0.09, 0.041]} scale={[0.4, 0.006, 0.004]} />
         <mesh geometry={legGeometry} material={m.seam} position={[0, -0.06, 0.041]} scale={[0.4, 0.006, 0.004]} />
       </group>
@@ -69,8 +79,8 @@ export function OfficeChair({ at, rotationY = 0 }: { at: Vec3; rotationY?: numbe
       {/* T-shaped armrests */}
       {[-1, 1].map((side) => (
         <group key={side} position={[side * 0.3, 0, 0]}>
-          <mesh geometry={legGeometry} material={m.plastic} position={[0, 0.6, -0.04]} scale={[0.035, 0.2, 0.05]} />
-          <RoundedBox args={[0.075, 0.032, 0.26]} radius={0.014} smoothness={3} position={[0, 0.71, 0]} material={m.plastic} />
+          <mesh geometry={legGeometry} material={m.plastic} position={[0, 0.6, -0.04]} scale={[0.035, 0.2, 0.05]} castShadow receiveShadow />
+          <RoundedBox args={[0.075, 0.032, 0.26]} radius={0.014} smoothness={3} position={[0, 0.71, 0]} material={m.plastic} castShadow receiveShadow />
         </group>
       ))}
     </group>

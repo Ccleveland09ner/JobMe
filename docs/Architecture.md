@@ -53,6 +53,11 @@ How the code is organised, which way dependencies point, what the data layer gua
 ## The building and its documents
 
 - `BuildingProvider` holds the 3D office's state. `heldMachine.ts` is the single object being held (ledger, clipboard, reports folder or notepad), and `Liftable` flies it to the camera.
+- The office is lit, not inked:
+  - every surface takes a named finish (`three/finishes.ts`): a palette colour, a roughness, and a detail texture drawn in code (`three/textures.ts`);
+  - boxes carry UVs in metres, so a texture keeps one scale (`scene/shapes.ts`);
+  - one warm key light casts soft shadows, its shadow box centred on what the camera looks at (`scene/Lighting.tsx`);
+  - there is no post-processing, and the floating labels stay flat UI colours.
 - `StationLayer` is the DOM over the canvas:
   - `stationLayout.ts` holds its routing rules: path → layout, and path → held object.
   - `stationEffects.ts` holds its effects: heading focus, held sync, desk actions, camera inset.

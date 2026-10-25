@@ -6,10 +6,9 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import * as THREE from "three";
 
-import { glassMaterial } from "@/components/three/toon";
 import { prefersReducedMotion } from "@/lib/frontend/motion";
 
-import { Box, InkEdges, unitBox } from "./parts";
+import { Box } from "./parts";
 
 const OPEN_ANGLE = 1.45;
 
@@ -50,32 +49,19 @@ export function SwingDoor({
     <group ref={leaf} position={at}>
       {glass ? (
         <>
-          <mesh
-            geometry={unitBox}
-            material={glassMaterial}
-            position={[cx, height / 2, 0]}
-            scale={[width - frame * 2, height - frame * 2, 0.03]}
-          >
-            <InkEdges />
-          </mesh>
-          <Box size={[width, frame, 0.07]} at={[cx, height - frame / 2, 0]} color="ink" />
-          <Box size={[width, frame, 0.07]} at={[cx, frame / 2, 0]} color="ink" />
-          <Box size={[frame, height, 0.07]} at={[cx - (sign * (width - frame)) / 2, height / 2, 0]} color="ink" />
-          <Box size={[frame, height, 0.07]} at={[cx + (sign * (width - frame)) / 2, height / 2, 0]} color="ink" />
-          <Box size={[0.04, 0.5, 0.1]} at={[cx + sign * (width / 2 - 0.18), 1.05, 0.04]} color="trim" />
+          <Box size={[width - frame * 2, height - frame * 2, 0.03]} at={[cx, height / 2, 0]} finish="glass" />
+          <Box size={[width, frame, 0.07]} at={[cx, height - frame / 2, 0]} finish="iron" round={0.01} />
+          <Box size={[width, frame, 0.07]} at={[cx, frame / 2, 0]} finish="iron" round={0.01} />
+          <Box size={[frame, height, 0.07]} at={[cx - (sign * (width - frame)) / 2, height / 2, 0]} finish="iron" round={0.01} />
+          <Box size={[frame, height, 0.07]} at={[cx + (sign * (width - frame)) / 2, height / 2, 0]} finish="iron" round={0.01} />
+          <Box size={[0.04, 0.5, 0.1]} at={[cx + sign * (width / 2 - 0.18), 1.05, 0.04]} finish="brass" round={0.015} />
         </>
       ) : (
         <>
-          <Box size={[width, height, 0.06]} at={[cx, height / 2, 0]} color="wood" />
-          <mesh
-            geometry={unitBox}
-            material={glassMaterial}
-            position={[cx, height * 0.68, 0]}
-            scale={[0.16, 0.55, 0.08]}
-          >
-            <InkEdges />
-          </mesh>
-          <Box size={[0.12, 0.04, 0.08]} at={[cx + sign * (width / 2 - 0.14), 1.0, 0.05]} color="trim" />
+          {/* Turned a quarter, so the grain runs up the door. */}
+          <Box size={[height, width, 0.06]} at={[cx, height / 2, 0]} rotation={[0, 0, Math.PI / 2]} finish="wood" round={0.012} />
+          <Box size={[0.16, 0.55, 0.08]} at={[cx, height * 0.68, 0]} finish="glass" />
+          <Box size={[0.12, 0.04, 0.08]} at={[cx + sign * (width / 2 - 0.14), 1.0, 0.05]} finish="brass" round={0.015} />
         </>
       )}
     </group>

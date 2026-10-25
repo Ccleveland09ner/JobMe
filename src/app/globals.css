@@ -32,7 +32,7 @@
   /* Evidence highlight in the transcript. */
   --color-highlight: #fdf2c4;
 
-  /* Scene colours for the 3D building, mirrored in components/three/toon.ts PALETTE. */
+  /* Scene colours for the 3D building, mirrored in components/three/palette.ts PALETTE. */
   --color-sky: #f3ece0;
   --color-wall: #efe6d8;
   --color-trim: #d8c9b2;
@@ -56,7 +56,7 @@
   --color-paper-shade: #ece4d4;
   --color-rule: #c8d5e2; /* ruled lines on the paper */
 
-  /* Held objects (components/held), also mirrored in toon.ts PALETTE. */
+  /* Held objects (components/held), also mirrored in palette.ts PALETTE. */
   --color-leather-light: #8a3f37;
   --color-leather: #6b2f2a;
   --color-leather-dark: #4a1f1b;
