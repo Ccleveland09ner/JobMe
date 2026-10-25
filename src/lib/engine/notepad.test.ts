@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { introLineFor, reasonLine, transitionLead } from "./notepad";
+import { reasonLine, transitionLead } from "./notepad";
 import { DIMENSIONS } from "./types";
 
 describe("reasonLine", () => {
@@ -18,18 +18,6 @@ describe("reasonLine", () => {
   it("marks a new topic and the wrap", () => {
     expect(reasonLine("opening", "relevance", "weak")).toBe("New topic");
     expect(reasonLine("wrap", "relevance", "great")).toBe("Enough covered → wrapping up");
-  });
-});
-
-describe("introLineFor", () => {
-  it("greets the candidate by name and says any real experience counts", () => {
-    expect(introLineFor("Kazu")).toBe(
-      "Thanks for making the time, Kazu. When I ask about your experience, examples from school, work, clubs or personal projects all count. Let's get started.",
-    );
-  });
-
-  it("says out loud when the questions couldn't be tailored to the job", () => {
-    expect(introLineFor("Kazu", true)).toMatch(/^Thanks for making the time, Kazu\. I couldn't tailor every question .* Let's get started\.$/);
   });
 });
 

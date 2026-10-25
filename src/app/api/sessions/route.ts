@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     sessionId: outcome.sessionId,
     mode: state.mode,
+    greetingLine: outcome.greetingLine,
     introLine: outcome.introLine,
     question: outcome.firstQuestion,
     /** False when nothing was given to personalise, or the plan call failed (the setup screen says so). */

@@ -69,6 +69,9 @@ export interface NoteView {
 export interface CreateSessionResponse {
   sessionId: string;
   mode: InterviewMode;
+  /** The interviewer's greeting, answered before the first question and never scored. */
+  greetingLine: string;
+  /** Said once the greeting is answered: who is interviewing, then into the questions. */
   introLine: string;
   question: QuestionView & { difficulty: number };
   personalized: boolean;

@@ -103,6 +103,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
     dispatch,
     voiceActive: voice.isActive,
     finishVoice: voice.finish,
+    greeting: state.greeting !== null,
   });
 
   // Controls.
@@ -173,17 +174,18 @@ export function InterviewRoom(props: InterviewRoomProps) {
         aria-label="Interviewer"
         className="pointer-events-auto absolute inset-x-3 top-16 mx-auto max-w-md md:left-1/2 md:right-auto md:top-[8vh] md:mx-0 md:ml-[4vw] md:w-[min(28rem,38vw)]"
       >
-        <SpeechBubble key={`${state.question.text}|${state.wrapLine ?? ""}`} tail="down-left" label="Interviewer">
+        <SpeechBubble key={`${state.greeting?.line ?? state.question.text}|${state.wrapLine ?? ""}`} tail="down-left" label="Interviewer">
           {state.phase === "done" && state.wrapLine ? (
             <p aria-live="polite" className="text-xl leading-relaxed text-ink">
               {state.wrapLine}
             </p>
           ) : (
             <div className="max-h-[34vh] overflow-y-auto">
+              {/* The greeting stands alone; question 1 waits until it is answered. */}
               <Captions
-                text={state.question.text}
-                lead={state.question.lead}
-                intro={state.intro}
+                text={state.greeting?.line ?? state.question.text}
+                lead={state.greeting ? null : state.question.lead}
+                intro={state.greeting ? null : state.intro}
                 spoken={state.phase === "speaking" ? state.speech.join(" ").trim() : null}
                 readSpokenWord={readSpokenWord}
               />
