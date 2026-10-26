@@ -80,6 +80,17 @@
   --font-sans: "Comic Sans MS", "Comic Sans", var(--font-comic-neue), cursive;
   --font-mono: var(--font-geist-mono);
 
+  /* The landing tagline appearing once it is picked (components/building/landing/Tagline). */
+  --animate-tagline-in: tagline-in 700ms ease-out both;
+  @keyframes tagline-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   /* The recruiter's nod as listening starts (components/room/Avatar). */
   --animate-avatar-nod: avatar-nod 520ms ease-in-out;
   @keyframes avatar-nod {
@@ -119,6 +130,13 @@ body {
 }
 :root[data-sky-snap] .sky-title {
   transition: none;
+}
+/* The tagline is smaller and crosses the pale cornice: a tighter shadow keeps it crisp. */
+:root[data-sky="dusk"] .sky-tagline,
+:root[data-sky="night"] .sky-tagline {
+  text-shadow:
+    0 1px 2px rgb(20 16 40 / 0.6),
+    0 2px 16px rgb(10 14 40 / 0.45);
 }
 
 /* Visible focus states are a requirement, not a polish item. */

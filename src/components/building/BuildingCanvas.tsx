@@ -17,6 +17,7 @@ import { LETTERING_FONT } from "@/components/three/lettering";
 
 import { useBuilding } from "./BuildingProvider";
 import { CameraRig } from "./CameraRig";
+import { LandingScene } from "./landing/LandingScene";
 import { Corridor } from "./scene/Corridor";
 import { InterviewRoomScene } from "./scene/InterviewRoom";
 import { Lighting } from "./scene/Lighting";
@@ -89,6 +90,7 @@ export default function BuildingCanvas() {
       <Lighting />
 
       <Street doorsOpen={frontDoorsOpen} />
+      <LandingScene />
       <Lobby />
       <Corridor doorOpen={roomDoorOpen} />
       <InterviewRoomScene speaker={speaker} />

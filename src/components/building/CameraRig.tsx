@@ -14,6 +14,7 @@ import * as THREE from "three";
 import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "./BuildingProvider";
+import { isPoster, POSTER_CLOSE_UPS, POSTER_GLIDE_SECONDS } from "./landing/layout";
 import { fovFor, NOTE_CLOSE_UPS, pathBetween, POSES, type Pose, type Station } from "./stations";
 import type { BoardNote } from "./world";
 
@@ -75,8 +76,8 @@ export function CameraRig() {
     latest.current = state;
   });
 
-  /** Tween through `poses`, coming to rest at `arrivesAt` (null: a waypoint). */
-  const travel = (poses: Pose[], arrivesAt: Station | null, done: () => void) => {
+  /** Tween through `poses`, coming to rest at `arrivesAt` (null: a waypoint); each leg `seconds` long, or paced. */
+  const travel = (poses: Pose[], arrivesAt: Station | null, done: () => void, seconds?: number) => {
     timeline.current?.kill();
     const reduced = prefersReducedMotion();
     setCameraAt(null);
@@ -91,8 +92,8 @@ export function CameraRig() {
     for (const pose of poses) {
       const to = valuesOf(pose);
       const distance = Math.hypot(to.px - from.px, to.py - from.py, to.pz - from.pz);
-      const duration = reduced ? 0 : Math.min(MAX_LEG, Math.max(MIN_LEG, distance / PACE));
-      tl.to(cam.current, { ...to, duration, ease: "power1.inOut", onComplete: () => void trail.current.push(pose) });
+      const duration = reduced ? 0 : (seconds ?? Math.min(MAX_LEG, Math.max(MIN_LEG, distance / PACE)));
+      tl.to(cam.current, { ...to, duration, ease: seconds === undefined ? "power1.inOut" : "power2.inOut", onComplete: () => void trail.current.push(pose) });
       from = to;
     }
     timeline.current = tl;
@@ -158,12 +159,18 @@ export function CameraRig() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.station, state.target]);
 
-  // Glide to a note's close-up and back. Only on change; route glides are above.
+  // Glide to a note's or a poster's close-up and back. Only on change; route glides are above.
   const lastFocus = useRef(focus);
   useEffect(() => {
     if (lastFocus.current === focus) return;
     lastFocus.current = focus;
-    if (state.station !== "noteboard" || state.target !== null) return;
+    if (state.target !== null) return;
+    if (state.station === "street") {
+      // Straight from poster to poster too; a new glide replaces one under way.
+      travel([isPoster(focus) ? POSTER_CLOSE_UPS[focus] : POSES.street], "street", () => {}, POSTER_GLIDE_SECONDS);
+      return;
+    }
+    if (state.station !== "noteboard") return;
     const closeUp = focus && focus in NOTE_CLOSE_UPS ? NOTE_CLOSE_UPS[focus as BoardNote] : null;
     travel([closeUp ?? POSES.noteboard], "noteboard", () => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
