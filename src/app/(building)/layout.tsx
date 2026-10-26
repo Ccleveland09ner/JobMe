@@ -8,6 +8,7 @@ import { Suspense, type ReactNode } from "react";
 import { Announcer } from "@/components/building/Announcer";
 import { BuildingBackdrop } from "@/components/building/BuildingBackdrop";
 import { BuildingProvider } from "@/components/building/BuildingProvider";
+import { LobbyMusic } from "@/components/building/LobbyMusic";
 import { StationLayer } from "@/components/building/StationLayer";
 
 export default function BuildingLayout({ children }: { children: ReactNode }) {
@@ -25,6 +26,7 @@ export default function BuildingLayout({ children }: { children: ReactNode }) {
         <StationLayer>{children}</StationLayer>
       </Suspense>
       <Announcer />
+      <LobbyMusic />
     </BuildingProvider>
   );
 }

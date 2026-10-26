@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { FALLBACK_DEFAULTS, parseDefaults } from "./preferences";
+import { FALLBACK_DEFAULTS, parseDefaults, parseLobbyMusic } from "./preferences";
 
 describe("parseDefaults", () => {
   it("reads a stored value", () => {
@@ -20,5 +20,18 @@ describe("parseDefaults", () => {
       inputMode: "typed",
     });
     expect(parseDefaults(JSON.stringify({}))).toEqual(FALLBACK_DEFAULTS);
+  });
+});
+
+describe("parseLobbyMusic", () => {
+  it("is on until it is turned off", () => {
+    expect(parseLobbyMusic(null)).toBe(true);
+    expect(parseLobbyMusic("on")).toBe(true);
+    expect(parseLobbyMusic("off")).toBe(false);
+  });
+
+  it("treats anything unknown as on", () => {
+    expect(parseLobbyMusic("")).toBe(true);
+    expect(parseLobbyMusic("loud")).toBe(true);
   });
 });

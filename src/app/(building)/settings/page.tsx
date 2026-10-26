@@ -1,6 +1,6 @@
 /**
- * Settings: what is written on the 3D notice board's notes (interview
- * defaults, account). The profile read is not essential.
+ * Settings: what is written on the 3D notice board's notes (preferences and
+ * account). The profile read is not essential.
  */
 
 import { AccountNote } from "@/components/settings/AccountNote";
@@ -17,7 +17,7 @@ export default async function SettingsPage() {
   return (
     <BoardNotes
       notes={[
-        { name: "defaults", title: "Interview defaults", content: <DefaultsNote /> },
+        { name: "defaults", title: "Preferences", content: <DefaultsNote /> },
         {
           name: "account",
           title: "Account",
