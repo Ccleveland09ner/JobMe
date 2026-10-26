@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { StepOutside } from "@/components/building/StepInside";
 import { Clipboard } from "@/components/ui/Clipboard";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,9 +19,13 @@ export default async function LoginPage() {
 
   return (
     <Clipboard>
-      <Link href="/" className="mb-4 inline-block text-sm font-semibold uppercase tracking-widest text-muted hover:text-ink">
-        JobMe
-      </Link>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold uppercase tracking-widest text-muted">JobMe</p>
+        {/* The way back out, to the street in front of the building. */}
+        <StepOutside className="text-sm font-semibold text-muted underline-offset-4 hover:text-ink hover:underline">
+          <span aria-hidden="true">←</span> Back outside
+        </StepOutside>
+      </div>
       <LoginForm />
     </Clipboard>
   );

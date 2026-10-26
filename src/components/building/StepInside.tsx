@@ -1,6 +1,9 @@
 "use client";
 
-/** The way in: a real link to /login; with the 3D building it walks to the door first. */
+/**
+ * The ways in and out of the building: real links (to /login, and back to the
+ * street at /); with the 3D building, the camera walks there first.
+ */
 
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -11,6 +14,15 @@ export function StepInside({ className, children }: { className?: string; childr
   const building = useBuilding();
   return (
     <Link href="/login" className={className} onClick={() => building?.walkTo("entrance")}>
+      {children}
+    </Link>
+  );
+}
+
+export function StepOutside({ className, children }: { className?: string; children: ReactNode }) {
+  const building = useBuilding();
+  return (
+    <Link href="/" className={className} onClick={() => building?.walkTo("street")}>
       {children}
     </Link>
   );
