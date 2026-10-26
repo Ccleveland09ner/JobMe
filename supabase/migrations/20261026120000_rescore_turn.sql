@@ -1,9 +1,11 @@
--- rescore_turn: the report fills in a turn that live scoring missed.
+-- rescore_turn: fills in a turn that live scoring missed.
 --
--- A turn whose evaluation timed out is saved with scores null. When the
--- report is filed, with no candidate waiting on the next question, it scores
--- each such question again and writes the result onto that question's last
--- turn, so the scorecard, the ledger and the trend line all see it.
+-- A turn whose evaluation outlasts the live wait is saved with scores null,
+-- and the interview moves on. Two callers then fill it in, so the scorecard,
+-- the ledger and the trend line all see the score:
+--   - the turn route, when that same evaluation lands a few seconds later;
+--   - the report, which scores again any question still unscored when it is
+--     filed, onto that question's last turn.
 --
 -- Users lost UPDATE on turns in 20261022120000, so this is `security definer`
 -- and does its own checks: the turn must be the caller's, and still unscored.

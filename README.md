@@ -176,7 +176,7 @@ Configure the same environment variables on the deployment host and update the S
 | `NEXT_PUBLIC_SUPABASE_URL` | Required Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Required public client key. `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as a legacy alternative; set one of them. |
 | `GEMINI_API_KEY` | Server-side key for scoring, personalization, résumé processing, and report text. |
-| `LLM_MODEL` | Defaults in code to `gemini-3.1-flash-lite`. Override for the model available to your project and verify it with the probe scripts. |
+| `LLM_MODEL` | Defaults in code to `gemini-3.5-flash-lite`. Override for the model available to your project and verify it with the probe scripts. |
 | `EMBED_MODEL` | Defaults to `gemini-embedding-001`; résumé embeddings use 768 dimensions. |
 | `TTS_PROVIDER` | Use `browser` for browser speech, or `elevenlabs` to enable the neural voice proxy. |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | Required only for ElevenLabs speech. |

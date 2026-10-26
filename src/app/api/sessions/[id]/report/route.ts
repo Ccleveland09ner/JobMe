@@ -14,6 +14,7 @@ import {
 } from "@/lib/interview/report";
 import { jobForPrompt, parsePlan } from "@/lib/plan";
 import { pickScores, reportFromRow } from "@/lib/stats";
+import { saveTurnScore } from "@/lib/supabase/rescore";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -126,16 +127,6 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
       if (error) throw new Error(`complete session: ${error.message}`);
     },
 
-    async saveRescore(turnId, rescore) {
-      // Returns false when the turn was already scored (a concurrent report won): nothing to do.
-      const { error } = await supabase.rpc("rescore_turn", {
-        p_turn_id: turnId,
-        p_scores: rescore.scores,
-        p_band: rescore.band,
-        p_primary_gap: rescore.primaryGap,
-        p_notepad_text: rescore.observation || null,
-      });
-      if (error) throw new Error(`rescore turn: ${error.message}`);
-    },
+    saveRescore: (turnId, rescore) => saveTurnScore(supabase, turnId, rescore),
   };
 }

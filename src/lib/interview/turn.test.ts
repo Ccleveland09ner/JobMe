@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EvalError, type RawEvaluation } from "../ai/evaluate";
 import { fallbackResumeQuestion } from "../ai/resume-questions";
 import { questionFor } from "../engine/bank";
-import { FULLY_ANSWERED_LINE, SCORING_FAILED_LINE } from "../engine/notepad";
+import { FULLY_ANSWERED_LINE, SCORING_FAILED_LINE, SCORING_LATE_LINE } from "../engine/notepad";
 import { initState } from "../engine/policy";
 import type { EngineState, Question, ResumeItem, Scores } from "../engine/types";
 import type { QuestionPlan } from "../schemas";
@@ -19,6 +19,7 @@ import {
   turnResponseBody,
   turnRowFor,
   submitAnswer,
+  type LateScore,
   type TurnStore,
   type TurnContext,
   type TurnResult,
@@ -579,6 +580,7 @@ describe("submitAnswer", () => {
 
   function memoryStore(patch: Partial<{ status: string; state: EngineState; submitError: { code?: string; message: string } | null; winner: EngineState }> = {}) {
     const submitted: Record<string, unknown>[] = [];
+    const lateScores = new Map<string, LateScore>();
     const store: TurnStore = {
       load: async () => ({
         session: { engine_state: patch.state ?? freshState(), resume_id: null, status: patch.status ?? "in_progress", role_text: null, question_plan: null },
@@ -587,12 +589,59 @@ describe("submitAnswer", () => {
       loadResume: async () => null,
       submit: async (_state, turn) => {
         submitted.push(turn);
-        return patch.submitError ?? null;
+        return { error: patch.submitError ?? null, turnId: `turn-${submitted.length}` };
       },
       reloadState: async () => patch.winner ?? null,
+      saveLateScore: async (turnId, score) => {
+        lateScores.set(turnId, score);
+      },
     };
-    return { store, submitted };
+    return { store, submitted, lateScores };
   }
+
+  it("saves a score that outlasted the live wait onto the turn, once it lands", async () => {
+    const { store, submitted, lateScores } = memoryStore();
+    let land!: (e: RawEvaluation) => void;
+    const slow = new Promise<RawEvaluation>((resolve) => (land = resolve));
+
+    const outcome = await submitAnswer(ANSWER_BODY, store, {
+      runTurn: (c) => runTurn({ ...c, evaluate: () => slow, liveTimeoutMs: 5 }),
+    });
+
+    if (outcome.kind !== "saved") throw new Error("expected a saved turn");
+    // Saved unscored, and the interview moved on rather than following up.
+    expect(submitted[0]).toMatchObject({ scores: null, degraded_reason: "timeout", notepad_text: SCORING_LATE_LINE });
+    expect(outcome.result.move).toBe("opening");
+    expect(outcome.settleLate).not.toBeNull();
+
+    land(raw(flat(4)));
+    await outcome.settleLate!();
+    expect(lateScores.get("turn-1")).toMatchObject({ scores: flat(4), band: "great", observation: "Clear ownership; outcome quantified" });
+  });
+
+  it("has nothing to settle when the score came back in time, or failed outright", async () => {
+    const onTime = await submitAnswer(ANSWER_BODY, memoryStore().store, { runTurn: (c) => runTurn({ ...c, evaluate: async () => raw(flat(3)) }) });
+    const failed = await submitAnswer(ANSWER_BODY, memoryStore().store, {
+      runTurn: (c) => runTurn({ ...c, evaluate: async () => { throw new EvalError("quota", true); } }),
+    });
+    expect(onTime).toMatchObject({ kind: "saved", settleLate: null });
+    expect(failed).toMatchObject({ kind: "saved", settleLate: null });
+  });
+
+  it("saves nothing when the late evaluation fails after all", async () => {
+    const { store, lateScores } = memoryStore();
+    let fail!: (e: Error) => void;
+    const slow = new Promise<RawEvaluation>((_, reject) => (fail = reject));
+
+    const outcome = await submitAnswer(ANSWER_BODY, store, {
+      runTurn: (c) => runTurn({ ...c, evaluate: () => slow, liveTimeoutMs: 5 }),
+    });
+    if (outcome.kind !== "saved") throw new Error("expected a saved turn");
+
+    fail(new EvalError("503"));
+    await outcome.settleLate!();
+    expect(lateScores.size).toBe(0);
+  });
 
   it("saves an answered turn through the store", async () => {
     const { store, submitted } = memoryStore();

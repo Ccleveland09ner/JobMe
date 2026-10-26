@@ -21,8 +21,8 @@ import {
   type ReportPromptQuestion,
 } from "../ai/report";
 import { TOPICS } from "../engine/topics";
-import { QUESTION_TYPES, type Band, type Dimension, type QuestionType, type StoredScores, type TopicId } from "../engine/types";
-import { judgeAnswer } from "./turn";
+import { QUESTION_TYPES, type QuestionType, type StoredScores, type TopicId } from "../engine/types";
+import { judgeAnswer, type LateScore } from "./turn";
 import {
   groupIntoQuestions,
   overallScoresFrom,
@@ -67,13 +67,8 @@ export interface ReportSessionRow {
   seniority?: string | null;
 }
 
-/** What a re-score writes onto the turn live scoring missed. */
-export interface Rescore {
-  scores: StoredScores;
-  band: Band;
-  primaryGap: Dimension;
-  observation: string;
-}
+/** What a re-score writes onto the turn live scoring missed: the same as a late score. */
+export type Rescore = LateScore;
 
 export interface ReportStore {
   loadSession(): Promise<ReportSessionRow | null>;

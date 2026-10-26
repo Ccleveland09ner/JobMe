@@ -29,7 +29,7 @@ export function NotepadEntry({ note, headingLevel = "h3" }: { note: NoteView; he
 
       {note.degraded || !note.scores ? (
         <p className="rounded-lg bg-sunken px-3 py-2 text-sm text-ink">
-          Scoring unavailable for this answer. The interview continued with a standard follow-up.
+          Not scored yet. The score is added to your scorecard once it&apos;s ready.
         </p>
       ) : (
         <ScoreList scores={note.scores} highlight={note.primaryGap} compact />
