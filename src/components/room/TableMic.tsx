@@ -9,7 +9,8 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { MicState } from "./types";
 
-const LABEL: Record<Exclude<MicState, "off">, string> = {
+/** The mic's accessible name, by state (here and on PinnedMic, the 3D room's). */
+export const MIC_LABEL: Record<Exclude<MicState, "off">, string> = {
   disabled: "Microphone unavailable while the interviewer is speaking",
   ready: "Start answering",
   recording: "Send answer",
@@ -42,7 +43,7 @@ export function TableMic({ state, onToggle }: { state: Exclude<MicState, "off">;
     <div className="relative flex flex-col items-center">
       <button
         type="button"
-        aria-label={LABEL[state]}
+        aria-label={MIC_LABEL[state]}
         aria-pressed={live}
         aria-disabled={disabled}
         onClick={press}

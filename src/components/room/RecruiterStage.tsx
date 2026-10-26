@@ -15,7 +15,7 @@ import { webglAvailable } from "@/lib/frontend/webgl";
 import type { VisemeWeights } from "@/lib/voice/lipsync";
 
 import { Avatar, type AvatarProps } from "./Avatar";
-import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
+import { Desk, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
 import { RECRUITER_STATE_TEXT, type MicControl } from "./types";
 
 // Browser-only: WebGL and three.js cannot render on the server.
@@ -78,7 +78,6 @@ export function RecruiterStage({
             <svg viewBox={SCENE_VIEWBOX} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" strokeLinecap="round" strokeLinejoin="round">
               <Desk />
               <ThoughtDots visible={state === "thinking"} />
-              <DeskMic listening={state === "listening"} />
             </svg>
           </div>
         </div>

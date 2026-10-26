@@ -10,7 +10,7 @@ import { useEffect, useRef } from "react";
 
 import { prefersReducedMotion } from "@/lib/frontend/motion";
 
-import { Desk, DeskMic, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
+import { Desk, SCENE_VIEWBOX, ThoughtDots, Whiteboard } from "./RoomScenery";
 import { RECRUITER_STATE_TEXT, type RecruiterState } from "./types";
 
 export interface AvatarProps {
@@ -94,8 +94,6 @@ export function Avatar({ state, readMouth }: AvatarProps) {
       setEyes(EYE_RY);
     };
   }, []);
-
-  const listening = state === "listening";
 
   return (
     <figure className="flex flex-col items-center gap-2">
@@ -194,8 +192,6 @@ export function Avatar({ state, readMouth }: AvatarProps) {
           <ellipse cx={127} cy={170} rx={11} ry={7} />
           <path d="M117 165q4 5 0 10M123 165q-4 5 0 10" className="fill-none" />
         </g>
-
-        <DeskMic listening={listening} />
       </svg>
       {/* Not a live region: the captions and controls already announce changes. */}
       <figcaption className="text-xs text-muted">Interviewer · {RECRUITER_STATE_TEXT[state]}</figcaption>

@@ -2,18 +2,12 @@
 
 export const SCENE_VIEWBOX = "0 0 240 200";
 
-/** Whiteboard behind the recruiter, as in the reference room. */
+/** The chalkboard behind the recruiter: green, in a wooden frame, a few lines of chalk. */
 export function Whiteboard() {
   return (
-    <g className="stroke-ink" strokeWidth={2}>
-      <rect x={40} y={14} width={160} height={78} rx={4} className="fill-surface" />
-      <g className="fill-none">
-        <circle cx={47} cy={21} r={2.4} />
-        <circle cx={193} cy={21} r={2.4} />
-        <circle cx={47} cy={85} r={2.4} />
-        <circle cx={193} cy={85} r={2.4} />
-        <path d="M54 34h34M54 42h30M54 50h26" />
-      </g>
+    <g strokeWidth={2}>
+      <rect x={40} y={14} width={160} height={78} rx={4} className="fill-chalkboard stroke-wood" strokeWidth={5} />
+      <path d="M54 34h34M54 42h30M54 50h26" className="fill-none stroke-paper" />
     </g>
   );
 }
@@ -39,26 +33,3 @@ export function ThoughtDots({ visible }: { visible: boolean }) {
   );
 }
 
-/** The desk mic: ink normally, teal with rays while the candidate records. */
-export function DeskMic({ listening }: { listening: boolean }) {
-  return (
-    <g className={listening ? "stroke-accent" : "stroke-ink"} strokeWidth={2}>
-      <ellipse cx={120} cy={196} rx={14} ry={3.5} className={listening ? "fill-accent" : "fill-ink"} />
-      <circle cx={120} cy={185} r={9} className="fill-surface" />
-      <rect
-        x={117.5}
-        y={179}
-        width={5}
-        height={8}
-        rx={2.5}
-        className={listening ? "fill-accent" : "fill-ink"}
-        strokeWidth={0}
-      />
-      <path d="M115 185q0 5 5 5t5-5M120 190v3" className="fill-none" strokeWidth={1.5} />
-      <path
-        d="M104 180l-5-3M136 180l5-3M103 188h-6M137 188h6"
-        className={`fill-none transition-opacity ${listening ? "opacity-100" : "opacity-0"}`}
-      />
-    </g>
-  );
-}

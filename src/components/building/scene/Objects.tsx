@@ -168,17 +168,19 @@ function Clipboard() {
 
 const ringGeometry = new THREE.TorusGeometry(0.013, 0.0016, 8, 24);
 
-/** A spiral-bound notepad: card back, a block of pages, wire rings round the top edge. */
+/** A spiral-bound notepad, shut: its mustard cover over a block of pages, wire rings round the top edge. */
 function Notepad() {
   const gl = useThree((s) => s.gl);
   const pages = usePageBlock();
   const wire = finishMaterial(gl, "clipmetal");
   return (
     <group>
-      <Box size={[0.2, 0.004, 0.28]} at={[0, 0.002, 0]} finish="fabric" round={0.0015} cast />
+      {/* Back board, the pages, and the mustard cloth cover closed over them. */}
+      <Box size={[0.2, 0.004, 0.28]} at={[0, 0.002, 0]} finish="notepad" round={0.0015} cast />
       <mesh geometry={box([0.19, 0.018, 0.268])} material={pages} position={[0, 0.013, 0.004]} castShadow receiveShadow />
+      <Box size={[0.2, 0.004, 0.272]} at={[0, 0.024, 0.006]} finish="notepad" round={0.0015} cast />
       {[-0.07, -0.035, 0, 0.035, 0.07].map((x) => (
-        <mesh key={x} geometry={ringGeometry} material={wire} position={[x, 0.013, -0.13]} rotation={[0, Math.PI / 2, 0]} castShadow />
+        <mesh key={x} geometry={ringGeometry} material={wire} position={[x, 0.015, -0.13]} rotation={[0, Math.PI / 2, 0]} castShadow />
       ))}
     </group>
   );

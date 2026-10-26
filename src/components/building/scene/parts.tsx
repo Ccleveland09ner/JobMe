@@ -109,6 +109,12 @@ export function Pane({
 const trunkGeometry = new THREE.CylinderGeometry(0.08, 0.12, 1, 10);
 const potGeometry = new THREE.CylinderGeometry(0.21, 0.15, 0.45, 24);
 const soilGeometry = new THREE.CylinderGeometry(0.19, 0.19, 0.02, 24);
+/** The flower pot's: a terracotta pot with its rim, its soil, a stem. */
+const flowerPotGeometry = new THREE.CylinderGeometry(0.055, 0.04, 0.1, 24);
+const flowerRimGeometry = new THREE.TorusGeometry(0.056, 0.008, 8, 24);
+const flowerSoilGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.006, 24);
+const stemGeometry = new THREE.CylinderGeometry(0.0025, 0.003, 1, 6);
+const pollenGeometry = new THREE.SphereGeometry(1, 10, 8);
 
 /** Faceted leaves: one crown of `seed`, at `at`, stretched to `scale`. */
 function Leaves({ seed, at, scale }: { seed: number; at: Vec3; scale: Vec3 }) {
@@ -153,6 +159,38 @@ export function PottedPlant({ at }: { at: Vec3 }) {
   );
 }
 
+/** The blooms: how high each stem reaches, and how it leans (about z, about x). */
+const BLOOMS: [number, number, number][] = [
+  [0.27, 0, 0],
+  [0.235, 0.16, 0.06],
+  [0.225, -0.18, -0.06],
+];
+
+/** A small flower pot for a table: terracotta, three faceted blooms on thin stems, a couple of leaves. Stands on `at`. */
+export function FlowerPot({ at }: { at: Vec3 }) {
+  const gl = useThree((s) => s.gl);
+  const stem = finishMaterial(gl, "plant");
+  return (
+    <group position={at}>
+      <mesh geometry={flowerPotGeometry} material={finishMaterial(gl, "terracotta")} position={[0, 0.05, 0]} castShadow receiveShadow />
+      <mesh geometry={flowerRimGeometry} material={finishMaterial(gl, "terracotta")} position={[0, 0.1, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow />
+      <mesh geometry={flowerSoilGeometry} material={finishMaterial(gl, "soil")} position={[0, 0.097, 0]} receiveShadow />
+      {BLOOMS.map(([top, leanZ, leanX], i) => {
+        const height = top - 0.1;
+        return (
+          <group key={i} position={[0, 0.1, 0]} rotation={[leanX, 0, leanZ]}>
+            <mesh geometry={stemGeometry} material={stem} position={[0, height / 2, 0]} scale={[1, height, 1]} castShadow />
+            <mesh geometry={crown(10 + i)} material={finishMaterial(gl, "petal")} position={[0, height, 0]} scale={[0.026, 0.016, 0.026]} castShadow />
+            <mesh geometry={pollenGeometry} material={finishMaterial(gl, "pollen")} position={[0, height + 0.012, 0]} scale={0.008} />
+          </group>
+        );
+      })}
+      <Leaves seed={13} at={[0.025, 0.125, 0.02]} scale={[0.03, 0.014, 0.022]} />
+      <Leaves seed={14} at={[-0.028, 0.12, -0.016]} scale={[0.028, 0.013, 0.02]} />
+    </group>
+  );
+}
+
 /** A ceiling light panel centred at `at`: a white housing round a glowing diffuser. */
 export function CeilingLight({ at, size = [1.4, 0.5] }: { at: Vec3; size?: [number, number] }) {
   return (
@@ -163,16 +201,28 @@ export function CeilingLight({ at, size = [1.4, 0.5] }: { at: Vec3; size?: [numb
   );
 }
 
-/** Lines of "writing" for whiteboards and paper, as thin ink bars. */
-export function Scribbles({ at, widths, gap = 0.12, facing = "z" }: { at: Vec3; widths: number[]; gap?: number; facing?: "z" | "y" }) {
+/** Lines of "writing" for boards and paper: thin bars, in ink unless `finish` says otherwise (chalk). */
+export function Scribbles({
+  at,
+  widths,
+  gap = 0.12,
+  facing = "z",
+  finish = "ink",
+}: {
+  at: Vec3;
+  widths: number[];
+  gap?: number;
+  facing?: "z" | "y";
+  finish?: Finish;
+}) {
   const lines = useMemo(() => widths.map((w, i) => ({ w, offset: -i * gap })), [widths, gap]);
   return (
     <group position={at}>
       {lines.map(({ w, offset }, i) =>
         facing === "z" ? (
-          <Box key={i} size={[w, 0.022, 0.01]} at={[w / 2, offset, 0]} finish="ink" round={0.004} />
+          <Box key={i} size={[w, 0.022, 0.01]} at={[w / 2, offset, 0]} finish={finish} round={0.004} />
         ) : (
-          <Box key={i} size={[w, 0.008, 0.022]} at={[w / 2, 0, -offset]} finish="ink" />
+          <Box key={i} size={[w, 0.008, 0.022]} at={[w / 2, 0, -offset]} finish={finish} />
         ),
       )}
     </group>

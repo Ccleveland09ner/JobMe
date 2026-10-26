@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * The candidate's mic on the interview table: the same control as the room's
- * mic button (TableMic.tsx), read from speaker.current.mic each frame. The
- * button stays the accessible control. Faces +Z.
+ * The candidate's mic on the interview table, and the only mic in the room:
+ * it reads the room's mic control (speaker.current.mic) each frame, and a
+ * press toggles it. The accessible control is TableMic's "pinned" button,
+ * laid over this mic each frame (ScreenAnchor "mic"). Faces +Z.
  */
 
 import { Html } from "@react-three/drei";
@@ -13,6 +14,8 @@ import * as THREE from "three";
 
 import type { MicState, Speaker } from "@/components/room/types";
 import { renderedMaterial } from "@/components/three/rendered";
+
+import { ScreenAnchor } from "./ScreenAnchor";
 
 type Vec3 = [number, number, number];
 
@@ -129,6 +132,8 @@ export function DeskMic({ speaker, at }: { speaker: RefObject<Speaker>; at: Vec3
       <mesh geometry={cylinder} material={m.body} position={[0, 0.152, front]} rotation={[Math.PI / 2, 0, 0]} scale={[0.013, 0.01, 0.013]} />
 
       <mesh geometry={hitBox} material={hitMaterial} position={[0, 0.18, 0]} onPointerOver={hover} onPointerMove={hover} onPointerOut={leave} onClick={press} />
+      {/* Where the room's keyboard control sits on screen: the front of the hit box. */}
+      <ScreenAnchor name="mic" width={0.2} height={0.4} position={[0, 0.18, 0.1]} />
 
       {blocked && (
         <Html position={[0, 0.42, 0]} center>

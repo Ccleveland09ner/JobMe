@@ -10,7 +10,7 @@ import { TABLE, RECRUITER, ROOM } from "../world";
 import { DeskMic } from "./DeskMic";
 import { TableNotepad } from "./Objects";
 import { OfficeChair } from "./OfficeChair";
-import { CeilingLight, Pane, PottedPlant, Scribbles, Slab } from "./parts";
+import { CeilingLight, FlowerPot, Pane, PottedPlant, Scribbles, Slab } from "./parts";
 
 /** Memoized: its props rarely change, and it reads no context itself. */
 export const InterviewRoomScene = memo(function InterviewRoomScene({ speaker }: { speaker: RefObject<Speaker> }) {
@@ -29,10 +29,10 @@ export const InterviewRoomScene = memo(function InterviewRoomScene({ speaker }: 
       <Slab x={[left, right]} y={[0.95, 1.0]} z={[back, back + 0.03]} finish="trim" round={0.008} cast />
       <Pane at={[left + 0.02, 1.75, -20.6]} width={2.2} height={1.5} sideways inside />
 
-      {/* Whiteboard behind the interviewer, in a frame, with a few lines on it. */}
-      <Slab x={[RECRUITER.x - 1.6, RECRUITER.x + 1.6]} y={[1.35, 2.55]} z={[back, back + 0.05]} finish="trim" round={0.015} cast />
-      <Slab x={[RECRUITER.x - 1.55, RECRUITER.x + 1.55]} y={[1.4, 2.5]} z={[back + 0.05, back + 0.07]} finish="whiteboard" />
-      <Scribbles at={[RECRUITER.x - 1.3, 2.3, back + 0.09]} widths={[0.7, 0.55, 0.45]} />
+      {/* A chalkboard behind the interviewer, in a wooden frame, with a few lines of chalk on it. */}
+      <Slab x={[RECRUITER.x - 1.6, RECRUITER.x + 1.6]} y={[1.35, 2.55]} z={[back, back + 0.05]} finish="wood" round={0.015} cast />
+      <Slab x={[RECRUITER.x - 1.55, RECRUITER.x + 1.55]} y={[1.4, 2.5]} z={[back + 0.05, back + 0.07]} finish="chalkboard" />
+      <Scribbles at={[RECRUITER.x - 1.3, 2.3, back + 0.09]} widths={[0.7, 0.55, 0.45]} finish="chalk" />
 
       <PottedPlant at={[left + 0.55, 0, back + 0.6]} />
 
@@ -60,6 +60,8 @@ export const InterviewRoomScene = memo(function InterviewRoomScene({ speaker }: 
       <DeskMic speaker={speaker} at={[TABLE.x, tableTop, TABLE.z + TABLE.depth / 2 - 0.12]} />
       {/* The interviewer's notepad: picked up to review the notes so far. */}
       <TableNotepad />
+      {/* Flowers, on the interviewer's side of the table, clear of the mic and the notepad. */}
+      <FlowerPot at={[TABLE.x - 0.82, tableTop, TABLE.z - 0.24]} />
     </group>
   );
 });
