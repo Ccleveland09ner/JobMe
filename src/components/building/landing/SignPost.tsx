@@ -20,7 +20,6 @@ import * as THREE from "three";
 import { studioEnvironment } from "@/components/three/environment";
 import { finishMaterial } from "@/components/three/finishes";
 import { PALETTE } from "@/components/three/palette";
-import { detailTexture } from "@/components/three/textures";
 
 import { useBuilding } from "../BuildingProvider";
 import { HoverLabel } from "../scene/HoverLabel";
@@ -29,7 +28,7 @@ import { Box } from "../scene/parts";
 import { ScreenAnchor } from "../scene/ScreenAnchor";
 import { roundedSlab } from "../scene/shapes";
 import { reducedMotion, skyLook } from "../sky/look";
-import { useCanvasTexture, type CanvasArt } from "../sky/textures";
+import { seededRandom, useCanvasTexture, type CanvasArt } from "../sky/textures";
 import { LABELS, POSTER_COPY, type Poster } from "./copy";
 import { FACE, LANDING_ACTIONS, PORTRAIT, POSTS } from "./layout";
 import { useSignPostView } from "./useSignPostNavigation";
@@ -49,7 +48,7 @@ const WORDS = { size: 0.085, gap: 0.2 } as const;
 const HIT = 1.8;
 const WARM = "#ffcf8f";
 /** The uplight's strength: at night, and on top when pointed at or pulsing. */
-const UPLIGHT = { night: 0.32, hover: 0.18, pulse: 0.25 } as const;
+const UPLIGHT = { night: 0.18, hover: 0.18, pulse: 0.25 } as const;
 /** The first-visit pulse: when it starts, how long it lasts, and the second post's lag (s). */
 const PULSE = { delay: 1.6, length: 1.4, stagger: 0.5 } as const;
 const SEEN_KEY = "jobme.posters.seen";
@@ -58,19 +57,83 @@ const bodyGeometry = new THREE.BoxGeometry(SLAB.width, 1, SLAB.depth);
 const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
 /** The stone's hitbox, wider and deeper than the stone, for fingers. */
 const HIT_BODY = 1.3;
-const faceGeometry = new THREE.PlaneGeometry(FACE.width, FACE.height);
-/**
- * The face: the post's own stone, dressed as one block (its mottle, but no
- * joints running through the writing chiselled into it). From dusk it glows
- * faintly, as if lit by the uplight, so the letters still read at night.
- */
-const DRESSED = { glow: "#ffe9c8", night: 0.28 } as const;
+/** How much stone one tile of the speckle covers (m). */
+const SPECKLE_TILE = 0.5;
 
-function dressedMaterial(gl: THREE.WebGLRenderer): THREE.MeshStandardMaterial {
+/** The face, its uvs in speckle tiles so the grain keeps its size whatever the face's shape. */
+function faceGeometryOf(): THREE.PlaneGeometry {
+  const geometry = new THREE.PlaneGeometry(FACE.width, FACE.height);
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * FACE.width) / SPECKLE_TILE, (uv.getY(i) * FACE.height) / SPECKLE_TILE);
+  return geometry;
+}
+const faceGeometry = faceGeometryOf();
+
+/**
+ * The face: one dressed block of the post's tan stone, matte and speckled
+ * (fine dark and pale flecks over a soft mottle, as cut granite or sandstone),
+ * with no joints through the writing chiselled into it. Only the faintest
+ * lift at night: lit like stone, never like a panel.
+ */
+const DRESSED = { glow: "#ffe9c8", night: 0.08, bump: 0.25 } as const;
+
+const SPECKLE: CanvasArt = {
+  width: 256,
+  height: 256,
+  color: true,
+  repeat: true,
+  draw(ctx) {
+    const n = 256;
+    const random = seededRandom(4242);
+    ctx.fillStyle = PALETTE.stone;
+    ctx.fillRect(0, 0, n, n);
+    // Drawn again across each edge it crosses, so the tile repeats without seams.
+    const wrapped = (x: number, y: number, r: number, paint: (x: number, y: number) => void) => {
+      for (const dx of [-n, 0, n]) for (const dy of [-n, 0, n]) if (x + dx > -r && x + dx < n + r && y + dy > -r && y + dy < n + r) paint(x + dx, y + dy);
+    };
+    // A soft mottle: broad patches a little lighter or darker.
+    for (let i = 0; i < 40; i++) {
+      const x = random() * n;
+      const y = random() * n;
+      const r = 20 + random() * 50;
+      const tint = random() < 0.5 ? "255,248,236" : "110,92,70";
+      const a = 0.05 + 0.07 * random();
+      wrapped(x, y, r, (px, py) => {
+        const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+        g.addColorStop(0, `rgba(${tint},${a})`);
+        g.addColorStop(1, `rgba(${tint},0)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(px - r, py - r, r * 2, r * 2);
+      });
+    }
+    // The speckle: mostly dark flecks, some mid, a few pale; most tiny, a few larger.
+    for (let i = 0; i < 950; i++) {
+      const x = random() * n;
+      const y = random() * n;
+      const r = 0.45 + random() ** 3 * 2;
+      const kind = random();
+      ctx.fillStyle =
+        kind < 0.6
+          ? `rgba(70,56,40,${0.3 + 0.4 * random()})`
+          : kind < 0.85
+            ? `rgba(140,122,100,${0.35 + 0.3 * random()})`
+            : `rgba(252,246,234,${0.6 + 0.3 * random()})`;
+      wrapped(x, y, r, (px, py) => {
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+  },
+};
+
+function dressedMaterial(gl: THREE.WebGLRenderer, speckle: THREE.Texture): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: PALETTE.stone,
-    roughness: 0.9,
-    map: detailTexture("plaster"),
+    map: speckle,
+    // The flecks sit a hair proud or sunk: just enough relief to catch the light.
+    bumpMap: speckle,
+    bumpScale: DRESSED.bump,
+    roughness: 0.95,
     emissive: DRESSED.glow,
     emissiveIntensity: 0,
     envMap: studioEnvironment(gl),
@@ -135,8 +198,9 @@ export function SignPost({ poster, order }: { poster: Poster; order: number }) {
 
   const uplightMap = useCanvasTexture(UPLIGHT_ART);
   const uplight = useRef<THREE.MeshBasicMaterial>(null);
-  // Each post's own, so its glow can follow the sky without touching the shared stone.
-  const faceMaterial = useMemo(() => dressedMaterial(gl), [gl]);
+  // Each post's own, so its night lift can follow the sky without touching the shared stone.
+  const speckle = useCanvasTexture(SPECKLE);
+  const faceMaterial = useMemo(() => dressedMaterial(gl, speckle), [gl, speckle]);
   useEffect(() => () => faceMaterial.dispose(), [faceMaterial]);
   const face = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>>(null);
   /** The first-visit pulse, 0 to 1, read by the title too. */

@@ -24,7 +24,7 @@ import { useSignPostNavigation, type SignPostNavigation } from "./useSignPostNav
 
 /** Cut into the stone: Roman inscription capitals for the heading, a book face for reading. */
 const inscription = Cinzel({ weight: "700", subsets: ["latin"], fallback: ["Trajan Pro", "Georgia", "serif"] });
-const book = EB_Garamond({ weight: "600", style: ["normal", "italic"], subsets: ["latin"], fallback: ["Garamond", "Georgia", "serif"] });
+const book = EB_Garamond({ weight: "700", style: ["normal", "italic"], subsets: ["latin"], fallback: ["Garamond", "Georgia", "serif"] });
 
 /** Width the writing is laid out at (CSS px), before scaling onto the face. */
 const WRITING_WIDTH = 340;

@@ -140,19 +140,19 @@ body {
 }
 
 /*
- * Words chiselled into the landing signposts' stone (components/building/landing):
- * V-cuts in the same tan stone, lit from above. Inside each letter the stone is
- * in shadow, deepest at the top of the cut and lighter down its lit lower wall
- * (a gradient per line), with the stone's grain showing through (a noise layer);
- * both are clipped to the letters. The face's edge catches light along the
- * bottom of each stroke and throws a hairline of shadow along the top
- * (drop-shadow follows the letter shapes; text-shadow would show through the
- * clipped fill). Shadowed stone on lit stone, dark enough to read clearly.
+ * Words cut deep into the landing signposts' speckled stone
+ * (components/building/landing), like letters engraved in a garden stone. Inside
+ * each letter the cut is dark, near black at the top where its wall is in
+ * shadow and a little warmer down the lower wall that catches some light (a
+ * gradient per line), with a trace of grain (a noise layer); both are clipped
+ * to the letters. Around each stroke the stone darkens softly into the cut,
+ * and the lower edge holds a faint warm lip (drop-shadow follows the letter
+ * shapes; text-shadow would show through the clipped fill).
  */
 .engraved {
-  --chisel: linear-gradient(to bottom, #392b1e 0%, #4a3a29 45%, #735f45 100%);
-  --stone-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.86 0 0 0 0 0.81 0 0 0 0 0.74 0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
-  color: #4a3a29;
+  --chisel: linear-gradient(to bottom, #150d07 0%, #24170e 45%, #47321f 100%);
+  --stone-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.34 0 0 0 0.14 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
+  color: #24170e;
 }
 .engraved :is(h2, p, li) {
   background:
@@ -161,21 +161,22 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 1.3px 0.2px rgb(255 247 232 / 0.9)) drop-shadow(0 -1px 0.3px rgb(40 28 16 / 0.5));
+  filter: drop-shadow(0 0 0.6px rgb(40 24 10 / 0.45)) drop-shadow(0 -0.7px 0.5px rgb(15 8 3 / 0.55))
+    drop-shadow(0 0.9px 0 rgb(255 238 210 / 0.35));
 }
 .engraved li::marker {
-  color: #4a3a29;
+  color: #24170e;
 }
-/* A short line chiselled under the heading: a shadowed groove with a lit lower edge. */
+/* A short groove cut under the heading, as the letters are. */
 .engraved-rule {
   width: 4.5rem;
   height: 3px;
   margin-top: -0.25rem;
   border-radius: 1px;
-  background: linear-gradient(to bottom, #392b1e, #735f45);
+  background: linear-gradient(to bottom, #150d07, #47321f);
   box-shadow:
-    0 1.3px 0 rgb(255 247 232 / 0.9),
-    0 -1px 0 rgb(40 28 16 / 0.4);
+    0 0 0.6px rgb(40 24 10 / 0.45),
+    0 0.9px 0 rgb(255 238 210 / 0.35);
 }
 .engraved ::selection {
   color: #241b13;
