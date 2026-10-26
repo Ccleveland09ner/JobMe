@@ -231,6 +231,51 @@ function Painted({ text, size, at, finish = "ink" }: { text: string; size: numbe
   return <mesh geometry={geometry} material={finishMaterial(gl, finish, { decal: true })} position={at} />;
 }
 
+/** The secretary's name, and where her nameplate stands: front of the counter, between the clipboard and the reports. */
+const NAMEPLATE = { name: "Ms. Crystal", title: "RECEPTION", at: [0.06, COUNTER_TOP, DESK.z - 0.05] as Vec3, turn: -0.04 };
+
+/** Leans the plate back, so it faces the user standing at the desk. */
+const PLATE_LEAN = -0.32;
+
+/** A desk nameplate facing +Z: a wooden block, a black plate in a brass bezel leaning in its slot, the name in raised brass. */
+export function NamePlate() {
+  const gl = useThree((s) => s.gl);
+  const font = useLetteringFont();
+  const name = letteringGeometry(font, { text: NAMEPLATE.name, size: 0.032, depth: 0.0015, anchor: "surface" });
+  const title = letteringGeometry(font, { text: NAMEPLATE.title.split("").join(" "), size: 0.011, depth: 0.0008, anchor: "surface" });
+  const brass = finishMaterial(gl, "brass", { decal: true });
+  const plateW = letteringWidth(name) + 0.07;
+  const plateH = 0.08;
+  // The bezel, and the black face set into it: each face is its depth plus its bevel out from z = 0.
+  const bezel = 0.006;
+  const face = bezel + 0.002;
+  return (
+    <group position={NAMEPLATE.at} rotation={[0, NAMEPLATE.turn, 0]}>
+      {/* The block, and the brass lip of the slot the plate stands in. */}
+      <Box size={[plateW + 0.03, 0.024, 0.06]} at={[0, 0.012, 0]} finish="wood" round={0.006} cast />
+      <Box size={[plateW + 0.018, 0.004, 0.01]} at={[0, 0.025, 0.012]} finish="brass" round={0.0015} />
+      <group position={[0, 0.02, 0.002]} rotation={[PLATE_LEAN, 0, 0]}>
+        <mesh
+          geometry={roundedSlab({ w: plateW, h: plateH, r: 0.007, depth: bezel - 0.001, bevel: 0.001 })}
+          material={finishMaterial(gl, "brass")}
+          position={[0, plateH / 2, 0]}
+          castShadow
+          receiveShadow
+        />
+        <mesh
+          geometry={roundedSlab({ w: plateW - 0.01, h: plateH - 0.01, r: 0.004, depth: 0.0015, bevel: 0.0005 })}
+          material={finishMaterial(gl, "ink")}
+          position={[0, plateH / 2, bezel]}
+          receiveShadow
+        />
+        {/* The name, and her post under it. */}
+        <mesh geometry={name} material={brass} position={[0, plateH / 2 + 0.008, face]} />
+        <mesh geometry={title} material={brass} position={[0, 0.019, face]} />
+      </group>
+    </group>
+  );
+}
+
 const pinGeometry = new THREE.SphereGeometry(0.028, 20, 14);
 
 const NOTE_LOOK: Record<BoardNote, { title: string; paper: Finish }> = {
