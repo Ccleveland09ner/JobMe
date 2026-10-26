@@ -14,6 +14,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type ComponentProps,
   type CSSProperties,
   type ReactNode,
@@ -115,6 +116,15 @@ const BLOCK_STYLE: CSSProperties = {};
 /** One engine for one document; remounted (keyed) for the next. */
 export function Engine({ count, settings, pageClassName, hardPage, onInit, onFlip, onChangeOrientation, onTeardown }: EngineProps) {
   const book = useRef<{ pageFlip(): FlipEngine | undefined } | null>(null);
+  // The pages, built once. react-pageflip collects its pages' elements as they
+  // first render, and empties that list whenever it is handed new children: new
+  // children in that same commit (the parent re-rendering as the book mounts)
+  // leave it nothing to start from, and the book never starts. The engine is
+  // keyed by document and page count, and the pages' classes are fixed for a
+  // document's life, so its pages can be too.
+  const [shells] = useState(() =>
+    Array.from({ length: count }, (_, i) => <PageShell key={i} index={i} className={pageClassName(i)} hard={hardPage(i)} />),
+  );
   const box = useRef<HTMLDivElement>(null);
   const started = useRef(false);
   const init = useCallback(
@@ -163,9 +173,7 @@ export function Engine({ count, settings, pageClassName, hardPage, onInit, onFli
         onFlip={onFlip}
         onChangeOrientation={onChangeOrientation}
       >
-        {Array.from({ length: count }, (_, i) => (
-          <PageShell key={i} index={i} className={pageClassName(i)} hard={hardPage(i)} />
-        ))}
+        {shells}
       </HTMLFlipBook>
     </div>
   );
