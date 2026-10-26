@@ -1,7 +1,8 @@
 /**
  * The user's preferences, stored in this browser (per device by design): the
- * interview defaults, and whether the lobby plays music. Every read is
- * validated: a broken value means the fallback.
+ * interview defaults, whether the lobby plays music and whether the
+ * receptionist is heard. Every read is validated: a broken value means the
+ * fallback.
  */
 
 import { useSyncExternalStore } from "react";
@@ -84,7 +85,7 @@ export function writeDefaults(defaults: InterviewDefaults): boolean {
 
 export const MUSIC_KEY = "jobme:music";
 
-/** The lobby plays music unless it has been turned off. */
+/** The lobby plays music (and the receptionist is heard) unless it has been turned off. */
 export function parseLobbyMusic(raw: string | null): boolean {
   return raw !== "off";
 }
@@ -99,4 +100,18 @@ export function useLobbyMusic(): boolean {
 /** Returns false when the browser would not store it (private mode, quota). */
 export function writeLobbyMusic(on: boolean): boolean {
   return store(MUSIC_KEY, on ? "on" : "off");
+}
+
+export const RECEPTIONIST_VOICE_KEY = "jobme:receptionist-voice";
+
+const rawReceptionistVoice = () => readStored(RECEPTIONIST_VOICE_KEY);
+
+/** Whether the receptionist is heard (her words always show); on until turned off. */
+export function useReceptionistVoice(): boolean {
+  return parseLobbyMusic(useSyncExternalStore(subscribe, rawReceptionistVoice, () => null));
+}
+
+/** Returns false when the browser would not store it (private mode, quota). */
+export function writeReceptionistVoice(on: boolean): boolean {
+  return store(RECEPTIONIST_VOICE_KEY, on ? "on" : "off");
 }

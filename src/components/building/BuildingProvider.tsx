@@ -41,10 +41,12 @@ export interface Building {
   show3D: boolean;
   dispatch: (event: BuildingEvent) => void;
   walkTo: (to: Station, options?: { hold?: boolean }) => void;
-  /** Sign out: walk to the front door, then post /logout (BuildingProvider owns it, so it survives the page). */
+  /** Sign out: the receptionist's goodbye, the walk to the front door, then post /logout (BuildingProvider owns it, so it survives the page). */
   leave: () => void;
   /** Signing out is under way. */
   leaving: boolean;
+  /** What runs before the walk out (the receptionist's goodbye); null for none. Never waited on for long. */
+  setFarewell: (farewell: (() => Promise<void>) | null) => void;
   release: () => void;
   fail: (message: string) => void;
   /** The interviewer's face, read every frame by the scene. */
@@ -87,6 +89,8 @@ const BuildingContext = createContext<Building | null>(null);
 
 /** Sign out anyway if the walk to the door hasn't arrived by then (another walk, a lost context). */
 const LEAVE_TIMEOUT_MS = 8000;
+/** Walk out anyway if the goodbye hasn't finished by then: no audio problem keeps anyone in. */
+const FAREWELL_TIMEOUT_MS = 15000;
 
 export function useBuilding(): Building | null {
   return useContext(BuildingContext);
@@ -161,11 +165,27 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
   // Signing out walks to the door and then posts /logout. It runs here, not in
   // the button that asked: on the way, a settings note shrinks to "Open this
   // note" and unmounts its button, which then never posted, stranding the user.
+  // First the farewell (the receptionist's goodbye), then the walk out.
   const [leaving, setLeaving] = useState(false);
+  const [walkingOut, setWalkingOut] = useState(false);
   const logout = useRef<HTMLFormElement>(null);
+  const farewell = useRef<(() => Promise<void>) | null>(null);
+  const setFarewell = useCallback((f: (() => Promise<void>) | null) => {
+    farewell.current = f;
+  }, []);
+  const leaveStarted = useRef(false);
   const leave = useCallback(() => {
+    if (leaveStarted.current) return;
+    leaveStarted.current = true;
     setLeaving(true);
-    dispatch({ type: "WALK", to: "entrance", hold: false });
+    const walkOut = () => {
+      setWalkingOut(true);
+      dispatch({ type: "WALK", to: "entrance", hold: false });
+    };
+    const goodbye = farewell.current;
+    if (!goodbye) return walkOut();
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, FAREWELL_TIMEOUT_MS));
+    void Promise.race([goodbye().catch(() => {}), timeout]).then(walkOut);
   }, []);
   const release = useCallback(() => dispatch({ type: "RELEASE" }), []);
   const fail = useCallback((message: string) => dispatch({ type: "FAIL", message }), []);
@@ -174,14 +194,14 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
 
   const atDoor = state.station === "entrance" && state.target === null;
   useEffect(() => {
-    if (!leaving) return;
+    if (!walkingOut) return;
     if (atDoor || !show3D) {
       logout.current?.submit();
       return;
     }
     const timer = setTimeout(() => logout.current?.submit(), LEAVE_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [leaving, atDoor, show3D]);
+  }, [walkingOut, atDoor, show3D]);
 
   // No 3D objects to animate: the lift and the return happen at once.
   useEffect(() => {
@@ -199,6 +219,7 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
       walkTo,
       leave,
       leaving,
+      setFarewell,
       release,
       fail,
       speaker,
@@ -228,6 +249,7 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
       walkTo,
       leave,
       leaving,
+      setFarewell,
       release,
       fail,
       setSpeaker,

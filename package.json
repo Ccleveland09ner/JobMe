@@ -14,6 +14,7 @@
     "check:db": "tsx scripts/check-supabase.ts",
     "embed:bank": "tsx scripts/embed-bank.ts",
     "gen:acks": "tsx scripts/gen-ack-clips.ts",
+    "gen:receptionist": "tsx scripts/gen-receptionist-clips.ts",
     "probe:eval": "tsx scripts/probe-evaluator.ts",
     "calibrate": "tsx scripts/calibrate-evaluator.ts",
     "compare:plans": "tsx scripts/compare-plans.ts",

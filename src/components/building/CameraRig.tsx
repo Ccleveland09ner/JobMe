@@ -14,7 +14,8 @@ import * as THREE from "three";
 import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "./BuildingProvider";
-import { fovFor, NOTE_CLOSE_UPS, pathBetween, POSES, type Pose, type Station } from "./stations";
+import { isPoster, POSTER_CLOSE_UPS, POSTER_GLIDE_SECONDS } from "./landing/layout";
+import { fovFor, NOTE_CLOSE_UPS, pathBetween, PORTRAIT, POSES, type Pose, type Station } from "./stations";
 import type { BoardNote } from "./world";
 
 /** Walking pace, metres per second, and the bounds on one leg's duration. */
@@ -38,6 +39,10 @@ interface CameraValues {
   fov: number;
   /** Pose.fit, or 0. */
   fit: number;
+  /** Pose.fill, or 1 when it has none (then unused): tweened as a width, never through 0. */
+  fill: number;
+  /** 1 with Pose.fill, 0 without, so a glide eases in and out of it. */
+  filling: number;
 }
 
 const valuesOf = (pose: Pose): CameraValues => ({
@@ -49,6 +54,8 @@ const valuesOf = (pose: Pose): CameraValues => ({
   tz: pose.target[2],
   fov: pose.fov,
   fit: pose.fit ?? 0,
+  fill: pose.fill ?? 1,
+  filling: pose.fill ? 1 : 0,
 });
 
 const scratch = new THREE.Vector3();
@@ -75,8 +82,8 @@ export function CameraRig() {
     latest.current = state;
   });
 
-  /** Tween through `poses`, coming to rest at `arrivesAt` (null: a waypoint). */
-  const travel = (poses: Pose[], arrivesAt: Station | null, done: () => void) => {
+  /** Tween through `poses`, coming to rest at `arrivesAt` (null: a waypoint); each leg `seconds` long, or paced. */
+  const travel = (poses: Pose[], arrivesAt: Station | null, done: () => void, seconds?: number) => {
     timeline.current?.kill();
     const reduced = prefersReducedMotion();
     setCameraAt(null);
@@ -91,8 +98,8 @@ export function CameraRig() {
     for (const pose of poses) {
       const to = valuesOf(pose);
       const distance = Math.hypot(to.px - from.px, to.py - from.py, to.pz - from.pz);
-      const duration = reduced ? 0 : Math.min(MAX_LEG, Math.max(MIN_LEG, distance / PACE));
-      tl.to(cam.current, { ...to, duration, ease: "power1.inOut", onComplete: () => void trail.current.push(pose) });
+      const duration = reduced ? 0 : (seconds ?? Math.min(MAX_LEG, Math.max(MIN_LEG, distance / PACE)));
+      tl.to(cam.current, { ...to, duration, ease: seconds === undefined ? "power1.inOut" : "power2.inOut", onComplete: () => void trail.current.push(pose) });
       from = to;
     }
     timeline.current = tl;
@@ -158,12 +165,18 @@ export function CameraRig() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.station, state.target]);
 
-  // Glide to a note's close-up and back. Only on change; route glides are above.
+  // Glide to a note's or a poster's close-up and back. Only on change; route glides are above.
   const lastFocus = useRef(focus);
   useEffect(() => {
     if (lastFocus.current === focus) return;
     lastFocus.current = focus;
-    if (state.station !== "noteboard" || state.target !== null) return;
+    if (state.target !== null) return;
+    if (state.station === "street") {
+      // Straight from poster to poster too; a new glide replaces one under way.
+      travel([isPoster(focus) ? POSTER_CLOSE_UPS[focus] : POSES.street], "street", () => {}, POSTER_GLIDE_SECONDS);
+      return;
+    }
+    if (state.station !== "noteboard") return;
     const closeUp = focus && focus in NOTE_CLOSE_UPS ? NOTE_CLOSE_UPS[focus as BoardNote] : null;
     travel([closeUp ?? POSES.noteboard], "noteboard", () => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,11 +242,14 @@ export function CameraRig() {
     const fov = fovFor({ position: [0, 0, 0], target: [0, 0, 0], fov: c.fov }, aspect);
     // Too narrow to keep the pose's width in view: step back to fit it.
     let back = 1;
+    const distance = Math.hypot(c.px - c.tx, c.py - c.ty, c.pz - c.tz);
+    const across = Math.tan((fov * Math.PI) / 360) * aspect;
     if (c.fit > 0) {
-      const distance = Math.hypot(c.px - c.tx, c.py - c.ty, c.pz - c.tz);
-      const needed = c.fit / (Math.tan((fov * Math.PI) / 360) * aspect);
+      const needed = c.fit / across;
       if (distance > 0 && needed > distance) back = needed / distance;
     }
+    // Portrait: come in (or step back) until the pose's `fill` width fills the screen.
+    if (c.filling > 0 && aspect < PORTRAIT && distance > 0) back += (c.fill / across / distance - back) * c.filling;
     persp.position.set(c.tx + (c.px - c.tx) * back, c.ty + (c.py - c.ty) * back, c.tz + (c.pz - c.tz) * back);
     persp.lookAt(scratch.set(c.tx, c.ty, c.tz));
     // What the camera looks at, for the key light's shadows (scene/Lighting.tsx).

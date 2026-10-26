@@ -1,8 +1,10 @@
 /**
  * The 3D recruiter's rig, outside React: restyles the model, plays its idle
  * clip, and each frame drives the mouth (lip-sync), blinks, a nod when
- * listening, a thinking glance, and the head aimed at the camera. Reduced
- * motion: mouth only. Keep the model unrotated (it faces +Z).
+ * listening, a thinking glance, and the head aimed at the camera. With
+ * Look.talkMotion (the receptionist) she also nods, leans in and moves her
+ * head as she speaks. Reduced motion: mouth only. Keep the model unrotated
+ * (it faces +Z).
  */
 
 import * as THREE from "three";
@@ -55,6 +57,10 @@ const GLANCE_SECONDS = 1.1;
 const GLANCE_GAP: [number, number] = [2.5, 6];
 /** Where idle glances go, in metres at the camera: down at the desk, or to either side. */
 const GLANCES = [new THREE.Vector3(0.9, -0.9, 0), new THREE.Vector3(-1.1, -0.4, 0), new THREE.Vector3(1.3, 0.1, 0)];
+/** Talk motion (Look.talkMotion): how far she leans in (radians), how fast, and how her head moves with the words (metres at the camera). */
+const TALK_LEAN = 0.07;
+const TALK_LEAN_RATE = 3;
+const TALK_SWAY = { x: 0.2, y: 0.14 } as const;
 
 /** Reused every frame, so aiming the head allocates nothing. */
 const scratch = {
@@ -95,6 +101,14 @@ export class RecruiterRig {
   private nextGlance = 0;
   private glanceUntil = 0;
   private glance = NO_OFFSET;
+  private readonly talkMotion: boolean;
+  private readonly spine: THREE.Object3D | null;
+  /** The spine as the clip left it, before the lean: restored each frame so the lean never adds up. */
+  private readonly spineClip = new THREE.Quaternion();
+  /** 0 at rest, 1 leaning in while speaking, eased. */
+  private lean = 0;
+  private talkStart = 0;
+  private readonly talkOffset = new THREE.Vector3();
 
   constructor(
     private readonly scene: THREE.Object3D,
@@ -104,6 +118,8 @@ export class RecruiterRig {
     environment: THREE.Texture | null = null,
   ) {
     this.idleGlances = Boolean(look.idleGlances) && !reduced;
+    this.talkMotion = Boolean(look.talkMotion) && !reduced;
+    this.spine = this.talkMotion ? (scene.getObjectByName("Spine2") ?? null) : null;
     this.restyle(look, environment);
 
     // The bind pose, before the clip moves it: head upright, facing ahead.
@@ -126,6 +142,7 @@ export class RecruiterRig {
       scene.getObjectByName("RightArm")?.rotateZ(-0.45);
     }
     this.mixer?.update(0);
+    if (this.spine) this.spineClip.copy(this.spine.quaternion);
     scene.updateMatrixWorld(true);
   }
 
@@ -136,7 +153,8 @@ export class RecruiterRig {
       if (!mesh.isMesh) return;
       mesh.frustumCulled = false; // skinned bounds lag the pose; never pop out
       // Grounded by the building's key light; no shadow falls on the character itself.
-      mesh.castShadow = true;
+      // Fine detail can opt out (userData.noShadow): something larger already casts its shadow.
+      mesh.castShadow = !mesh.userData.noShadow;
       if (mesh.morphTargetDictionary) this.morphMeshes.push(mesh);
       const old = mesh.material as THREE.MeshStandardMaterial;
       const isGlasses = old.name === "Wolf3D_Glasses";
@@ -205,9 +223,22 @@ export class RecruiterRig {
       (v[m] += (target - v[m]) * (1 - Math.exp(-delta * rate)));
 
     if (state === "listening" && this.lastState !== "listening" && !this.reduced) this.nodStart = now;
+    const talking = this.talkMotion && state === "speaking";
+    // A welcoming nod as she starts to speak.
+    if (talking && this.lastState !== "speaking") {
+      this.nodStart = now;
+      this.talkStart = now;
+    }
     this.lastState = state;
 
+    if (this.spine) this.spine.quaternion.copy(this.spineClip);
     this.mixer?.update(delta);
+    if (this.spine) {
+      // Leaning in toward the listener while she speaks: on top of the clip, never adding up.
+      this.spineClip.copy(this.spine.quaternion);
+      this.lean += ((talking ? 1 : 0) - this.lean) * (1 - Math.exp(-delta * TALK_LEAN_RATE));
+      if (this.lean > 1e-3) this.spine.rotateX(TALK_LEAN * this.lean);
+    }
     if (framing) this.frame(camera, framing.width, framing.height);
 
     // Mouth: lip-sync shapes if any, else the voice's loudness, else at rest.
@@ -245,8 +276,16 @@ export class RecruiterRig {
     // Thinking: a glance up and to the side, brows lifted.
     const thinking = state === "thinking" && !this.reduced;
     approach("eyesLookUp", thinking ? 0.25 : 0, 6);
-    approach("browInnerUp", thinking ? 0.3 : 0, 6);
-    this.gazeOffset.lerp(thinking ? THINKING_GAZE : NO_OFFSET, 1 - Math.exp(-delta * 3));
+    // Brows lifted a little while she talks: friendly, open.
+    approach("browInnerUp", thinking ? 0.3 : talking ? 0.14 : 0, 6);
+    // Talking, her head moves gently with the words: slow, out-of-step sways.
+    const s = now - this.talkStart;
+    this.talkOffset.set(
+      talking ? TALK_SWAY.x * Math.sin(s * 1.3) * Math.sin(s * 0.55 + 0.6) : 0,
+      talking ? TALK_SWAY.y * Math.sin(s * 2.1 + 0.4) : 0,
+      0,
+    );
+    this.gazeOffset.lerp(thinking ? THINKING_GAZE : talking ? this.talkOffset : NO_OFFSET, 1 - Math.exp(-delta * 3));
 
     for (const mesh of this.morphMeshes) {
       const dict = mesh.morphTargetDictionary!;
@@ -259,7 +298,8 @@ export class RecruiterRig {
 
     const t = now - this.nodStart;
     const nod = this.nodStart >= 0 && t < NOD_SECONDS ? Math.sin((Math.PI * t) / NOD_SECONDS) : 0;
-    this.aimHead(camera, nod, delta, now, lookAt ?? null);
+    // Speaking, she looks at whoever she's speaking to.
+    this.aimHead(camera, nod, delta, now, state === "speaking" ? null : (lookAt ?? null));
   }
 
   /**
@@ -283,7 +323,9 @@ export class RecruiterRig {
       head.getWorldPosition(from);
     }
     // Idle glances, unless there's a point to look at.
-    if (this.idleGlances && !lookAt) {
+    // Never while speaking: she holds the listener's eye.
+    const speaking = this.lastState === "speaking";
+    if (this.idleGlances && !lookAt && !speaking) {
       if (this.nextGlance === 0) this.nextGlance = now + GLANCE_GAP[0];
       if (now >= this.nextGlance) {
         this.glance = GLANCES[Math.floor(Math.random() * GLANCES.length)];
@@ -291,7 +333,7 @@ export class RecruiterRig {
         this.nextGlance = now + GLANCE_SECONDS + GLANCE_GAP[0] + Math.random() * (GLANCE_GAP[1] - GLANCE_GAP[0]);
       }
     }
-    const glancing = !lookAt && now < this.glanceUntil;
+    const glancing = !lookAt && !speaking && now < this.glanceUntil;
     const target = lookAt
       ? scratch.target.set(lookAt[0], lookAt[1], lookAt[2])
       : scratch.target.copy(camera.position).add(this.gazeOffset).add(glancing ? this.glance : NO_OFFSET);

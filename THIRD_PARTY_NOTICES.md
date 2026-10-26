@@ -180,3 +180,10 @@ The tracks in `public/audio/music/` are Non-Premium Assets from Free To Use
 - "Peach Prosecco" by massobeats
 - "Branch" by Lukrembo
 - "Aromatic" by massobeats
+
+## Receptionist voice
+
+The clips in `public/audio/receptionist/` were generated with ElevenLabs
+(https://elevenlabs.io) text to speech in its premade "River" voice, on a paid
+ElevenLabs plan (Creator), whose license covers commercial use. They are
+recorded once by `scripts/gen-receptionist-clips.ts`.

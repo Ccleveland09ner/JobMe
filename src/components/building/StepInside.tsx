@@ -6,14 +6,22 @@
  */
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { DOMAttributes, ReactNode } from "react";
 
 import { useBuilding } from "./BuildingProvider";
 
-export function StepInside({ className, children }: { className?: string; children: ReactNode }) {
+/** Focus handlers, for a link that lights its 3D twin while focused. */
+type FocusEventHandlers = DOMAttributes<HTMLAnchorElement>;
+
+export function StepInside({
+  className,
+  children,
+  onFocus,
+  onBlur,
+}: { className?: string; children: ReactNode } & Pick<FocusEventHandlers, "onFocus" | "onBlur">) {
   const building = useBuilding();
   return (
-    <Link href="/login" className={className} onClick={() => building?.walkTo("entrance")}>
+    <Link href="/login" className={className} onClick={() => building?.walkTo("entrance")} onFocus={onFocus} onBlur={onBlur}>
       {children}
     </Link>
   );

@@ -23,7 +23,8 @@ const DAMPING = 3;
 export function MouseParallax() {
   const building = useBuilding();
   const invalidate = useThree((s) => s.invalidate);
-  const active = building?.state.station === "street" && building.state.target === null;
+  // Not while a poster is up close either.
+  const active = building?.state.station === "street" && building.state.target === null && building.focus === null;
   const latest = useRef(active);
   useEffect(() => {
     latest.current = active;

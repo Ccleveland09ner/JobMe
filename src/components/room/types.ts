@@ -3,6 +3,8 @@
  * candidate's mic: the 2D panel, the 3D desk mic and the character itself.
  */
 
+import type * as THREE from "three";
+
 import type { VisemeWeights } from "@/lib/voice/lipsync";
 
 export type RecruiterState = "idle" | "listening" | "thinking" | "speaking";
@@ -43,4 +45,11 @@ export interface Look {
   style?: "rendered" | "toon";
   /** Glance away now and then instead of constant eye contact (a waiting character). */
   idleGlances?: boolean;
+  /**
+   * Makes this character's own clone of the model into someone else (new
+   * geometry, hair, materials) before the rig styles it. Returns its cleanup.
+   */
+  dress?: (scene: THREE.Object3D) => () => void;
+  /** While speaking, lean in a little and move the head with the words (a character greeting people). */
+  talkMotion?: boolean;
 }

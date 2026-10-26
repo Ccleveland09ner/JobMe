@@ -60,7 +60,8 @@ export function StationLayer({ children }: { children: ReactNode }) {
   }
 
   const frame: Record<Exclude<Layout, "held">, string> = {
-    overlay: "relative z-10 flex min-h-dvh flex-1 flex-col",
+    // The street: click-through to the scene (its tile and posters); the page's own controls take the pointer.
+    overlay: "pointer-events-none relative z-10 flex min-h-dvh flex-1 flex-col",
     clipboard: `fixed inset-x-0 bottom-0 z-10 max-h-[70vh] overflow-y-auto px-3 pt-4 [scrollbar-width:thin] md:inset-y-0 md:left-auto md:right-6 md:max-h-none md:px-2 md:py-6 ${clipboardWidth(pathname)}`,
     // Click-through to the 3D board; only the pinned controls take the pointer.
     board: "pointer-events-none fixed inset-0 z-10",

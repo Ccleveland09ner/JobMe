@@ -13,6 +13,8 @@ export interface CanvasArt {
   height: number;
   /** A colour map (sRGB), rather than data such as an alpha map. */
   color: boolean;
+  /** Tiles across a surface (uvs past 1), rather than stretching once over it. */
+  repeat?: boolean;
   draw: (ctx: CanvasRenderingContext2D) => void;
 }
 
@@ -65,6 +67,7 @@ function paint(art: CanvasArt): THREE.CanvasTexture {
   if (ctx) art.draw(ctx);
   const texture = new THREE.CanvasTexture(canvas);
   if (art.color) texture.colorSpace = THREE.SRGBColorSpace;
+  if (art.repeat) texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   return texture;
 }
 

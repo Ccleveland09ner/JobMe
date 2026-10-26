@@ -50,8 +50,15 @@ export type RecruiterModelProps = Omit<ThreeElements["group"], "ref"> & {
 /** The character alone, as a node in a scene that owns camera and outline. */
 export function RecruiterModel({ speaker, framesCamera = false, animate = true, look, onReady, ...group }: RecruiterModelProps) {
   const { scene: source, animations } = useGLTF(RECRUITER_MODEL);
-  // useGLTF shares one cached scene; each character needs its own skeleton.
-  const scene = useMemo(() => cloneSkinned(source), [source]);
+  // useGLTF shares one cached scene; each character needs its own skeleton,
+  // and a dressed one its own geometry and materials (the look is read once, as the rig reads it).
+  const dress = look?.dress;
+  const { scene, undress } = useMemo(() => {
+    const clone = cloneSkinned(source);
+    return { scene: clone, undress: dress?.(clone) ?? null };
+  }, [source, dress]);
+  // Freed GPU copies are re-made if the character is used again (a remount in development).
+  useEffect(() => () => undress?.(), [undress]);
   const rig = useRef<RecruiterRig | null>(null);
   const reported = useRef(false);
   const latest = useRef({ look, onReady });
