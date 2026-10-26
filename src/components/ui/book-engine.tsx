@@ -7,7 +7,19 @@
  * them through context, and the engine is destroyed after React lets go.
  */
 
-import { createContext, useContext, useLayoutEffect, useRef, type ComponentProps, type CSSProperties, type ReactNode, type Ref } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from "react";
 import HTMLFlipBook from "react-pageflip";
 
 import { spreadAt, type BookOrientation, type BookState, type PageSize } from "@/lib/frontend/book-layout";
@@ -104,6 +116,37 @@ const BLOCK_STYLE: CSSProperties = {};
 /** One engine for one document; remounted (keyed) for the next. */
 export function Engine({ count, settings, pageClassName, hardPage, onInit, onFlip, onChangeOrientation, onTeardown }: EngineProps) {
   const book = useRef<{ pageFlip(): FlipEngine | undefined } | null>(null);
+  // The pages, built once. react-pageflip collects its pages' elements as they
+  // first render, and empties that list whenever it is handed new children: new
+  // children in that same commit (the parent re-rendering as the book mounts)
+  // leave it nothing to start from, and the book never starts. The engine is
+  // keyed by document and page count, and the pages' classes are fixed for a
+  // document's life, so its pages can be too.
+  const [shells] = useState(() =>
+    Array.from({ length: count }, (_, i) => <PageShell key={i} index={i} className={pageClassName(i)} hard={hardPage(i)} />),
+  );
+  const box = useRef<HTMLDivElement>(null);
+  const started = useRef(false);
+  const init = useCallback(
+    (e: FlipEvent) => {
+      started.current = true;
+      onInit(e);
+    },
+    [onInit],
+  );
+
+  // The engine sizes its pages when it starts and when the window resizes. Its
+  // box can still settle after it starts (a cold load measures it at its
+  // minimum height), and a new fit resizes it: re-measure on either.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (started.current) book.current?.pageFlip()?.update();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // The engine exists before it reports in (init is deferred), so ask the
   // book for it while its handle still stands; destroy it once React has
@@ -119,20 +162,18 @@ export function Engine({ count, settings, pageClassName, hardPage, onInit, onFli
   }, [onTeardown]);
 
   return (
-    <div className="book-engine">
+    <div ref={box} className="book-engine">
       <HTMLFlipBook
         ref={book}
         className="book-block"
         style={BLOCK_STYLE}
         {...settings}
         renderOnlyPageLengthChange
-        onInit={onInit}
+        onInit={init}
         onFlip={onFlip}
         onChangeOrientation={onChangeOrientation}
       >
-        {Array.from({ length: count }, (_, i) => (
-          <PageShell key={i} index={i} className={pageClassName(i)} hard={hardPage(i)} />
-        ))}
+        {shells}
       </HTMLFlipBook>
     </div>
   );

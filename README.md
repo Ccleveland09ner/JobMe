@@ -81,7 +81,7 @@ The application includes authentication, résumé ingestion, adaptive interviews
 - **Live feedback:** the recruiter's notepad shows scores, an answer-quality band, the main gap, quoted evidence, an observation, and the reason for the next question.
 - **Saved progress:** return to an unfinished interview, retry an answer after a failed request, or end early after at least one answer. The desk ledger lists sessions and supports deletion.
 - **Reports and trends:** overall and per-answer scores, a summary, a STAR rewrite of the weakest scored answer, highlighted transcripts, approximate filler counts, voice speaking rate, and trends across the latest 20 completed interviews.
-- **3D presentation and fallbacks:** a persistent Three.js building, animated camera transitions, a seated recruiter, and interactive paper objects. Keyboard-accessible controls, reduced-motion handling, and illustrated/SVG fallbacks support use without the full 3D scene.
+- **3D presentation and fallbacks:** a persistent Three.js building, animated camera transitions, a seated recruiter, and interactive paper objects. Keyboard-accessible controls, reduced-motion handling, and 2D fallbacks (the desk's buttons and an SVG recruiter) support use without the full 3D scene.
 
 ### Built With
 
@@ -317,7 +317,6 @@ Tests cover the engine, turn/report orchestration, question plans, résumé help
 | `npm run rehearse -- --live` | Adds a real Gemini run to the rehearsal. |
 | `npm run verify:live` | Requires a running app and service-role key. Creates a test user, uploads a résumé, runs an interview, and leaves test data. Supports `-- --quick`. |
 | `npm run cleanup:test -- --dry-run` | Preview matching test users/data. Omitting `--dry-run` deletes those records using the service-role key. |
-| `npm run prep:art` | Regenerates the public campus illustration from the design source. |
 
 Live verification accepts `VERIFY_BASE_URL`, `VERIFY_PDF`, and `VERIFY_MAX_TURNS`. Its default PDF fixture is not included in the repository, and some assertions expect that fixture's specific résumé facts; review the script before using another PDF.
 
@@ -344,7 +343,7 @@ src/lib/supabase/         Cookie/browser clients and session refresh
 src/proxy.ts              Page-request auth-cookie refresh
 supabase/migrations/      Schema, RLS, grants, and database functions
 scripts/                  Local simulations, service probes, maintenance tools
-public/                   Recruiter model, illustrations, and 3D font data
+public/                   Recruiter model, audio, and 3D font data
 design/tools/             Recruiter asset rebuild tools
 docs/                     Original plans and implementation notes
 ```

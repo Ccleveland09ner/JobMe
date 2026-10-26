@@ -101,3 +101,15 @@ export function clipboardFrame(page: PageSize): { block: TurnedBox; content: Tur
     content: { left: -dx, top: -dy, width: page.width, height: page.height, rotate: -90 },
   };
 }
+
+/**
+ * How deep the stacks of pages either side of the spread on screen are, in
+ * px up to `max`: what has been read lies on the left, what is left to read
+ * on the right. A stack of even one page shows.
+ */
+export function stackDepths({ spread, total }: Pick<BookState, "spread" | "total">, max: number): { left: number; right: number } {
+  const last = total - 1;
+  if (last < 1 || spread.length === 0) return { left: 0, right: 0 };
+  const depth = (pages: number) => (pages > 0 ? Math.max(1, Math.round((max * pages) / last)) : 0);
+  return { left: depth(spread[0]), right: depth(last - spread[spread.length - 1]) };
+}

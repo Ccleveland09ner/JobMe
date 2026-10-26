@@ -6,19 +6,20 @@
  * Desk objects are modelled lying flat, top edge toward −Z.
  */
 
+import { useThree } from "@react-three/fiber";
 import { useMemo } from "react";
 import * as THREE from "three";
 
-import { letteringGeometry, letteringMaterials, letteringWidth, useLetteringFont } from "@/components/three/lettering";
-import { toonMaterial, type PaletteColor } from "@/components/three/toon";
+import { finishMaterial, type Finish } from "@/components/three/finishes";
+import { letteringGeometry, letteringWidth, useLetteringFont } from "@/components/three/lettering";
 
 import { useBuilding } from "../BuildingProvider";
 import { BOARD_FRAME, BOARD_NOTES, BOARD_PLANK, DESK, NOTEBOARD, TABLE, type BoardNote } from "../world";
 import { FloatingLabel } from "./FloatingLabel";
 import { Clickable, Liftable } from "./Interactive";
-import { Box, InkEdges } from "./parts";
+import { Box } from "./parts";
 import { ScreenAnchor } from "./ScreenAnchor";
-import { roundedSlab } from "./shapes";
+import { box, roundedSlab } from "./shapes";
 
 type Vec3 = [number, number, number];
 
@@ -39,68 +40,145 @@ export const LOOK_POINTS: Record<string, readonly [number, number, number]> = {
   settings: [(NOTEBOARD.left + NOTEBOARD.right) / 2, (NOTEBOARD.bottom + NOTEBOARD.top) / 2, NOTEBOARD.z],
 };
 
-/** A closed book: leather boards around a block of pages, a brass title plate. */
+/** Turns a shape from shapes.roundedSlab (upright, facing +Z) to lie face up, its top edge toward −Z. */
+const FLAT: Vec3 = [-Math.PI / 2, 0, 0];
+
+/** A block of pages: paper top and bottom, page edges on the four sides (BoxGeometry's ±X, ±Y, ±Z). */
+function usePageBlock(): THREE.Material[] {
+  const gl = useThree((s) => s.gl);
+  return useMemo(() => {
+    const edge = finishMaterial(gl, "pageEdge");
+    const paper = finishMaterial(gl, "paper");
+    return [edge, edge, paper, paper, edge, edge];
+  }, [gl]);
+}
+
+/** A brass cap for a book corner, lying flat: its right angle at the origin, legs along −X and ±Z. */
+function cornerCap(towardZ: 1 | -1): THREE.ExtrudeGeometry {
+  const leg = 0.045;
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(-leg, 0);
+  // Shape y becomes −Z once laid flat.
+  shape.lineTo(0, -towardZ * leg);
+  shape.closePath();
+  return new THREE.ExtrudeGeometry(shape, { depth: 0.0012, bevelEnabled: true, bevelThickness: 0.0004, bevelSize: 0.0006, bevelSegments: 1 });
+}
+const CORNERS = { back: cornerCap(1), front: cornerCap(-1) };
+
+/** A closed book: leather boards round a block of pages, a rounded spine, brass corners and title plate. */
 function Book() {
+  const gl = useThree((s) => s.gl);
+  const pages = usePageBlock();
+  const brass = finishMaterial(gl, "brass");
   return (
     <group>
-      <Box size={[0.34, 0.012, 0.44]} at={[0, 0.006, 0]} color="leather" />
-      <Box size={[0.32, 0.05, 0.42]} at={[0.005, 0.037, 0]} color="paper" />
-      <Box size={[0.34, 0.012, 0.44]} at={[0, 0.068, 0]} color="leather" />
-      <Box size={[0.03, 0.074, 0.44]} at={[-0.17, 0.037, 0]} color="leather" />
-      <Box size={[0.16, 0.004, 0.06]} at={[0.01, 0.076, -0.1]} color="brass" />
-      <Box size={[0.1, 0.003, 0.008]} at={[0.01, 0.0785, -0.1]} color="ink" />
+      <Box size={[0.34, 0.012, 0.44]} at={[0, 0.006, 0]} finish="leather" round={0.004} cast />
+      <mesh geometry={box([0.322, 0.05, 0.424])} material={pages} position={[0.006, 0.037, 0]} castShadow receiveShadow />
+      <Box size={[0.34, 0.012, 0.44]} at={[0, 0.068, 0]} finish="leather" round={0.004} cast />
+      <Box size={[0.036, 0.076, 0.444]} at={[-0.163, 0.037, 0]} finish="leather" round={0.017} cast />
+      <mesh geometry={CORNERS.back} material={brass} position={[0.17, 0.0742, -0.22]} rotation={FLAT} castShadow />
+      <mesh geometry={CORNERS.front} material={brass} position={[0.17, 0.0742, 0.22]} rotation={FLAT} castShadow />
+      <Box size={[0.16, 0.004, 0.06]} at={[0.01, 0.076, -0.1]} finish="brass" round={0.0015} />
+      <Box size={[0.1, 0.003, 0.008]} at={[0.01, 0.0785, -0.1]} finish="ink" />
     </group>
   );
 }
 
-/** A manila folder with sheets sticking out, and a dark label on the tab. */
+const FOLDER = {
+  back: roundedSlab({ w: 0.33, h: 0.42, r: 0.012, depth: 0.003, bevel: 0.0008 }),
+  front: roundedSlab({ w: 0.33, h: 0.4, r: 0.012, depth: 0.003, bevel: 0.0008 }),
+  tab: roundedSlab({ w: 0.12, h: 0.05, r: 0.012, depth: 0.003, bevel: 0.0008 }),
+};
+
+/** A manila folder round a stack of sheets, two loose on top, and a dark label on the tab. */
 function Folder() {
+  const gl = useThree((s) => s.gl);
+  const pages = usePageBlock();
+  const manila = finishMaterial(gl, "manila");
+  // The front cover's underside and top.
+  const lid = 0.0158;
+  const lidTop = lid + 0.0046;
   return (
     <group>
-      <Box size={[0.33, 0.006, 0.42]} at={[0, 0.003, 0]} color="manila" />
-      {[0.012, 0.018, 0.024].map((y, i) => (
-        <Box key={y} size={[0.3, 0.004, 0.4]} at={[0.012 * (i - 1), y, 0.012 * (1 - i)]} color="paper" />
+      <mesh geometry={FOLDER.back} material={manila} rotation={FLAT} castShadow receiveShadow />
+      <mesh geometry={box([0.3, 0.008, 0.396])} material={pages} position={[0.004, 0.0086, 0.002]} castShadow receiveShadow />
+      {[0, 1].map((i) => (
+        <Box
+          key={i}
+          size={[0.3, 0.0012, 0.4]}
+          at={[0.012 * (i + 1), 0.0133 + 0.0013 * i, -0.006 * i]}
+          rotation={[0, 0.02 * (i ? -1 : 1), 0]}
+          finish="paper"
+          cast
+        />
       ))}
-      <Box size={[0.33, 0.006, 0.4]} at={[0, 0.032, 0.012]} color="manila" />
-      <Box size={[0.12, 0.006, 0.04]} at={[-0.08, 0.032, -0.205]} color="manila" />
-      <Box size={[0.09, 0.003, 0.024]} at={[-0.08, 0.0365, -0.205]} color="ink" />
+      <mesh geometry={FOLDER.front} material={manila} position={[0, lid, 0.012]} rotation={FLAT} castShadow receiveShadow />
+      <mesh geometry={FOLDER.tab} material={manila} position={[-0.08, lid, -0.205]} rotation={FLAT} castShadow receiveShadow />
+      <Box size={[0.09, 0.0012, 0.024]} at={[-0.08, lidTop + 0.0006, -0.212]} finish="ink" round={0.0005} />
     </group>
   );
 }
+
+const hingeGeometry = new THREE.CylinderGeometry(0.005, 0.005, 0.1, 16);
+const rivetGeometry = new THREE.CylinderGeometry(0.004, 0.004, 0.003, 12);
 
 /** The setup clipboard, matching ui/Clipboard.tsx. Modelled upright, then laid flat. */
 function Clipboard() {
+  const gl = useThree((s) => s.gl);
+  const metal = finishMaterial(gl, "clipmetal");
   const boardH = 0.35;
+  const top = boardH / 2;
   return (
-    <group rotation={[-Math.PI / 2, 0, 0]}>
-      <mesh geometry={roundedSlab({ w: 0.26, h: boardH, r: 0.022, depth: 0.007, bevel: 0.002 })} material={toonMaterial("board")}>
-        <InkEdges threshold={40} />
-      </mesh>
-      <Box size={[0.22, 0.28, 0.002]} at={[0, -0.022, 0.0115]} color="paper" />
-      <Box size={[0.12, 0.009, 0.001]} at={[-0.035, 0.085, 0.013]} color="ink" />
-      {[0.05, 0.015, -0.02, -0.055, -0.09, -0.125].map((y) => (
-        <Box key={y} size={[0.18, 0.004, 0.001]} at={[0, y, 0.013]} color="rule" />
-      ))}
+    <group rotation={FLAT}>
       <mesh
-        geometry={roundedSlab({ w: 0.11, h: 0.06, r: 0.016, depth: 0.01, bevel: 0.002 })}
-        material={toonMaterial("clipmetal")}
-        position={[0, boardH / 2 - 0.03, 0.011]}
-      >
-        <InkEdges threshold={40} />
-      </mesh>
-      <Box size={[0.085, 0.012, 0.008]} at={[0, boardH / 2 - 0.05, 0.026]} color="clipmetal" />
+        geometry={roundedSlab({ w: 0.26, h: boardH, r: 0.022, depth: 0.007, bevel: 0.002 })}
+        material={finishMaterial(gl, "board")}
+        castShadow
+        receiveShadow
+      />
+      <Box size={[0.22, 0.28, 0.0015]} at={[0, -0.022, 0.01175]} finish="paper" cast />
+      <Box size={[0.12, 0.009, 0.001]} at={[-0.035, 0.085, 0.013]} finish="ink" />
+      {[0.05, 0.015, -0.02, -0.055, -0.09, -0.125].map((y) => (
+        <Box key={y} size={[0.18, 0.004, 0.001]} at={[0, y, 0.013]} finish="rule" />
+      ))}
+      {/* The clip: a plate riveted to the board, its hinge, and the jaw on the paper. */}
+      <mesh
+        geometry={roundedSlab({ w: 0.11, h: 0.06, r: 0.016, depth: 0.005, bevel: 0.0015 })}
+        material={metal}
+        position={[0, top - 0.03, 0.011]}
+        castShadow
+        receiveShadow
+      />
+      {[-0.038, 0.038].map((x) => (
+        <mesh key={x} geometry={rivetGeometry} material={metal} position={[x, top - 0.014, 0.0195]} rotation={[Math.PI / 2, 0, 0]} />
+      ))}
+      <mesh geometry={hingeGeometry} material={metal} position={[0, top - 0.044, 0.0205]} rotation={[0, 0, Math.PI / 2]} castShadow />
+      <mesh
+        geometry={roundedSlab({ w: 0.09, h: 0.03, r: 0.01, depth: 0.003, bevel: 0.001 })}
+        material={metal}
+        position={[0, top - 0.06, 0.0128]}
+        rotation={[-0.12, 0, 0]}
+        castShadow
+        receiveShadow
+      />
     </group>
   );
 }
 
-/** A spiral-bound notepad: card back, pages, a row of rings along the top. */
+const ringGeometry = new THREE.TorusGeometry(0.013, 0.0016, 8, 24);
+
+/** A spiral-bound notepad: card back, a block of pages, wire rings round the top edge. */
 function Notepad() {
+  const gl = useThree((s) => s.gl);
+  const pages = usePageBlock();
+  const wire = finishMaterial(gl, "clipmetal");
   return (
     <group>
-      <Box size={[0.2, 0.006, 0.28]} at={[0, 0.003, 0]} color="fabric" />
-      <Box size={[0.19, 0.02, 0.27]} at={[0, 0.016, 0.004]} color="paper" />
+      <Box size={[0.2, 0.004, 0.28]} at={[0, 0.002, 0]} finish="fabric" round={0.0015} cast />
+      <mesh geometry={box([0.19, 0.018, 0.268])} material={pages} position={[0, 0.013, 0.004]} castShadow receiveShadow />
       {[-0.07, -0.035, 0, 0.035, 0.07].map((x) => (
-        <Box key={x} size={[0.012, 0.03, 0.02]} at={[x, 0.02, -0.13]} color="ink" />
+        <mesh key={x} geometry={ringGeometry} material={wire} position={[x, 0.013, -0.13]} rotation={[0, Math.PI / 2, 0]} castShadow />
       ))}
     </group>
   );
@@ -143,16 +221,17 @@ export function TableNotepad() {
   );
 }
 
-/** Painted lettering lying on a surface at z = 0 of its group. */
-function Painted({ text, size, at, color = "ink" }: { text: string; size: number; at: Vec3; color?: PaletteColor }) {
+/** Painted lettering lying on a surface at z = 0 of its group, lit as the surface is. */
+function Painted({ text, size, at, finish = "ink" }: { text: string; size: number; at: Vec3; finish?: Finish }) {
+  const gl = useThree((s) => s.gl);
   const font = useLetteringFont();
   const geometry = letteringGeometry(font, { text, size, depth: size * 0.08, anchor: "surface" });
-  return <mesh geometry={geometry} material={letteringMaterials(color, color, false)} position={at} />;
+  return <mesh geometry={geometry} material={finishMaterial(gl, finish, { decal: true })} position={at} />;
 }
 
-const pinGeometry = new THREE.SphereGeometry(0.028, 16, 12);
+const pinGeometry = new THREE.SphereGeometry(0.028, 20, 14);
 
-const NOTE_LOOK: Record<BoardNote, { title: string; paper: PaletteColor }> = {
+const NOTE_LOOK: Record<BoardNote, { title: string; paper: Finish }> = {
   defaults: { title: "INTERVIEW DEFAULTS", paper: "paper" },
   account: { title: "ACCOUNT", paper: "noteYellow" },
 };
@@ -162,17 +241,18 @@ const NOTE_TITLE_BAND = 0.3;
 
 /** One note pinned on the board: paper, a pin, its title, room for its controls. */
 function PinnedNote({ name, inUse }: { name: BoardNote; inUse: boolean }) {
+  const gl = useThree((s) => s.gl);
   const n = BOARD_NOTES[name];
   const look = NOTE_LOOK[name];
   return (
     <group position={[n.x, n.y, NOTEBOARD.z + 0.034]} rotation={[0, 0, n.tilt]}>
-      <Box size={[n.w, n.h, 0.006]} at={[0, 0, 0.003]} color={look.paper} />
-      <mesh geometry={pinGeometry} material={toonMaterial("pin")} position={[0, n.h / 2 - 0.07, 0.03]} />
+      <Box size={[n.w, n.h, 0.006]} at={[0, 0, 0.003]} finish={look.paper} cast />
+      <mesh geometry={pinGeometry} material={finishMaterial(gl, "pin")} position={[0, n.h / 2 - 0.07, 0.03]} castShadow />
       <Painted text={look.title} size={0.055} at={[0, n.h / 2 - 0.17, 0.0065]} />
       {/* Pencil lines until the real controls are pinned on. */}
       {!inUse &&
         [0.06, -0.06, -0.18, -0.3].map((y, i) => (
-          <Box key={y} size={[n.w * (i % 2 ? 0.55 : 0.72), 0.018, 0.002]} at={[-n.w * 0.06, y, 0.0075]} color="ink" />
+          <Box key={y} size={[n.w * (i % 2 ? 0.55 : 0.72), 0.018, 0.002]} at={[-n.w * 0.06, y, 0.0075]} finish="ink" />
         ))}
       <ScreenAnchor
         name={`note:${name}`}
@@ -186,6 +266,7 @@ function PinnedNote({ name, inUse }: { name: BoardNote; inUse: boolean }) {
 
 /** The settings notice board: clicked from the desk; at the board its notes carry the controls. */
 export function NoticeBoard() {
+  const gl = useThree((s) => s.gl);
   const building = useBuilding();
   const font = useLetteringFont();
   const { left, right, bottom, top, z } = NOTEBOARD;
@@ -203,14 +284,15 @@ export function NoticeBoard() {
   const back = letteringGeometry(font, { text: "BACK TO DESK", size: 0.034, depth: 0.004, anchor: "surface" });
   const tagW = letteringWidth(back) + 0.1;
 
+  // A deep wooden frame round the cork, so it shades the cork's edges.
   const frame = useMemo(
     () =>
       roundedSlab({
         w: width,
         h: height,
         r: 0.07,
-        depth: 0.05,
-        bevel: 0.008,
+        depth: 0.06,
+        bevel: 0.01,
         hole: { w: width - 2 * BOARD_FRAME, h: height - 2 * BOARD_FRAME, r: 0.03 },
       }),
     [width, height],
@@ -220,21 +302,19 @@ export function NoticeBoard() {
     <group>
       {/* Clicked anywhere from the desk: the user goes to the board. */}
       <Clickable action="settings" station="desk" hoverScale={1}>
-        <mesh geometry={frame} material={toonMaterial("wood")} position={[cx, cy, z]}>
-          <InkEdges threshold={40} />
-        </mesh>
-        <Box size={[width - 2 * BOARD_FRAME + 0.02, height - 2 * BOARD_FRAME + 0.02, 0.02]} at={[cx, cy, z + 0.012]} color="cork" />
+        <mesh geometry={frame} material={finishMaterial(gl, "wood")} position={[cx, cy, z]} castShadow receiveShadow />
+        <Box size={[width - 2 * BOARD_FRAME + 0.02, height - 2 * BOARD_FRAME + 0.02, 0.02]} at={[cx, cy, z + 0.012]} finish="cork" />
         {/* The header plank, lettered SETTINGS. */}
         <mesh
           geometry={roundedSlab({ w: width - 2 * BOARD_FRAME - 0.08, h: BOARD_PLANK - 0.05, r: 0.035, depth: 0.016, bevel: 0.004 })}
-          material={toonMaterial("paper")}
+          material={finishMaterial(gl, "paper")}
           position={[cx, plankY, z + 0.022]}
-        >
-          <InkEdges threshold={40} />
-        </mesh>
+          castShadow
+          receiveShadow
+        />
         <mesh
           geometry={settingsLetters}
-          material={letteringMaterials(pointed ? "accent" : "ink", pointed ? "accent" : "ink", false)}
+          material={finishMaterial(gl, pointed ? "accent" : "ink", { decal: true })}
           position={[cx, plankY, z + 0.046]}
         />
         {(Object.keys(BOARD_NOTES) as BoardNote[]).map((name) => (
@@ -245,10 +325,13 @@ export function NoticeBoard() {
       {/* At the board: the way back. */}
       {atBoard && (
         <Clickable action="desk" station="noteboard" position={[right - BOARD_FRAME - 0.06 - tagW / 2, plankY, z + 0.046]}>
-          <mesh geometry={roundedSlab({ w: tagW, h: 0.1, r: 0.028, depth: 0.012, bevel: 0.003 })} material={toonMaterial("accent")}>
-            <InkEdges threshold={40} />
-          </mesh>
-          <mesh geometry={back} material={letteringMaterials("paper", "paper", false)} position={[0, 0, 0.018]} />
+          <mesh
+            geometry={roundedSlab({ w: tagW, h: 0.1, r: 0.028, depth: 0.012, bevel: 0.003 })}
+            material={finishMaterial(gl, "accent")}
+            castShadow
+            receiveShadow
+          />
+          <mesh geometry={back} material={finishMaterial(gl, "paper", { decal: true })} position={[0, 0, 0.018]} />
         </Clickable>
       )}
     </group>

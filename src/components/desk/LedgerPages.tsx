@@ -44,7 +44,8 @@ const entryHeadingId = (id: string) => `ledger-entry-${id}`;
 const PROGRESS_HEADING_ID = "ledger-progress";
 const TRENDS_HEADING_ID = "trend-title";
 
-const EMBOSSED = "text-leather-light [text-shadow:0_2px_0_var(--color-leather-dark)]";
+/** Pressed into the leather: shaded above, catching light below. */
+const EMBOSSED = "text-leather-light [text-shadow:0_-1px_0_rgb(0_0_0/0.45),0_1px_0_rgb(255_255_255/0.14)]";
 
 // Front matter
 
@@ -52,7 +53,7 @@ export function CoverPage({ volume, owner }: { volume: LedgerVolume; owner: Ledg
   return (
     <DocumentPage face="cover">
       <div className="flex flex-1 flex-col items-center justify-between px-10 pb-16 pt-28 text-center">
-        <div className="rounded-md border-2 border-ink bg-brass px-7 py-4 shadow-[inset_2px_2px_0_0_rgb(255_255_255/0.35),inset_-2px_-2px_0_0_rgb(28_27_26/0.2)]">
+        <div className="brass-plate rounded-md px-7 py-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-ink/70">JobMe</p>
           <p className="mt-1 text-xl font-bold uppercase tracking-[0.16em] text-ink">Performance record</p>
           <p className="mt-1 text-sm font-semibold text-ink/75">Volume {volume.number}</p>
@@ -67,7 +68,7 @@ export function BookplatePage({ owner, volume, shown }: { owner: LedgerOwner | n
   return (
     <DocumentPage face="endpaper">
       <div className="flex flex-1 items-center justify-center px-9">
-        <FlipSafe className="w-full -rotate-1 rounded-md border-2 border-ink bg-paper px-6 py-7 text-center shadow-[5px_6px_0_0_rgb(28_27_26/0.22)]">
+        <FlipSafe className="paper-label w-full -rotate-1 rounded-md px-6 py-7 text-center">
           <p className={kickerClass}>This record belongs to</p>
           <p className="mt-2 text-2xl font-bold text-ink">{owner?.username ? `@${owner.username}` : "You"}</p>
           {owner && <p className="mt-1 font-mono text-sm tracking-wider text-muted">{owner.memberCode}</p>}

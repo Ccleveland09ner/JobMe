@@ -1,8 +1,10 @@
 "use client";
 
-/** Sign out: walk to the front door, then POST /logout. Without 3D it just submits. */
-
-import { useEffect, useRef, useState } from "react";
+/**
+ * Sign out. With 3D the building walks to the front door and posts /logout
+ * (BuildingProvider.leave), so it finishes even if this button is unmounted on
+ * the way; without 3D the form just posts.
+ */
 
 import { buttonClasses } from "@/components/ui/Button";
 
@@ -16,26 +18,16 @@ export function SignOutButton({
   variant?: "ghost" | "secondary";
 }) {
   const building = useBuilding();
-  const form = useRef<HTMLFormElement>(null);
-  const [leaving, setLeaving] = useState(false);
-
-  // Submit once the walk to the door has arrived.
-  useEffect(() => {
-    if (leaving && building?.state.station === "entrance" && building.state.target === null) {
-      form.current?.submit();
-    }
-  }, [leaving, building?.state.station, building?.state.target]);
+  const leaving = building?.leaving ?? false;
 
   return (
     <form
-      ref={form}
       method="post"
       action="/logout"
       onSubmit={(e) => {
-        if (!building?.show3D || leaving) return;
+        if (!building?.show3D) return;
         e.preventDefault();
-        setLeaving(true);
-        building.walkTo("entrance");
+        if (!leaving) building.leave();
       }}
     >
       <button type="submit" disabled={leaving} className={buttonClasses({ variant, size: "sm" })}>

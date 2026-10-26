@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clipboardFrame, fitBook, isLeftPage, spreadAt } from "./book-layout";
+import { clipboardFrame, fitBook, isLeftPage, spreadAt, stackDepths } from "./book-layout";
 
 const page = { width: 420, height: 580 };
 
@@ -61,5 +61,26 @@ describe("isLeftPage", () => {
   it("puts odd pages on the left after a cover, even pages without one", () => {
     expect([1, 2, 3].map((i) => isLeftPage(i, true))).toEqual([true, false, true]);
     expect([0, 1, 2].map((i) => isLeftPage(i, false))).toEqual([true, false, true]);
+  });
+});
+
+describe("stackDepths", () => {
+  it("puts what has been read on the left and what is left on the right", () => {
+    expect(stackDepths({ spread: [1, 2], total: 18 }, 10)).toEqual({ left: 1, right: 9 });
+    expect(stackDepths({ spread: [15, 16], total: 18 }, 10)).toEqual({ left: 9, right: 1 });
+  });
+
+  it("shows nothing on a side with no pages, and the whole book on the other", () => {
+    expect(stackDepths({ spread: [0], total: 18 }, 10)).toEqual({ left: 0, right: 10 });
+    expect(stackDepths({ spread: [17], total: 18 }, 10)).toEqual({ left: 10, right: 0 });
+  });
+
+  it("shows a single page as a stack", () => {
+    expect(stackDepths({ spread: [1, 2], total: 400 }, 10).left).toBe(1);
+  });
+
+  it("is flat for a book of one page, or none", () => {
+    expect(stackDepths({ spread: [0], total: 1 }, 10)).toEqual({ left: 0, right: 0 });
+    expect(stackDepths({ spread: [], total: 0 }, 10)).toEqual({ left: 0, right: 0 });
   });
 });

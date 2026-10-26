@@ -10,8 +10,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-import { letteringGeometry, letteringMaterials, letteringWidth, useLetteringFont } from "@/components/three/lettering";
-import { toonMaterial } from "@/components/three/toon";
+import { letteringGeometry, letteringMaterials, letteringWidth, signMaterial, useLetteringFont } from "@/components/three/lettering";
 import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "../BuildingProvider";
@@ -91,8 +90,8 @@ export function FloatingLabel({
     g.scale.setScalar(scale.current);
   });
 
-  const letters = letteringMaterials(hovered ? "accent" : "paper", "ink", false);
-  const ink = letteringMaterials("ink", "ink", false);
+  const letters = letteringMaterials(hovered ? "accent" : "paper", "ink");
+  const ink = letteringMaterials("ink", "ink");
   const behind = -depth / 2 - 0.004;
   return (
     <group
@@ -115,7 +114,7 @@ export function FloatingLabel({
       {/* The pointer, down to the object. */}
       <mesh
         geometry={pointerGeometry}
-        material={toonMaterial(hovered ? "accent" : "ink")}
+        material={signMaterial(hovered ? "accent" : "ink")}
         position={[0, -top - size * 0.9 - 0.035, 0]}
         rotation={[Math.PI, 0, 0]}
       />

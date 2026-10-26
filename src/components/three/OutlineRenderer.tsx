@@ -10,7 +10,8 @@ import { useMemo } from "react";
 // Patched copy: outlines offset on screen only, never in depth (see its header).
 import { OutlineEffect } from "./OutlineEffect.js";
 
-import { INK, OUTLINE_THICKNESS } from "./toon";
+import { INK } from "./palette";
+import { OUTLINE_THICKNESS } from "./toon";
 
 export function OutlineRenderer() {
   const gl = useThree((s) => s.gl);

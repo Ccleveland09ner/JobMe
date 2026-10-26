@@ -41,6 +41,10 @@ export interface Building {
   show3D: boolean;
   dispatch: (event: BuildingEvent) => void;
   walkTo: (to: Station, options?: { hold?: boolean }) => void;
+  /** Sign out: walk to the front door, then post /logout (BuildingProvider owns it, so it survives the page). */
+  leave: () => void;
+  /** Signing out is under way. */
+  leaving: boolean;
   release: () => void;
   fail: (message: string) => void;
   /** The interviewer's face, read every frame by the scene. */
@@ -80,6 +84,9 @@ export interface Building {
 }
 
 const BuildingContext = createContext<Building | null>(null);
+
+/** Sign out anyway if the walk to the door hasn't arrived by then (another walk, a lost context). */
+const LEAVE_TIMEOUT_MS = 8000;
 
 export function useBuilding(): Building | null {
   return useContext(BuildingContext);
@@ -150,10 +157,31 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
   const walkTo = useCallback((to: Station, options?: { hold?: boolean }) => {
     dispatch({ type: "WALK", to, hold: options?.hold ?? false });
   }, []);
+
+  // Signing out walks to the door and then posts /logout. It runs here, not in
+  // the button that asked: on the way, a settings note shrinks to "Open this
+  // note" and unmounts its button, which then never posted, stranding the user.
+  const [leaving, setLeaving] = useState(false);
+  const logout = useRef<HTMLFormElement>(null);
+  const leave = useCallback(() => {
+    setLeaving(true);
+    dispatch({ type: "WALK", to: "entrance", hold: false });
+  }, []);
   const release = useCallback(() => dispatch({ type: "RELEASE" }), []);
   const fail = useCallback((message: string) => dispatch({ type: "FAIL", message }), []);
 
   const show3D = canUseWebGL && state.render === "3d";
+
+  const atDoor = state.station === "entrance" && state.target === null;
+  useEffect(() => {
+    if (!leaving) return;
+    if (atDoor || !show3D) {
+      logout.current?.submit();
+      return;
+    }
+    const timer = setTimeout(() => logout.current?.submit(), LEAVE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [leaving, atDoor, show3D]);
 
   // No 3D objects to animate: the lift and the return happen at once.
   useEffect(() => {
@@ -169,6 +197,8 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
       show3D,
       dispatch,
       walkTo,
+      leave,
+      leaving,
       release,
       fail,
       speaker,
@@ -196,6 +226,8 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
       canUseWebGL,
       show3D,
       walkTo,
+      leave,
+      leaving,
       release,
       fail,
       setSpeaker,
@@ -215,5 +247,11 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <BuildingContext.Provider value={value}>{children}</BuildingContext.Provider>;
+  return (
+    <BuildingContext.Provider value={value}>
+      {children}
+      {/* Where signing out posts from, once the user is at the door. */}
+      <form ref={logout} method="post" action="/logout" hidden />
+    </BuildingContext.Provider>
+  );
 }
