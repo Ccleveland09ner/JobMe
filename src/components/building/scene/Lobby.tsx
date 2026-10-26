@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { finishMaterial, type Finish } from "@/components/three/finishes";
 
 import { CORRIDOR, DESK, FACADE_Z, LOBBY, SECRETARY } from "../world";
-import { DeskObjects, NoticeBoard } from "./Objects";
+import { DeskObjects, NamePlate, NoticeBoard } from "./Objects";
 import { OfficeChair } from "./OfficeChair";
 import { CeilingLight, Pane, PottedPlant, Slab } from "./parts";
 
@@ -82,10 +82,11 @@ export const Lobby = memo(function Lobby() {
         cast
       />
       <OfficeChair at={[SECRETARY.x, 0, SECRETARY.z - 0.05]} />
-      {/* A pen pot, and the desk objects (they wait for the lettering font). */}
+      {/* A pen pot, the desk objects and the secretary's nameplate (they wait for the lettering font). */}
       <PenPot x={1.45} top={DESK.height + 0.06} z={DESK.z - 0.4} />
       <Suspense fallback={null}>
         <DeskObjects />
+        <NamePlate />
       </Suspense>
 
       {/* Back wall: the settings notice board, and a plant. */}
