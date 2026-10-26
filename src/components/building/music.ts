@@ -1,7 +1,8 @@
 /**
  * The lobby's background music, outside React: the playlist, where in the
  * building it plays, and hushes (something that needs quiet, like the
- * microphone test, holds one while it runs). LobbyMusic.tsx plays it.
+ * microphone test, holds one while it runs). LobbyMusic.tsx plays it
+ * (through backgroundAudio.ts).
  */
 
 import { useSyncExternalStore } from "react";
@@ -35,10 +36,6 @@ const LOBBY: ReadonlySet<Station> = new Set(["desk", "noteboard"]);
  */
 export function wantsLobbyMusic(state: { station: Station; target: Station | null }): boolean {
   return LOBBY.has(state.target ?? state.station);
-}
-
-export function nextTrack(index: number, count: number): number {
-  return count > 0 ? (index + 1) % count : 0;
 }
 
 let hushes = 0;

@@ -67,6 +67,11 @@ How the code is organised, which way dependencies point, what the data layer gua
   - it can be turned off on the Preferences note (stored in this browser, `lib/frontend/preferences.ts`);
   - it is quiet while the microphone test runs and while the tab is hidden;
   - it waits for the user's first click or key press, as browsers require.
+- The street has sounds by time of day (`StreetSounds.tsx`, schedule in `sky/sounds.ts`; files in `public/audio/sound/`):
+  - day sounds through the day and evening sounds through the night;
+  - dusk sounds at sunrise (05:00–06:59) and at sunset (the sky's dusk);
+  - they follow the sky when it is previewed at another time, and fade out as the user walks to the door.
+- Both play through `backgroundAudio.ts`: a quiet looping playlist, faded in and out, cross-faded when it changes, with the volume set through Web Audio (iOS ignores an element's own volume).
 - `StationLayer` is the DOM over the canvas:
   - `stationLayout.ts` holds its routing rules: path → layout, and path → held object.
   - `stationEffects.ts` holds its effects: heading focus, held sync, desk actions, camera inset.
