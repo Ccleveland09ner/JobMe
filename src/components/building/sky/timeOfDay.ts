@@ -27,17 +27,38 @@ export function timeOfDayFor(hour: number, search: string): TimeOfDay {
 
 const CHECK_EVERY_MS = 60_000;
 
-const read = () => timeOfDayFor(new Date().getHours(), window.location.search);
+/**
+ * The dev sky toggle's choice (SkyTimeToggle.tsx): a time of day, "clock" for
+ * the clock even over ?time=, or null for no choice.
+ */
+export type SkyOverride = TimeOfDay | "clock" | null;
+let override: SkyOverride = null;
+
+const byClock = () => timeOfDayAt(new Date().getHours());
+
+function read(): TimeOfDay {
+  if (override === "clock") return byClock();
+  return override ?? timeOfDayFor(new Date().getHours(), window.location.search);
+}
 
 let current: TimeOfDay | null = null;
+let clock: TimeOfDay | null = null;
 const listeners = new Set<() => void>();
 let timer: number | undefined;
 
 function check() {
   const next = read();
-  if (next === current) return;
+  const nextClock = byClock();
+  if (next === current && nextClock === clock) return;
   current = next;
+  clock = nextClock;
   listeners.forEach((listener) => listener());
+}
+
+/** For the dev sky toggle only: show this time of day instead. */
+export function setSkyOverride(next: SkyOverride) {
+  override = next;
+  check();
 }
 
 /** Re-checks every minute, and when the tab comes back (timers sleep in the background). */
@@ -62,8 +83,15 @@ function subscribe(listener: () => void) {
 }
 
 const snapshot = () => (current ??= read());
+const clockSnapshot = () => (clock ??= byClock());
+const onServer = () => null;
 
-/** The time of day, or null on the server and through hydration. */
+/** The time of day the sky shows, or null on the server and through hydration. */
 export function useTimeOfDay(): TimeOfDay | null {
-  return useSyncExternalStore<TimeOfDay | null>(subscribe, snapshot, () => null);
+  return useSyncExternalStore<TimeOfDay | null>(subscribe, snapshot, onServer);
+}
+
+/** The time of day by the clock alone, whatever the sky is showing; null on the server and through hydration. */
+export function useClockTimeOfDay(): TimeOfDay | null {
+  return useSyncExternalStore<TimeOfDay | null>(subscribe, clockSnapshot, onServer);
 }
