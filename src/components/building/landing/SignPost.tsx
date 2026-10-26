@@ -19,6 +19,7 @@ import * as THREE from "three";
 
 import { studioEnvironment } from "@/components/three/environment";
 import { finishMaterial } from "@/components/three/finishes";
+import { PALETTE } from "@/components/three/palette";
 import { detailTexture } from "@/components/three/textures";
 
 import { useBuilding } from "../BuildingProvider";
@@ -59,18 +60,18 @@ const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
 const HIT_BODY = 1.3;
 const faceGeometry = new THREE.PlaneGeometry(FACE.width, FACE.height);
 /**
- * The face: honed pale limestone, smooth (no block joints behind the writing)
- * and lighter than the slab, so the cut letters read clearly. From dusk it
- * glows softly, as if lit by the uplight, so they still read at night.
+ * The face: the post's own stone, dressed as one block (its mottle, but no
+ * joints running through the writing chiselled into it). From dusk it glows
+ * faintly, as if lit by the uplight, so the letters still read at night.
  */
-const HONED = { color: "#efe6d6", glow: "#fff0d8", night: 0.32 } as const;
+const DRESSED = { glow: "#ffe9c8", night: 0.28 } as const;
 
-function honedMaterial(gl: THREE.WebGLRenderer): THREE.MeshStandardMaterial {
+function dressedMaterial(gl: THREE.WebGLRenderer): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: HONED.color,
-    roughness: 0.85,
+    color: PALETTE.stone,
+    roughness: 0.9,
     map: detailTexture("plaster"),
-    emissive: HONED.glow,
+    emissive: DRESSED.glow,
     emissiveIntensity: 0,
     envMap: studioEnvironment(gl),
     envMapIntensity: 0.25,
@@ -135,7 +136,7 @@ export function SignPost({ poster, order }: { poster: Poster; order: number }) {
   const uplightMap = useCanvasTexture(UPLIGHT_ART);
   const uplight = useRef<THREE.MeshBasicMaterial>(null);
   // Each post's own, so its glow can follow the sky without touching the shared stone.
-  const faceMaterial = useMemo(() => honedMaterial(gl), [gl]);
+  const faceMaterial = useMemo(() => dressedMaterial(gl), [gl]);
   useEffect(() => () => faceMaterial.dispose(), [faceMaterial]);
   const face = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>>(null);
   /** The first-visit pulse, 0 to 1, read by the title too. */
@@ -163,7 +164,7 @@ export function SignPost({ poster, order }: { poster: Poster; order: number }) {
       else if (p > 0) pulse.current = Math.sin(p * Math.PI);
       invalidate();
     }
-    if (face.current) face.current.material.emissiveIntensity = HONED.night * skyLook.value.lamp;
+    if (face.current) face.current.material.emissiveIntensity = DRESSED.night * skyLook.value.lamp;
     if (uplight.current) {
       uplight.current.opacity = UPLIGHT.night * skyLook.value.lamp + UPLIGHT.hover * hover.current + UPLIGHT.pulse * pulse.current;
     }
@@ -231,7 +232,7 @@ export function SignPost({ poster, order }: { poster: Poster; order: number }) {
         />
       </mesh>
 
-      {/* The honed panel the writing is cut into, set back inside the frame. */}
+      {/* The dressed stone the writing is chiselled into, set back inside the frame. */}
       <mesh ref={face} geometry={faceGeometry} material={faceMaterial} position={[0, faceY, front + 0.004]} receiveShadow />
 
       {/* The stone itself opens it too (and, open, clicking it is not clicking "outside"). */}
