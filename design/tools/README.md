@@ -68,3 +68,13 @@ Then check the result at `http://localhost:3000/dev/recruiter` (`npm run dev`).
   room plays the first one.
 - The face shapes (blink, visemes, smile) are untouched by both steps; the
   room drives them live (`src/components/room/Recruiter3D.tsx`).
+
+## The receptionist
+
+Ms. Crystal, at the front desk, is the same `recruiter.glb`, rebuilt in the
+browser on her own copy of it (`src/components/receptionist/character/`): her
+afro, headband and hoops are generated geometry on the head bone, her face is
+reshaped on a cloned head geometry, and her skin, outfit and print are
+repainted from the model's own textures. Nothing here needs rebuilding for her,
+and nothing done to her reaches the interviewer. Review her from every side at
+`http://localhost:3000/dev/receptionist`.
