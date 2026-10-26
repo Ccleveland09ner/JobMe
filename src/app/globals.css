@@ -102,6 +102,25 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
+/*
+ * The landing title over the 3D sky: ink by day, light on dusk and night skies.
+ * <html data-sky> is set by the sky (components/building/sky/Sky.tsx) only while
+ * the 3D scene shows; data-sky-snap skips the fade when it first appears.
+ */
+.sky-title {
+  transition:
+    color 2s ease,
+    text-shadow 2s ease;
+}
+:root[data-sky="dusk"] .sky-title,
+:root[data-sky="night"] .sky-title {
+  color: var(--color-bg);
+  text-shadow: 0 2px 24px rgb(10 14 40 / 0.35);
+}
+:root[data-sky-snap] .sky-title {
+  transition: none;
+}
+
 /* Visible focus states are a requirement, not a polish item. */
 :focus-visible {
   outline: 2px solid var(--color-accent);

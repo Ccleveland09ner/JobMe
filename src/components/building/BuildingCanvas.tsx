@@ -14,7 +14,6 @@ import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { RECRUITER_MODEL, RecruiterModel } from "@/components/room/Recruiter3D";
 import type { Look, Speaker } from "@/components/room/types";
 import { LETTERING_FONT } from "@/components/three/lettering";
-import { PALETTE } from "@/components/three/palette";
 
 import { useBuilding } from "./BuildingProvider";
 import { CameraRig } from "./CameraRig";
@@ -24,6 +23,7 @@ import { Lighting } from "./scene/Lighting";
 import { Lobby } from "./scene/Lobby";
 import { LOOK_POINTS } from "./scene/Objects";
 import { Street } from "./scene/Street";
+import { Sky } from "./sky/Sky";
 import type { Station } from "./stations";
 import { RECRUITER, SECRETARY } from "./world";
 
@@ -83,9 +83,8 @@ export default function BuildingCanvas() {
         el.addEventListener("webglcontextrestored", () => dispatch({ type: "CONTEXT_RESTORED" }));
       }}
     >
-      <color attach="background" args={[PALETTE.sky]} />
-      {/* Far things fade into the sky: depth on the street, nothing indoors. */}
-      <fog attach="fog" args={[PALETTE.sky, 30, 110]} />
+      {/* The sky by the visitor's time of day, and fog in its horizon's colour. */}
+      <Sky />
       <Lighting />
 
       <Street doorsOpen={frontDoorsOpen} />
