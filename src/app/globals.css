@@ -306,6 +306,51 @@ dialog::backdrop {
   }
 }
 
+/*
+ * The receptionist's bubble (components/receptionist/ReceptionistBubble.tsx):
+ * it fades in and out either way, and only pops (scales) with motion allowed.
+ * Its exit must always run: the music waits for it to finish.
+ */
+@keyframes reception-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes reception-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes reception-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86) translateY(8px);
+  }
+}
+@keyframes reception-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.94) translateY(5px);
+  }
+}
+.reception-bubble-in {
+  animation: reception-fade-in 200ms ease-out both;
+}
+.reception-bubble-out {
+  animation: reception-fade-out 320ms ease-in both;
+}
+.reception-bubble-cut {
+  animation: reception-fade-out 150ms ease-in both;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .reception-bubble-in {
+    animation: reception-pop-in 260ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+  }
+  .reception-bubble-out {
+    animation: reception-pop-out 360ms ease-in both;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .held-in {
     animation: held-in 420ms cubic-bezier(0.2, 0.8, 0.3, 1.1) both;

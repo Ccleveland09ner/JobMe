@@ -11,8 +11,11 @@ import { Suspense, useEffect, useRef } from "react";
 import { NeutralToneMapping } from "three";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 
+import { BubbleAnchor } from "@/components/receptionist/BubbleAnchor";
+import { RECEPTIONIST_LOOK } from "@/components/receptionist/look";
+import { useReceptionist } from "@/components/receptionist/ReceptionistProvider";
 import { RECRUITER_MODEL, RecruiterModel } from "@/components/room/Recruiter3D";
-import type { Look, Speaker } from "@/components/room/types";
+import type { Speaker } from "@/components/room/types";
 import { LETTERING_FONT } from "@/components/three/lettering";
 
 import { useBuilding } from "./BuildingProvider";
@@ -35,22 +38,17 @@ const INSIDE: ReadonlySet<Station> = new Set(["desk", "corridor", "room"]);
 /** Neutral tone mapping keeps the palette as it is and only softens highlights. */
 const GL = { antialias: true, toneMapping: NeutralToneMapping } as const;
 
-/** PLACEHOLDER: the secretary is the recruiter model, recoloured, until secretary.glb exists. */
-const SECRETARY_LOOK: Look = {
-  colors: { avaturn_look_0_material: "#b4553a", Wolf3D_Hair: "#5a3825" },
-  glasses: false,
-  // Not staring the whole time.
-  idleGlances: true,
-};
-
 export default function BuildingCanvas() {
   const building = useBuilding();
-  // The secretary glances at whatever the user points at.
-  const secretary = useRef<Speaker>({ state: "idle" });
+  // Ms. Crystal's face: her controller drives her speaking; she glances at whatever the user points at.
+  const receptionist = useReceptionist();
+  const fallbackSpeaker = useRef<Speaker>({ state: "idle" });
+  const secretary = receptionist?.speaker ?? fallbackSpeaker;
   const hovered = building?.hovered ?? null;
   useEffect(() => {
-    secretary.current = { state: "idle", lookAt: hovered ? (LOOK_POINTS[hovered] ?? null) : null };
-  }, [hovered]);
+    secretary.current = { ...secretary.current, lookAt: hovered ? (LOOK_POINTS[hovered] ?? null) : null };
+  }, [hovered, secretary]);
+  const talking = (receptionist?.dialogue.phase ?? "idle") !== "idle";
 
   // A pointer over anything the user can use.
   const pointed = useRef(false);
@@ -101,10 +99,11 @@ export default function BuildingCanvas() {
       <Suspense fallback={null}>
         <RecruiterModel
           speaker={secretary}
-          look={SECRETARY_LOOK}
-          // Still while the user reads something from the desk: the scene can rest.
-          animate={station === "desk" && target === null && held.phase !== "open"}
+          look={RECEPTIONIST_LOOK}
+          // Still while the user reads something from the desk (the scene can rest), unless she is talking.
+          animate={station === "desk" && target === null && (held.phase !== "open" || talking)}
           position={[SECRETARY.x, 0, SECRETARY.z]}
+          onReady={receptionist?.setReady}
         />
         <RecruiterModel
           speaker={speaker}
@@ -115,6 +114,7 @@ export default function BuildingCanvas() {
 
       <CameraRig />
       <MouseParallax />
+      <BubbleAnchor />
     </Canvas>
   );
 }

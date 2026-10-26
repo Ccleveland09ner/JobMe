@@ -1,6 +1,6 @@
 "use client";
 
-/** The preferences note: interview type, answer mode and lobby music, saved in this browser. */
+/** The preferences note: interview type, answer mode, lobby music and the receptionist's voice, saved in this browser. */
 
 import { useId, useState } from "react";
 
@@ -9,8 +9,10 @@ import {
   FALLBACK_DEFAULTS,
   useDefaults,
   useLobbyMusic,
+  useReceptionistVoice,
   writeDefaults,
   writeLobbyMusic,
+  writeReceptionistVoice,
   type InterviewDefaults,
 } from "@/lib/frontend/preferences";
 
@@ -33,6 +35,11 @@ const ANSWERS: Option<InterviewDefaults["inputMode"]>[] = [
 const MUSIC: Option<"on" | "off">[] = [
   { value: "on", label: "On", hint: "quietly, in the lobby" },
   { value: "off", label: "Off", hint: "no music" },
+];
+
+const VOICE: Option<"on" | "off">[] = [
+  { value: "on", label: "On", hint: "her words show too" },
+  { value: "off", label: "Off", hint: "her words only" },
 ];
 
 function Choice<V extends string>({
@@ -78,6 +85,7 @@ function Choice<V extends string>({
 export function DefaultsNote() {
   const defaults = useDefaults() ?? FALLBACK_DEFAULTS;
   const music = useLobbyMusic();
+  const voice = useReceptionistVoice();
   const [status, setStatus] = useState<string>("");
 
   const saved = (ok: boolean) => setStatus(ok ? "Saved on this device." : "This browser wouldn't save it (private browsing?).");
@@ -93,6 +101,12 @@ export function DefaultsNote() {
         onChange={(inputMode) => save({ ...defaults, inputMode })}
       />
       <Choice legend="Lobby music" options={MUSIC} value={music ? "on" : "off"} onChange={(v) => saved(writeLobbyMusic(v === "on"))} />
+      <Choice
+        legend="Ms. Crystal's voice"
+        options={VOICE}
+        value={voice ? "on" : "off"}
+        onChange={(v) => saved(writeReceptionistVoice(v === "on"))}
+      />
       <p role="status" className="text-xs text-muted">
         {status || "The setup clipboard starts with your interview type and answers. Any interview can still change them."}
       </p>
