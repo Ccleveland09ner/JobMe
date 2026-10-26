@@ -13,7 +13,7 @@ export default async function Home() {
     <div className="flex w-full flex-col items-center gap-[3vh] px-4 pt-[4vh]">
       {/* "JobMe", uppercased in CSS: screen readers may spell out "JOBME". */}
       <h1
-        className="text-center font-bold uppercase leading-none tracking-tight text-ink"
+        className="sky-title text-center font-bold uppercase leading-none tracking-tight text-ink"
         // Stays below the roofline, and fits a phone.
         style={{ fontSize: "min(18vh, 24vw)" }}
       >
