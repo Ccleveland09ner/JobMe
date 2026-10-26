@@ -8,6 +8,7 @@ import * as THREE from "three";
 
 import { finishMaterial } from "@/components/three/finishes";
 
+import { StreetLantern } from "../sky/StreetLantern";
 import { DOOR, FACADE_Z } from "../world";
 import { Box, Bush, Pane, Slab, Tree } from "./parts";
 import { SwingDoor } from "./SwingDoor";
@@ -40,14 +41,14 @@ function Column({ x, z, height }: { x: number; z: number; height: number }) {
   );
 }
 
-/** A lamp post: a tapered iron post, and a lantern glowing between its corner posts. */
+/** A lamp post: a tapered iron post, and a lantern between its corner posts, lit from dusk. */
 function LampPost({ x, z }: { x: number; z: number }) {
   const gl = useThree((s) => s.gl);
   return (
     <group position={[x, 0, z]}>
       <mesh geometry={postGeometry} material={finishMaterial(gl, "iron")} position={[0, 1.55, 0]} castShadow receiveShadow />
       <Box size={[0.3, 0.05, 0.3]} at={[0, 3.08, 0]} finish="iron" round={0.012} cast />
-      <Box size={[0.26, 0.36, 0.26]} at={[0, 3.29, 0]} finish="light" />
+      <StreetLantern at={[0, 3.29, 0]} />
       {[-1, 1].flatMap((sx) =>
         [-1, 1].map((sz) => <Box key={`${sx}${sz}`} size={[0.03, 0.38, 0.03]} at={[sx * 0.14, 3.29, sz * 0.14]} finish="iron" cast />),
       )}
