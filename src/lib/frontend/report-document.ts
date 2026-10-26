@@ -2,7 +2,10 @@
  * A report as the reports folder files it, the folder's index of reports,
  * and how a report is laid out on the folder's sheets. Read the same way on
  * the server (the report first opened) and in the browser (another tab),
- * through RLS; the shaping and the layout are pure.
+ * through RLS; the shaping and the layout are pure. A report judges the
+ * interview: its summary, feedback, the rewrite and each question's scores
+ * and notes. What was said, word for word, is the ledger's
+ * (lib/frontend/ledger.ts).
  */
 
 import type { RowReader } from "@/lib/supabase/reader";
@@ -21,7 +24,6 @@ import {
   type ReportStats,
 } from "../stats";
 import {
-  findEvidence,
   modeFromRow,
   pickOverall,
   pickScores,
@@ -187,6 +189,19 @@ export function tabFor(doc: ReportDocument): ReportTab {
   return { id: doc.id, startedAt: doc.startedAt, mode: doc.mode, title: doc.title };
 }
 
+/**
+ * The tab that comes forward when `id` is deleted: the next older one, else
+ * the nearest newer one; null when nothing is left. `gone` are tabs already
+ * deleted, which never come forward.
+ */
+export function tabAfterDelete(tabs: ReportTab[], id: string, gone: ReadonlySet<string>): string | null {
+  const at = tabs.findIndex((t) => t.id === id);
+  const live = (t: ReportTab) => t.id !== id && !gone.has(t.id);
+  const older = tabs.slice(at + 1).find(live);
+  const newer = tabs.slice(0, Math.max(0, at)).reverse().find(live);
+  return (older ?? newer)?.id ?? null;
+}
+
 /** What POST /api/sessions/[id]/report returns. */
 export type GeneratedReport = ReportBody;
 
@@ -230,7 +245,6 @@ export const FOLDER_SECTIONS = [
   { id: "feedback", title: "Feedback" },
   { id: "rewrite", title: "Your weakest answer, rewritten" },
   { id: "questions", title: "Question by question" },
-  { id: "transcript", title: "Transcript" },
 ] as const;
 
 export type FolderSection = (typeof FOLDER_SECTIONS)[number]["id"];
@@ -244,7 +258,7 @@ export function feedbackItems(doc: ReportDocument, list: FeedbackListId): Feedba
   return Array.isArray(items) ? items : [];
 }
 
-/** Pieces of long text: summaries, rewrites and answers run on across sheets. */
+/** Pieces of long text: summaries, rewrites and the answer rewritten run on across sheets. */
 export const FOLDER_TEXT_CHARS = 600;
 /** Questions on one block of the competency list. */
 export const FOLDER_COMPETENCY_ROWS = 6;
@@ -266,10 +280,7 @@ export type FolderBlockKind =
   | "rewrite-missing"
   | "rewrite-none"
   | "question-scores"
-  | "turn-notes"
-  | "turn-question"
-  | "turn-answer"
-  | "turn-evidence";
+  | "turn-notes";
 
 /** One printed block of a report, before it is measured. */
 export interface FolderBlock extends Omit<FlowBlock, "height"> {
@@ -286,8 +297,6 @@ export interface FolderBlock extends Omit<FlowBlock, "height"> {
   /** "feedback-list" and "feedback-item": which list, and the item in it. */
   list?: FeedbackListId;
   item?: number;
-  /** "turn-evidence": the quote is in no single piece of the answer, so it is shown here. */
-  quote?: boolean;
 }
 
 const hasNotes = (t: ReportTurn) => Boolean(t.evidence || t.note || t.reason);
@@ -343,6 +352,7 @@ export function folderFlow(doc: ReportDocument): FolderBlock[] {
     else blocks.push({ id: "rewrite-missing", kind: "rewrite-missing" });
   }
 
+  // The transcript is the ledger's: the report keeps what the interviewer made of each answer.
   if (questions.length) {
     section("questions");
     questions.forEach((q, question) => {
@@ -350,21 +360,6 @@ export function folderFlow(doc: ReportDocument): FolderBlock[] {
       blocks.push({ id: `qs-${q.opening.id}`, kind: "question-scores", question, keepWithNext: noted.length > 0 });
       noted.forEach((t) => blocks.push({ id: `fn-${t.id}`, kind: "turn-notes", question, turn: at.get(t.id) }));
     });
-
-    section("transcript");
-    questions.forEach((q, question) =>
-      q.turns.forEach((t) => {
-        const turn = at.get(t.id);
-        blocks.push({ id: `tq-${t.id}`, kind: "turn-question", question, turn, keepWithNext: true });
-        const answer = pieces(t.answer);
-        (answer.length ? answer : [""]).forEach((text, k) =>
-          blocks.push({ id: `ta-${t.id}-${k}`, kind: "turn-answer", question, turn, text, first: k === 0 }),
-        );
-        // A quote that isn't in any one piece is shown beneath, never dropped.
-        const quote = Boolean(t.evidence) && !answer.some((p) => findEvidence(p, t.evidence));
-        if (quote || !t.scores) blocks.push({ id: `te-${t.id}`, kind: "turn-evidence", question, turn, quote });
-      }),
-    );
   }
   return blocks;
 }

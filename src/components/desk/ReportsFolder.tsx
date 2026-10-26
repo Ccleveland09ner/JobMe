@@ -3,16 +3,20 @@
 /**
  * The reports folder: one file per finished interview, each with a tab on
  * the folder's top edge. A file is a booklet of fixed-size sheets turned like
- * paper: the inside flap with its label, then the summary, performance,
- * question-by-question feedback, the rewrite and the transcript. Choosing a
- * tab swaps the file in place (fetched once, through RLS) and keeps the URL
- * in step without leaving the folder.
+ * paper: the inside flap with its label, then the summary, the feedback, the
+ * rewrite of the weakest answer and each question's scores and notes. The
+ * transcript is the ledger's, and the flap links to it. Choosing a tab swaps
+ * the file in place (fetched once, through RLS) and keeps the URL in step
+ * without leaving the folder; deleting the interview on top brings the file
+ * behind it forward the same way.
  */
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
+import { useAlive } from "@/components/common/useAlive";
+import { useDeleteSession } from "@/components/dashboard/useDeleteSession";
 import { CloseTag, HeldDocument, useHeldDocument } from "@/components/held/Held";
 import { BookSlider, type BookSliderHandle } from "@/components/ui/book-slider";
 import { FlowPage } from "@/components/ui/DocumentParts";
@@ -20,6 +24,7 @@ import { DOC_BODY_HEIGHT, DOC_BODY_WIDTH, DOC_PAGE, DOC_PAGE_SIZE } from "@/comp
 import { DocumentTabs } from "@/components/ui/DocumentTabs";
 import { useLastReady } from "@/components/ui/useLastReady";
 import { usePaginatedPages, type DocBlock } from "@/components/ui/usePaginatedPages";
+import { useDeletedInterviews } from "@/lib/frontend/deleted";
 import { interviewTitle } from "@/lib/frontend/labels";
 import type { PagePlan } from "@/lib/frontend/paginate";
 import {
@@ -33,6 +38,7 @@ import {
   reportIdIn,
   reportPath,
   sectionStarts,
+  tabAfterDelete,
   tabFor,
   withGeneratedReport,
   type FolderSection,
@@ -51,7 +57,12 @@ interface Filed {
   blocks: DocBlock[];
 }
 
+/** The bare folder: where it is left once its last file is deleted. */
+const REPORTS_PATH = "/reports";
+
 export function ReportsFolder({ initial, index }: { initial: ReportDocument | null; index: ReportTab[] }) {
+  const router = useRouter();
+  const alive = useAlive();
   const { close, closing, heading, headingId } = useHeldDocument("reports");
   const panelId = useId();
   const tabsId = useId();
@@ -64,12 +75,17 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
   const [failure, setFailure] = useState<{ id: string; message: string } | null>(null);
   // The latest tab asked for: a slower earlier fetch must not win.
   const wanted = useRef(activeId);
+  // The file being deleted from on top, while the next comes forward.
+  const leaving = useRef<string | null>(null);
 
-  const tabs = useMemo(() => {
+  const allTabs = useMemo(() => {
     const list = [...index];
     if (initial && !list.some((t) => t.id === initial.id)) list.unshift(tabFor(initial));
     return list;
   }, [index, initial]);
+  // Interviews deleted in this tab, here or in the ledger, lose their tab at once.
+  const deleted = useDeletedInterviews();
+  const tabs = useMemo(() => allTabs.filter((t) => !deleted.has(t.id)), [allTabs, deleted]);
 
   const doc = activeId ? (docs.get(activeId) ?? null) : null;
   const documentKey = doc ? `report:${doc.id}:${isFiled(doc) ? "filed" : "pending"}` : "report:none";
@@ -115,6 +131,8 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
     try {
       const loaded = await loadReportDocument(createClient(), id);
       if (!loaded) throw new Error("not found");
+      // Put down in the meantime: the URL is no longer the folder's to change.
+      if (!alive.current) return;
       setDocs((m) => new Map(m).set(id, loaded));
       if (wanted.current === id) show(id);
     } catch {
@@ -123,6 +141,38 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
       setOpening((o) => (o === id ? null : o));
     }
   }
+
+  /**
+   * The interview on top is being deleted: the file behind it comes forward,
+   * or with none left the folder is empty. Awaited while the dialog still
+   * says "Deleting…", before the delete is listed (useDeleteSession), so the
+   * next file is on top by the time the deleted one loses its tab.
+   */
+  async function moveOff(id: string) {
+    if (id !== activeId) return;
+    leaving.current = id;
+    const next = tabAfterDelete(allTabs, id, deleted);
+    if (next) return openTab(next);
+    wanted.current = null;
+    setActiveId(null);
+    window.history.replaceState(null, "", REPORTS_PATH);
+  }
+
+  const { request: requestDelete, dialog } = useDeleteSession({
+    onDeleted: ({ id }) => moveOff(id),
+    onClosed: () => heading.current?.focus({ preventScroll: true }),
+  });
+
+  // On top, yet deleted in this tab: Back or Forward brought the folder back
+  // as it was before the delete. The report behind it comes from the server.
+  // A delete made here is moving off by itself (the store's update can render
+  // before the folder's own), and if that fails the folder says so instead.
+  const stale = activeId !== null && deleted.has(activeId) ? activeId : null;
+  useEffect(() => {
+    if (!stale || leaving.current === stale) return;
+    const next = tabAfterDelete(allTabs, stale, deleted);
+    router.replace(next ? reportPath(next) : REPORTS_PATH);
+  }, [stale, allTabs, deleted, router]);
 
   // The URL names the file on top. Back or Forward can return to an entry
   // whose page was laid out for another file (Next restores the page it
@@ -160,12 +210,20 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
       }
       return null;
     };
+    const filed = view.doc;
     return pages.map((p, i) => {
       switch (p.kind) {
         case "flap":
-          return <FlapPage doc={view.doc} starts={sectionStarts(pages)} onOpen={openAt} />;
+          return (
+            <FlapPage
+              doc={filed}
+              starts={sectionStarts(pages)}
+              onOpen={openAt}
+              onDelete={filed ? () => requestDelete(filed) : undefined}
+            />
+          );
         case "generate":
-          return view.doc ? <GeneratePage doc={view.doc} onGenerated={onGenerated} /> : <BlankPage number={i} />;
+          return filed ? <GeneratePage doc={filed} onGenerated={onGenerated} /> : <BlankPage number={i} />;
         case "empty":
           return <EmptyFolderPage />;
         case "blank":
@@ -176,7 +234,7 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
         }
       }
     });
-  }, [view, openAt, onGenerated]);
+  }, [view, openAt, onGenerated, requestDelete]);
 
   return (
     <HeldDocument title="Interview reports" headingId={headingId} heading={heading} closing={closing}>
@@ -227,6 +285,7 @@ export function ReportsFolder({ initial, index }: { initial: ReportDocument | nu
           )}
         </div>
       )}
+      {dialog}
     </HeldDocument>
   );
 }

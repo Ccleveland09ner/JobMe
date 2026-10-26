@@ -1,30 +1,24 @@
 /**
  * The ledger's pages and the blocks printed on them; components/desk/Ledger.tsx
- * binds them into a book. Every block fits on one page: lib/frontend/ledger.ts
- * bounds the text each one holds.
+ * binds them into a book. An interview's blocks are an account of it: what was
+ * asked and what was said, word for word. Its scores and feedback are in its
+ * report, which the blocks point to. Every block fits on one page:
+ * lib/frontend/ledger.ts splits long answers into pieces.
  */
 
 import Link from "next/link";
 
 import { LocalDate } from "@/components/common/LocalDate";
 import { TrendChart } from "@/components/dashboard/TrendChart";
-import { CandidateQuote } from "@/components/report/CandidateQuote";
-import { BandBadge } from "@/components/score/BandBadge";
-import { ScoreList } from "@/components/score/ScoreList";
+import type { DeleteTarget } from "@/components/dashboard/useDeleteSession";
 import { Badge } from "@/components/ui/Badge";
 import { FlipSafe } from "@/components/ui/FlipSafe";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import {
-  ContentsList,
-  kickerClass,
-  PaperStat,
-  SessionDateLine,
-  SpeakingStats,
-  StartInterviewLink,
-} from "@/components/ui/DocumentParts";
+import { ContentsList, kickerClass, PaperStat, SessionDateLine, StartInterviewLink } from "@/components/ui/DocumentParts";
 import { DocumentPage } from "@/components/ui/DocumentPage";
-import { gapLabel, interviewTitle, scoreLevelLabel, scoreOutOf, topicLabel } from "@/lib/frontend/labels";
+import { interviewTitle, MOVE_LABELS, scoreLevelLabel, scoreOutOf } from "@/lib/frontend/labels";
 import {
+  answeredBy,
   entryNumber,
   LEDGER_CONTENTS_PAGE,
   LEDGER_PROGRESS_PAGE,
@@ -36,7 +30,8 @@ import {
   type LedgerQuestion,
   type LedgerVolume,
 } from "@/lib/frontend/ledger";
-import type { SessionSummary, TrendPoint } from "@/lib/frontend/types";
+import { reportPath } from "@/lib/frontend/report-document";
+import type { TrendPoint } from "@/lib/frontend/types";
 import { unlockAudio } from "@/lib/frontend/voiceSession";
 
 /** Focus targets for the contents links. */
@@ -55,7 +50,7 @@ export function CoverPage({ volume, owner }: { volume: LedgerVolume; owner: Ledg
       <div className="flex flex-1 flex-col items-center justify-between px-10 pb-16 pt-28 text-center">
         <div className="brass-plate rounded-md px-7 py-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-ink/70">JobMe</p>
-          <p className="mt-1 text-xl font-bold uppercase tracking-[0.16em] text-ink">Performance record</p>
+          <p className="mt-1 text-xl font-bold uppercase tracking-[0.16em] text-ink">Interview record</p>
           <p className="mt-1 text-sm font-semibold text-ink/75">Volume {volume.number}</p>
         </div>
         {owner?.username && <p className={`text-lg font-bold tracking-widest ${EMBOSSED}`}>@{owner.username}</p>}
@@ -74,7 +69,8 @@ export function BookplatePage({ owner, volume, shown }: { owner: LedgerOwner | n
           {owner && <p className="mt-1 font-mono text-sm tracking-wider text-muted">{owner.memberCode}</p>}
           <div aria-hidden="true" className="mx-auto my-4 h-0.5 w-20 bg-ink/25" />
           <p className="text-sm leading-relaxed text-ink">
-            Every interview you have done: what you were asked, what you said and what the interviewer noted.
+            Every interview you have done, as it happened: what you were asked and what you said, word for word. Scores
+            and feedback are filed in the reports folder.
           </p>
           <p className="mt-3 text-xs text-muted">
             {shown
@@ -174,10 +170,12 @@ export function ProgressPage({ progress }: { progress: LedgerProgress }) {
             note={latest === null ? undefined : scoreLevelLabel(latest)}
           />
         </dl>
-        {progress.latestScores ? (
-          <div className="flex flex-col gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Latest scorecard</h3>
-            <ScoreList scores={progress.latestScores} compact />
+        {progress.latestId ? (
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-sm text-ink">The scorecard and feedback for your latest interview are in its report.</p>
+            <Link href={reportPath(progress.latestId)} className={buttonClasses({ variant: "secondary", size: "sm" })}>
+              Read the latest report
+            </Link>
           </div>
         ) : (
           <p className="text-sm text-muted">Finish an interview to see your scores here.</p>
@@ -199,9 +197,26 @@ export function TrendsPage({ trend }: { trend: TrendPoint[] }) {
 
 // An interview's blocks
 
-function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: number; onDelete: (s: SessionSummary) => void }) {
+/** Where an interview's summary and feedback are, or the way back into it while it is unfinished. */
+function NextStepLink({ entry }: { entry: LedgerEntry }) {
+  return entry.status === "completed" ? (
+    <Link href={reportPath(entry.id)} className={buttonClasses({ variant: "secondary", size: "sm" })}>
+      Read the report
+    </Link>
+  ) : (
+    <Link
+      href={`/interview/${entry.id}`}
+      // The click is the gesture that lets the recruiter speak on arrival.
+      onClick={unlockAudio}
+      className={buttonClasses({ size: "sm" })}
+    >
+      Resume
+    </Link>
+  );
+}
+
+function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: number; onDelete: (target: DeleteTarget) => void }) {
   const completed = entry.status === "completed";
-  const overall = entry.overall;
   return (
     <section aria-labelledby={entryHeadingId(entry.id)} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
@@ -216,35 +231,18 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
           {completed ? <Badge>Completed</Badge> : <Badge tone="accent">In progress</Badge>}
         </p>
       </div>
-      <dl className="grid grid-cols-2 gap-3 border-y-2 border-dashed border-ink/20 py-3">
-        <PaperStat label={completed ? "Questions answered" : "Reached question"} value={String(entry.questionCount)} />
-        <PaperStat
-          label="Overall"
-          value={!completed ? "—" : overall === null ? "Not scored" : scoreOutOf(overall)}
-          note={completed && overall !== null ? scoreLevelLabel(overall) : undefined}
-        />
+      <dl className="grid grid-cols-3 gap-3 border-y-2 border-dashed border-ink/20 py-3">
+        <PaperStat label="Questions" value={String(entry.questions.length)} />
+        <PaperStat label="Follow-ups" value={String(entry.followUps)} />
+        <PaperStat label="Words you said" value={entry.words.toLocaleString("en-US")} />
       </dl>
-      {entry.overallScores && (
-        <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Scorecard</h3>
-          <ScoreList scores={entry.overallScores} compact />
-        </div>
-      )}
+      <p className="text-sm leading-relaxed text-ink">
+        {completed
+          ? "Every question and answer follows, word for word. The summary, the feedback and a rewrite of your weakest answer are in the report."
+          : "What you have answered so far follows, word for word. Resume to finish; the report is written when you do."}
+      </p>
       <div className="flex flex-wrap gap-2">
-        {completed ? (
-          <Link href={`/interview/${entry.id}/report`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
-            Read the report
-          </Link>
-        ) : (
-          <Link
-            href={`/interview/${entry.id}`}
-            // The click is the gesture that lets the recruiter speak on arrival.
-            onClick={unlockAudio}
-            className={buttonClasses({ size: "sm" })}
-          >
-            Resume
-          </Link>
-        )}
+        <NextStepLink entry={entry} />
         <Button variant="ghost" size="sm" onClick={() => onDelete(entry)}>
           Delete<span className="sr-only"> interview no. {number}</span>
         </Button>
@@ -253,31 +251,61 @@ function Overview({ entry, number, onDelete }: { entry: LedgerEntry; number: num
   );
 }
 
-function QuestionEntry({ question: q }: { question: LedgerQuestion }) {
-  const gap = gapLabel(q.primaryGap);
-  return (
-    <article aria-label={`Q${q.seq} · ${topicLabel(q.topic)}`} className="flex flex-col gap-1.5 border-b-2 border-dashed border-ink/15 pb-3">
-      <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-        <span className="font-bold text-ink">Q{q.seq}</span>
-        <span>{topicLabel(q.topic)}</span>
-        {q.band && <BandBadge band={q.band} />}
-      </p>
-      <p className="text-sm font-semibold leading-snug text-ink">{q.questionText}</p>
-      {q.answer ? (
-        <CandidateQuote block className="border-l-2 border-ink/25 pl-3 text-sm leading-snug text-ink/80">
-          {q.answer}
-        </CandidateQuote>
-      ) : (
-        <p className="text-sm text-muted">No answer recorded.</p>
-      )}
-      {q.note && (
-        <p className="text-sm leading-snug text-ink">
-          <span className="font-semibold">Noted: </span>
-          {q.note}
+/** Follow-ups sit indented under the question they added to. */
+const INDENT = "ml-4";
+
+/** What the interviewer asked: an original question, or a follow-up to it. */
+function Ask({ question: q, turn }: { question: LedgerQuestion; turn: number }) {
+  const t = q.turns[turn];
+  const text = t.questionText || "The question wasn't recorded.";
+  if (turn > 0) {
+    return (
+      <div className={`flex flex-col gap-0.5 ${INDENT}`}>
+        <p className="text-xs text-muted">
+          <span aria-hidden="true">↳ </span>
+          {t.questionType ? `${MOVE_LABELS[t.questionType]} follow-up` : "Follow-up"}
         </p>
-      )}
-      {gap && <p className="text-xs text-muted">To work on: {gap}</p>}
-    </article>
+        <h5 className="text-sm font-semibold leading-snug text-ink">{text}</h5>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-0.5 border-t-2 border-dashed border-ink/15 pt-3">
+      <p className="text-xs text-muted">
+        <span className="font-bold text-ink">{q.ref}</span> · {q.label}
+        {q.fromResume && " · From your resume"}
+      </p>
+      <h4 className="text-sm font-semibold leading-snug text-ink">{text}</h4>
+    </div>
+  );
+}
+
+/** A piece of what the candidate said; the last says how it was given. */
+function Answer({ question: q, block }: { question: LedgerQuestion; block: LedgerBlock }) {
+  const t = q.turns[block.turn ?? 0];
+  const indent = (block.turn ?? 0) > 0 ? INDENT : "";
+  if (!block.text) return <p className={`text-sm text-muted ${indent}`}>No answer recorded.</p>;
+  return (
+    <div className={`flex flex-col gap-1 ${indent}`}>
+      <p className="whitespace-pre-line border-l-2 border-ink/25 pl-3 text-sm leading-relaxed text-ink">
+        {block.first && <span className="sr-only">You said: </span>}
+        {block.text}
+      </p>
+      {block.last && <p className="pl-3.5 text-xs text-muted">{answeredBy(t.spokenMs)}</p>}
+    </div>
+  );
+}
+
+function WhereNext({ entry }: { entry: LedgerEntry }) {
+  return (
+    <div className="flex flex-col items-start gap-2 rounded-md border-2 border-ink/15 px-3 py-2.5">
+      <p className="text-sm leading-relaxed text-ink">
+        {entry.status === "completed"
+          ? "That's the whole interview. For the summary, the feedback and a rewrite of your weakest answer, read its report."
+          : "The interview stops here for now. Resume it to answer the rest; its report is written when you finish."}
+      </p>
+      <NextStepLink entry={entry} />
+    </div>
   );
 }
 
@@ -290,37 +318,35 @@ export function LedgerBlockView({
   block: LedgerBlock;
   entry: LedgerEntry;
   volume: LedgerVolume;
-  onDelete: (s: SessionSummary) => void;
+  onDelete: (target: DeleteTarget) => void;
 }) {
+  const question = block.question === undefined ? undefined : entry.questions[block.question];
   switch (block.kind) {
     case "overview":
       return <Overview entry={entry} number={entryNumber(volume, block.entry)} onDelete={onDelete} />;
-    case "summary":
+    case "transcript":
       return (
-        <div className="flex flex-col gap-1.5">
-          {block.first && <h3 className={kickerClass}>The interviewer&apos;s summary</h3>}
-          <p className="text-sm leading-relaxed text-ink">{block.text}</p>
+        <div className="flex flex-col gap-0.5">
+          <h3 className={kickerClass}>Transcript</h3>
+          <p className="text-xs text-muted">What you were asked and what you said, as it was recorded.</p>
         </div>
       );
-    case "metrics":
-      return (
-        <SpeakingStats
-          wpm={entry.wpm}
-          fillers={entry.fillers}
-          className="grid grid-cols-2 gap-3 rounded-md border-2 border-ink/15 px-3 py-2"
-        />
-      );
-    case "questions":
-      return <h3 className={kickerClass}>Questions and answers</h3>;
-    case "question":
-      return <QuestionEntry question={entry.questions[block.question ?? 0]} />;
+    case "ask":
+      return question ? <Ask question={question} turn={block.turn ?? 0} /> : null;
+    case "answer":
+      return question ? <Answer question={question} block={block} /> : null;
+    case "where-next":
+      return <WhereNext entry={entry} />;
     case "pending":
       return (
-        <p className="text-sm text-muted">
-          {entry.status === "in_progress"
-            ? "This interview isn't finished. Resume it to pick up where you left off."
-            : "No answers were recorded in this interview."}
-        </p>
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-muted">
+            {entry.status === "in_progress"
+              ? "This interview isn't finished. Resume it to pick up where you left off."
+              : "No answers were recorded in this interview."}
+          </p>
+          {entry.status === "in_progress" && <NextStepLink entry={entry} />}
+        </div>
       );
   }
 }

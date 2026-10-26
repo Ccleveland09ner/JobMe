@@ -4,8 +4,11 @@
  * them. Long text arrives in pieces (lib/frontend/report-document.ts), so
  * every block fits on a sheet. Every score is the backend's: a question's is
  * its latest cumulative evaluation, so a follow-up that filled a gap counts
- * toward the question it came from.
+ * toward the question it came from. The transcript is the ledger's; the flap
+ * points to it.
  */
+
+import Link from "next/link";
 
 import { FeedbackEntry, FeedbackListHead } from "@/components/report/FeedbackBlocks";
 import { sectionHeadingId } from "@/components/report/names";
@@ -14,24 +17,28 @@ import { ReportGenerator } from "@/components/report/ReportGenerator";
 import { RewriteQuestion, RewriteText, SaidPiece } from "@/components/report/RewriteBlocks";
 import { SectionHead } from "@/components/report/SectionHead";
 import { Averages, Competencies, DimensionKey, Speaking, Strengths } from "@/components/report/SummaryBlocks";
-import { AnswerPiece, TurnEvidence, TurnQuestion } from "@/components/report/TranscriptBlocks";
+import { Button } from "@/components/ui/Button";
 import { FlipSafe } from "@/components/ui/FlipSafe";
 import { ContentsList, kickerClass, SessionDateLine, StartInterviewLink } from "@/components/ui/DocumentParts";
 import { DocumentPage } from "@/components/ui/DocumentPage";
 import { interviewTitle, scoreOutOf } from "@/lib/frontend/labels";
+import { ledgerEntryHref } from "@/lib/frontend/ledger";
 import type { FolderBlock, FolderSection, GeneratedReport, ReportDocument } from "@/lib/frontend/report-document";
 
 // Pages
 
-/** The folder's inside flap: the file label, and what is in the file. */
+/** The folder's inside flap: the file label, what is in the file, where its transcript is, and the delete. */
 export function FlapPage({
   doc,
   starts,
   onOpen,
+  onDelete,
 }: {
   doc: ReportDocument | null;
   starts: { id: FolderSection; title: string; page: number }[];
   onOpen: (page: number, focusId: string) => void;
+  /** Deletes the interview the file is for. */
+  onDelete?: () => void;
 }) {
   return (
     <DocumentPage face="flap" running="Reports">
@@ -66,7 +73,28 @@ export function FlapPage({
           />
         </FlipSafe>
       )}
-      <p className="mt-auto text-xs text-ink/70">Practice feedback, not a prediction of any hiring decision.</p>
+      {doc && (
+        <FlipSafe className="flex flex-col items-start gap-0.5">
+          <Link
+            href={ledgerEntryHref(doc.id)}
+            className="text-sm font-semibold text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink"
+          >
+            Read the transcript in the ledger
+          </Link>
+          <p className="text-xs text-ink/70">Every question and answer, word for word.</p>
+        </FlipSafe>
+      )}
+      <div className="mt-auto flex flex-col items-start gap-2">
+        {doc && onDelete && (
+          <FlipSafe>
+            {/* In line with the flap's text, not its own padding. */}
+            <Button variant="ghost" size="sm" onClick={onDelete} className="-ml-3.5">
+              Delete this interview
+            </Button>
+          </FlipSafe>
+        )}
+        <p className="text-xs text-ink/70">Practice feedback, not a prediction of any hiring decision.</p>
+      </div>
     </DocumentPage>
   );
 }
@@ -103,13 +131,11 @@ export function BlankPage({ number }: { number: number }) {
 export function FolderBlockView({ block, doc }: { block: FolderBlock; doc: ReportDocument }) {
   const q = block.question === undefined ? undefined : doc.questions[block.question];
   const turn = block.turn === undefined ? undefined : doc.turns[block.turn];
-  const followUp = Boolean(q && turn && turn.id !== q.opening.id);
   switch (block.kind) {
     case "summary":
     case "feedback":
     case "rewrite":
     case "questions":
-    case "transcript":
       return <SectionHead id={block.kind} doc={doc} />;
     case "summary-text":
       return <p className="text-[15px] leading-relaxed text-ink">{block.text}</p>;
@@ -138,7 +164,7 @@ export function FolderBlockView({ block, doc }: { block: FolderBlock; doc: Repor
     case "rewrite-missing":
       return (
         <p className="rounded-md bg-sunken px-3 py-2 text-sm text-ink">
-          A rewrite isn&rsquo;t available for this interview. Your scores and transcript are complete.
+          A rewrite isn&rsquo;t available for this interview. Your scores are complete, and the transcript is in the ledger.
         </p>
       );
     case "rewrite-none":
@@ -151,11 +177,5 @@ export function FolderBlockView({ block, doc }: { block: FolderBlock; doc: Repor
       return q ? <QuestionScores q={q} /> : null;
     case "turn-notes":
       return q && turn ? <TurnNotes q={q} turn={turn} /> : null;
-    case "turn-question":
-      return q && turn ? <TurnQuestion q={q} turn={turn} /> : null;
-    case "turn-answer":
-      return turn ? <AnswerPiece turn={turn} text={block.text ?? ""} first={Boolean(block.first)} indent={followUp} /> : null;
-    case "turn-evidence":
-      return turn ? <TurnEvidence turn={turn} quote={Boolean(block.quote)} indent={followUp} /> : null;
   }
 }

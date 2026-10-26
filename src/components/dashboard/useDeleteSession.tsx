@@ -1,28 +1,43 @@
 "use client";
 
 /**
- * Deleting an interview, behind a confirmation; the page is then refreshed
- * from the server. A 404 counts as success: the row is gone either way.
- * `onDeleted` runs once the dialog has closed, so it can place focus: the
- * button that opened the dialog is about to disappear.
+ * Deleting an interview, behind a confirmation. A 404 counts as success: the
+ * row is gone either way. `onDeleted` first moves the page off it (the folder
+ * turns to the next report) while the dialog still says "Deleting…"; then the
+ * delete is recorded for every page that lists the interview
+ * (lib/frontend/deleted.ts), so the ledger and the folder both leave it out.
+ * `onClosed` runs once the dialog has closed after a delete, so it can place
+ * focus: the button that opened the dialog may be gone.
  */
 
-import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 
 import { LocalDate } from "@/components/common/LocalDate";
+import { useAlive } from "@/components/common/useAlive";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { deleteSession, OFFLINE_MESSAGE } from "@/lib/frontend/api";
-import type { SessionSummary } from "@/lib/frontend/types";
+import { markDeleted } from "@/lib/frontend/deleted";
 
-export function useDeleteSession(onDeleted?: () => void) {
-  const router = useRouter();
-  const [target, setTarget] = useState<SessionSummary | null>(null);
+/** The interview a delete is for: enough to name it in the dialog. */
+export interface DeleteTarget {
+  id: string;
+  startedAt: string;
+}
+
+export function useDeleteSession({
+  onDeleted,
+  onClosed,
+}: {
+  /** Awaited before the dialog closes. Never throws: what it fails to show is the page's to report. */
+  onDeleted?: (target: DeleteTarget) => Promise<void> | void;
+  onClosed?: () => void;
+} = {}) {
+  const alive = useAlive();
+  const [target, setTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, startRefresh] = useTransition();
-  // A delete went through; the dialog's close then calls onDeleted.
+  // A delete went through; the dialog's close then calls onClosed.
   const deleted = useRef(false);
 
   function close() {
@@ -31,7 +46,7 @@ export function useDeleteSession(onDeleted?: () => void) {
     setError(null);
     if (deleted.current) {
       deleted.current = false;
-      onDeleted?.();
+      onClosed?.();
     }
   }
 
@@ -46,9 +61,15 @@ export function useDeleteSession(onDeleted?: () => void) {
         setError(result.offline ? OFFLINE_MESSAGE : result.message);
         return;
       }
+      try {
+        // Left in the meantime: the page that asked is no longer there to move.
+        if (alive.current) await onDeleted?.(target);
+      } finally {
+        markDeleted(target.id);
+      }
+      if (!alive.current) return;
       deleted.current = true;
       setTarget(null);
-      startRefresh(() => router.refresh());
     } catch {
       setError(OFFLINE_MESSAGE);
     } finally {
@@ -65,8 +86,8 @@ export function useDeleteSession(onDeleted?: () => void) {
       description={
         target && (
           <>
-            The interview from <LocalDate iso={target.startedAt} format="dateTime" />, its answers and its
-            scorecard will be permanently removed.
+            The interview from <LocalDate iso={target.startedAt} format="dateTime" /> will be permanently removed:
+            its transcript from the ledger and its report from the reports folder.
           </>
         )
       }
@@ -89,5 +110,5 @@ export function useDeleteSession(onDeleted?: () => void) {
     </Dialog>
   );
 
-  return { request: setTarget, refreshing, dialog };
+  return { request: setTarget, dialog };
 }

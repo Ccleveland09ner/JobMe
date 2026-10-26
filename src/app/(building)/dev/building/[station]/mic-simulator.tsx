@@ -1,10 +1,11 @@
 "use client";
 
-/** Dev only: drive the room's mic (panel button and 3D desk mic) without an interview. */
+/** Dev only: drive the room's mic without an interview: the 3D desk mic, or this panel's without 3D. */
 
 import { useEffect, useMemo, useState } from "react";
 
-import { useBuilding } from "@/components/building/BuildingProvider";
+import { useBuilding, useShow3D } from "@/components/building/BuildingProvider";
+import { PinnedMic } from "@/components/room/PinnedMic";
 import type { MicControl, MicState, RecruiterState } from "@/components/room/types";
 import { TableMic } from "@/components/room/TableMic";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +17,7 @@ const MIC: Record<Phase, Exclude<MicState, "off">> = { speaking: "disabled", rea
 
 export function MicSimulator() {
   const building = useBuilding();
+  const show3D = useShow3D();
   const setSpeaker = building?.setSpeaker;
   const [phase, setPhase] = useState<Phase>("speaking");
 
@@ -42,8 +44,10 @@ export function MicSimulator() {
           </Button>
         ))}
       </div>
-      <TableMic state={mic.state as Exclude<MicState, "off">} onToggle={mic.toggle} />
-      <p className="text-xs text-muted">Press this mic or the one on the 3D desk. They are the same control.</p>
+      {/* As in the room: the 3D desk mic is the only mic, or this one without 3D. */}
+      {show3D && <PinnedMic state={mic.state as Exclude<MicState, "off">} onToggle={mic.toggle} />}
+      {show3D === false && <TableMic state={mic.state as Exclude<MicState, "off">} onToggle={mic.toggle} />}
+      <p className="text-xs text-muted">Press the mic on the 3D table (or Tab to it).</p>
     </section>
   );
 }

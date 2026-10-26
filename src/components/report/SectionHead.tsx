@@ -6,8 +6,8 @@ import { FOLDER_SECTIONS, type FolderSection, type ReportDocument } from "@/lib/
 import { sectionHeadingId } from "./names";
 
 const SECTION_INTRO: Partial<Record<FolderSection, string>> = {
-  questions: "What the interviewer saw in each answer, and why they asked what came next.",
-  transcript: "Everything you said, with the evidence for each answer's main gap marked.",
+  questions:
+    "What the interviewer saw in each answer, and why they asked what came next. Your answers in full are in the ledger's transcript.",
 };
 
 export function SectionHead({ id, doc }: { id: FolderSection; doc: ReportDocument }) {

@@ -11,7 +11,7 @@ export interface FakeQuery {
   columns?: string;
   /** The row(s) sent by `insert()` or `update()`. */
   payload?: unknown;
-  /** `["eq", "id", value]`, `["in", "session_id", ids]`. */
+  /** `["eq", "id", value]`, `["in", "session_id", ids]`, `["gt", "started_at", value]`. */
   filters: [string, string, unknown][];
   /** `order:seq`, `limit:6`, `range:0-5`, in call order. */
   modifiers: string[];
@@ -64,6 +64,10 @@ export function fakeSupabase(
       },
       in(column: string, values: unknown) {
         query.filters.push(["in", column, values]);
+        return chain;
+      },
+      gt(column: string, value: unknown) {
+        query.filters.push(["gt", column, value]);
         return chain;
       },
       order(column: string) {

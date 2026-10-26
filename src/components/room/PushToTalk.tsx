@@ -3,16 +3,20 @@
 /**
  * The answer controls. Voice: the mic is disabled while the interviewer
  * speaks; press it (or Space) to record and again to send, or it sends after
- * IDLE_SEND_MS of silence. Typed: a text box, Ctrl+Enter to send.
+ * IDLE_SEND_MS of silence. In the 3D room the mic is the one on the table
+ * (PinnedMic for the keyboard); without 3D it is TableMic. Typed: a text box,
+ * Ctrl+Enter to send.
  */
 
 import { useEffect, useId, useRef } from "react";
 
+import { useShow3D } from "@/components/building/BuildingProvider";
 import { Button } from "@/components/ui/Button";
 import { isTextEntry } from "@/lib/frontend/dom";
 import type { InputMode } from "@/lib/frontend/types";
 
 import { LiveTranscript } from "./LiveTranscript";
+import { PinnedMic } from "./PinnedMic";
 import { SpeechBubble } from "./SpeechBubble";
 import { TableMic } from "./TableMic";
 import type { Phase } from "./roomMachine";
@@ -42,6 +46,8 @@ export function PushToTalk({
 }) {
   const id = useId();
   const textarea = useRef<HTMLTextAreaElement>(null);
+  // null until hydrated: no mic is drawn before we know which one it is.
+  const show3D = useShow3D();
   const yourTurn = phase === "awaitingAnswer";
   const recording = phase === "recording";
   const submitting = phase === "submitting";
@@ -113,6 +119,8 @@ export function PushToTalk({
     );
   }
 
+  const micState = recording ? "recording" : yourTurn ? "ready" : "disabled";
+  const onMic = recording ? onSubmit : onRecordStart;
   // A send failed: the transcript is kept, so it can go again as-is.
   const retry = yourTurn && draft.trim().length > 0;
   const showWords = recording || submitting || retry;
@@ -137,7 +145,7 @@ export function PushToTalk({
     <>
       {/* What the candidate is saying, in their own bubble above the mic. */}
       {showWords && (
-        <div className="pointer-events-auto absolute inset-x-3 bottom-[15.5rem] mx-auto max-w-2xl">
+        <div className={`pointer-events-auto absolute inset-x-3 mx-auto max-w-2xl ${show3D ? "bottom-[20rem]" : "bottom-[15.5rem]"}`}>
           <SpeechBubble tail="down" label="You">
             <div className="max-h-[22vh] overflow-y-auto">
               <LiveTranscript text={draft} />
@@ -146,13 +154,16 @@ export function PushToTalk({
         </div>
       )}
 
-      {/* The mic, centred in front of the candidate: press to start, again to send. */}
-      <div className="pointer-events-auto absolute inset-x-0 bottom-3 flex flex-col items-center gap-1 px-3">
+      {/* The mic: the one on the 3D table, or drawn here without 3D. Press to start, again to send. */}
+      {show3D && <PinnedMic state={micState} onToggle={onMic} />}
+      {/* Beside the 3D mic, not on it; under the drawn one without 3D. */}
+      <div
+        className={`pointer-events-auto absolute flex flex-col gap-1 px-3 ${
+          show3D ? "bottom-24 left-[calc(50%+5rem)] items-start" : "inset-x-0 bottom-3 items-center"
+        }`}
+      >
         <div className="flex items-center gap-3">
-          <TableMic
-            state={recording ? "recording" : yourTurn ? "ready" : "disabled"}
-            onToggle={recording ? onSubmit : onRecordStart}
-          />
+          {show3D === false && <TableMic state={micState} onToggle={onMic} />}
           {retry && <Button onClick={onSubmit}>Send again</Button>}
         </div>
         <p

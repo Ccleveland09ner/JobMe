@@ -22,6 +22,10 @@ export const PALETTE = {
   grass: "#9cbc72",
   path: "#d3c8b6",
   fabric: "#2f3e46",
+  // The interview room: --color-chalkboard, --color-terracotta, --color-notepad in globals.css.
+  chalkboard: "#2f5d4a",
+  terracotta: "#c2673f",
+  notepad: "#e2a93a",
   // Things on the desk and the wall: --color-leather … --color-pin in globals.css.
   leather: "#6b2f2a",
   manila: "#e3c27e",

@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * The dashboard as the ledger on the front desk: a bound volume of the user's
- * interviews, newest first, opened from its cover and turned page by page.
- * Each interview starts on a left-hand page with its overview; its summary,
- * questions, answers and notes run on from the facing page. Older interviews
- * are in later volumes (`?page=`).
+ * The ledger on the front desk: a bound volume of the user's interviews,
+ * newest first, opened from its cover and turned page by page. Each interview
+ * starts on a left-hand page with an account of it; its transcript runs on
+ * from the facing page, question by question, and ends by pointing to its
+ * report, which holds the summary and the feedback. Older interviews are in
+ * later volumes (`?page=`).
  */
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDeleteSession } from "@/components/dashboard/useDeleteSession";
@@ -18,6 +20,7 @@ import { DOC_BODY_HEIGHT, DOC_BODY_WIDTH, DOC_PAGE, DOC_PAGE_SIZE } from "@/comp
 import { useLastReady } from "@/components/ui/useLastReady";
 import { usePaginatedPages, type DocBlock } from "@/components/ui/usePaginatedPages";
 import { isLeftPage } from "@/lib/frontend/book-layout";
+import { useDeletedInterviews } from "@/lib/frontend/deleted";
 import { interviewTitle } from "@/lib/frontend/labels";
 import {
   describeLedger,
@@ -54,10 +57,10 @@ const OPEN_DELAY_MS = 380;
 
 export function Ledger({
   owner,
-  volume,
-  entries,
+  volume: printed,
+  entries: listed,
   progress,
-  trend,
+  trend: plotted,
   link,
 }: {
   owner: LedgerOwner | null;
@@ -68,13 +71,28 @@ export function Ledger({
   /** Where the URL asks the book to open. */
   link: { section?: string; entry?: string };
 }) {
+  const router = useRouter();
   const { close, closing, heading, headingId } = useHeldDocument("ledger");
   const slider = useRef<BookSliderHandle>(null);
-  const { request: requestDelete, dialog } = useDeleteSession(() => heading.current?.focus({ preventScroll: true }));
+  const { request: requestDelete, dialog } = useDeleteSession({
+    onClosed: () => heading.current?.focus({ preventScroll: true }),
+  });
+
+  // An interview deleted in this tab (here, or in the reports folder before
+  // Back brought this page back) is left out at once; the server then
+  // reprints the volume, numbers and counts included.
+  const deleted = useDeletedInterviews();
+  const entries = useMemo(() => listed.filter((e) => !deleted.has(e.id)), [listed, deleted]);
+  const trend = useMemo(() => plotted.filter((p) => !deleted.has(p.id)), [plotted, deleted]);
+  const gone = listed.length - entries.length;
+  const volume = useMemo(() => (gone ? { ...printed, total: printed.total - gone } : printed), [printed, gone]);
+  useEffect(() => {
+    if (gone) router.refresh();
+  }, [gone, router]);
 
   const flow = useMemo(() => ledgerFlow(entries), [entries]);
   const documentKey = `ledger:${volume.number}:${entries
-    .map((e) => `${e.id}.${e.status}.${e.questions.length}.${e.summary ? 1 : 0}`)
+    .map((e) => `${e.id}.${e.status}.${e.questions.length + e.followUps}`)
     .join(",")}`;
   const blocks = useMemo<DocBlock[]>(
     () =>
@@ -95,7 +113,13 @@ export function Ledger({
     firstPage: LEDGER_FLOW_START,
     isLeft: leftPage,
   });
-  const book = useMemo(() => (plan ? ledgerBook(plan, entries.length === 0) : null), [plan, entries.length]);
+  // Deletes emptied this volume: the book on screen stays until the server
+  // answers with the volume as it is now, which may no longer exist.
+  const emptied = entries.length === 0 && listed.length > 0;
+  const book = useMemo(
+    () => (plan && !emptied ? ledgerBook(plan, entries.length === 0) : null),
+    [plan, emptied, entries.length],
+  );
 
   // First time round the book opens from its cover; after a delete or a
   // change of volume it is already open, at the contents.
@@ -167,7 +191,7 @@ export function Ledger({
   const shown = useLastReady(documentKey, pages);
 
   return (
-    <HeldDocument title="Performance record" headingId={headingId} heading={heading} closing={closing}>
+    <HeldDocument title="Interview record" headingId={headingId} heading={heading} closing={closing}>
       {measurer}
       {shown && (
         <BookSlider
@@ -176,7 +200,7 @@ export function Ledger({
           pages={shown.value}
           pageSize={DOC_PAGE_SIZE}
           documentKey={shown.key}
-          label={`Performance record, volume ${volume.number}`}
+          label={`Interview record, volume ${volume.number}`}
           startPage={startPage}
           reserveHeight={200}
           describe={describeLedger}

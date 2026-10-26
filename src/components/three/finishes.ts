@@ -36,6 +36,14 @@ export const FINISHES = {
   wood: { color: PALETTE.wood, roughness: 0.45, texture: "grain", bump: 0.3 },
   surface: { color: PALETTE.surface, roughness: 0.45 },
   whiteboard: { color: PALETTE.surface, roughness: 0.15, env: 0.8 },
+  /** The interview room's board: matte green slate, dusted with chalk. */
+  chalkboard: { color: PALETTE.chalkboard, roughness: 0.92, texture: "plaster" },
+  chalk: { color: PALETTE.paper, roughness: 1 },
+  terracotta: { color: PALETTE.terracotta, roughness: 0.85, texture: "plaster" },
+  /** The interviewer's notepad: a mustard cloth cover. */
+  notepad: { color: PALETTE.notepad, roughness: 0.95, texture: "weave", bump: 0.3 },
+  petal: { color: PALETTE.pin, roughness: 0.6 },
+  pollen: { color: PALETTE.brass, roughness: 0.7 },
   accent: { color: PALETTE.accent, roughness: 0.35 },
   ink: { color: PALETTE.ink, roughness: 0.7 },
   /** Powder-coated metal: door frames, lamp posts, legs. */

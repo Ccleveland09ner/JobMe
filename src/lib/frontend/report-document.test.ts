@@ -14,6 +14,7 @@ import {
   folderFlow,
   FOLDER_COMPETENCY_ROWS,
   FOLDER_FLOW_START,
+  FOLDER_SECTIONS,
   isFiled,
   latestFiledReportId,
   loadReportDocument,
@@ -25,6 +26,7 @@ import {
   reportTabsFromRows,
   sectionStarts,
   strengths,
+  tabAfterDelete,
   weakestQuestion,
   withGeneratedReport,
   type ReportDocument,
@@ -164,27 +166,25 @@ describe("strengths", () => {
 });
 
 describe("folderFlow and folderBook", () => {
-  it("starts every section on a fresh sheet and runs long answers on", () => {
+  it("starts every section on a fresh sheet and runs a long answer rewritten on", () => {
     const long = "This is one sentence of a long answer. ".repeat(40);
     const flow = folderFlow(doc({ turns: TURNS.map((t) => ({ ...t, answer_transcript: long })) }));
-    expect(flow.filter((b) => b.breakBefore).map((b) => b.id)).toEqual(["summary", "feedback", "rewrite", "questions", "transcript"]);
-    expect(flow.filter((b) => b.kind === "turn-answer" && b.turn === 0).length).toBeGreaterThan(1);
+    expect(flow.filter((b) => b.breakBefore).map((b) => b.id)).toEqual(["summary", "feedback", "rewrite", "questions"]);
+    expect(flow.filter((b) => b.kind === "rewrite-said" && b.turn === 0).length).toBeGreaterThan(1);
   });
 
-  it("prints each follow-up with the question it added to", () => {
+  it("prints each follow-up's notes with the question it added to", () => {
     const flow = folderFlow(doc());
     expect(kinds(flow, "question-scores").map((b) => b.question)).toEqual([0, 1]);
     expect(kinds(flow, "turn-notes").map((b) => [b.question, b.turn])).toEqual([[0, 0], [0, 1], [1, 2]]);
-    expect(kinds(flow, "turn-question").map((b) => [b.question, b.turn])).toEqual([[0, 0], [0, 1], [1, 2]]);
   });
 
-  it("keeps a quote it can't place beneath the answer, and says when an answer went unscored", () => {
-    const misplaced = folderFlow(doc({ turns: TURNS.map((t) => ({ ...t, evidence: "words never said" })) }));
-    expect(kinds(misplaced, "turn-evidence").filter((b) => b.quote)).toHaveLength(3);
-    expect(kinds(folderFlow(doc()), "turn-evidence")).toEqual([]);
-    expect(kinds(folderFlow(doc({ turns: [turn(1, { scores: null })] })), "turn-evidence")).toEqual([
-      expect.objectContaining({ turn: 0, quote: false }),
-    ]);
+  // The ledger holds what was said; the report quotes an answer only to rewrite it.
+  it("leaves the transcript to the ledger", () => {
+    const flow = folderFlow(doc());
+    expect(FOLDER_SECTIONS.map((s) => s.id)).toEqual(["summary", "feedback", "rewrite", "questions"]);
+    expect(kinds(flow, "rewrite-said").map((b) => b.turn)).toEqual([0, 1]);
+    expect(flow.filter((b) => b.turn === 2).map((b) => b.kind)).toEqual(["turn-notes"]);
   });
 
   it("lists what went well and what to work on, or says there is no feedback", () => {
@@ -233,8 +233,26 @@ describe("folderFlow and folderBook", () => {
     const pages = folderBook(doc(), packPages(flow.map((b) => ({ ...b, height: 120 })), { capacity: 450, gap: 14, firstPage: FOLDER_FLOW_START }));
     expect(pages.length % 2).toBe(0);
     const starts = sectionStarts(pages);
-    expect(starts.map((s) => s.id)).toEqual(["summary", "feedback", "rewrite", "questions", "transcript"]);
+    expect(starts.map((s) => s.id)).toEqual(["summary", "feedback", "rewrite", "questions"]);
     expect(starts[0].page).toBe(1);
+  });
+});
+
+describe("tabAfterDelete", () => {
+  const tab = (id: string) => ({ id, startedAt: "2026-10-18T10:00:00Z", mode: null, title: null });
+  const TABS = ["a", "b", "c", "d"].map(tab);
+
+  it("brings the next older file forward, else the nearest newer one", () => {
+    expect(tabAfterDelete(TABS, "b", new Set())).toBe("c");
+    expect(tabAfterDelete(TABS, "d", new Set())).toBe("c");
+    expect(tabAfterDelete(TABS, "a", new Set())).toBe("b");
+  });
+
+  it("passes over files already deleted, and leaves nothing when none remain", () => {
+    expect(tabAfterDelete(TABS, "b", new Set(["c"]))).toBe("d");
+    expect(tabAfterDelete(TABS, "d", new Set(["c", "b"]))).toBe("a");
+    expect(tabAfterDelete(TABS, "a", new Set(["b", "c", "d"]))).toBeNull();
+    expect(tabAfterDelete([tab("a")], "a", new Set())).toBeNull();
   });
 });
 

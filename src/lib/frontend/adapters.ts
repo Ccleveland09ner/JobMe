@@ -19,14 +19,7 @@ import {
   type TopicId,
 } from "../engine/types";
 import { isDimension, pickScores } from "../stats";
-import type {
-  NoteView,
-  ProgressView,
-  QuestionView,
-  ReportTurnView,
-  SessionStatus,
-  SessionSummary,
-} from "./types";
+import type { NoteView, ProgressView, QuestionView, ReportTurnView } from "./types";
 
 // Scores
 
@@ -68,7 +61,8 @@ export function scoreLevel(value: number): 1 | 2 | 3 | 4 {
 
 // Rows
 
-function oneOf<T extends string>(values: readonly T[], value: unknown): T | null {
+/** A stored value if it is one of `values`, else null. */
+export function oneOf<T extends string>(values: readonly T[], value: unknown): T | null {
   return typeof value === "string" && (values as readonly string[]).includes(value) ? (value as T) : null;
 }
 
@@ -140,33 +134,9 @@ export function reportTurnFromRow(row: TurnRow & { id: string }): ReportTurnView
  */
 export const SESSION_JSON_COLUMNS = "mode:engine_state->>mode, role_title:question_plan->role->>title";
 
-export interface SessionRowData {
-  id: string;
-  status: string;
-  question_count: number | null;
-  overall_scores: unknown;
-  started_at: string;
-  ended_at: string | null;
-  /** `engine_state->>mode` (SESSION_JSON_COLUMNS). */
-  mode?: string | null;
-}
-
 /** A stored mode, or null for anything else. */
 export function modeFromRow(mode: string | null | undefined): InterviewMode | null {
   return oneOf(INTERVIEW_MODES, mode);
-}
-
-export function sessionSummaryFromRow(row: SessionRowData): SessionSummary {
-  return {
-    id: row.id,
-    status: (row.status === "completed" ? "completed" : "in_progress") as SessionStatus,
-    mode: modeFromRow(row.mode),
-    startedAt: row.started_at,
-    endedAt: row.ended_at,
-    questionCount: row.question_count ?? 0,
-    overallScores: pickScores(row.overall_scores),
-    overall: pickOverall(row.overall_scores),
-  };
 }
 
 // Engine state -> view (server side: keeps engine_state off the client)
@@ -179,30 +149,6 @@ export function progressFromState(state: EngineState): ProgressView {
 export function questionFromState(state: EngineState): QuestionView {
   const q = state.currentQuestion;
   return { text: q.text, type: q.type, topic: q.topic, source: q.source };
-}
-
-// Evidence
-
-export interface EvidenceSplit {
-  before: string;
-  match: string;
-  after: string;
-}
-
-/** Finds the evidence quote in the answer (case-insensitive); null if it isn't there. */
-export function findEvidence(
-  answer: string,
-  evidence: string | null | undefined,
-): EvidenceSplit | null {
-  const quote = evidence?.trim();
-  if (!quote || !answer) return null;
-  const at = answer.toLowerCase().indexOf(quote.toLowerCase());
-  if (at < 0) return null;
-  return {
-    before: answer.slice(0, at),
-    match: answer.slice(at, at + quote.length),
-    after: answer.slice(at + quote.length),
-  };
 }
 
 // Errors

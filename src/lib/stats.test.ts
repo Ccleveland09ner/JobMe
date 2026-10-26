@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { fillerCount, groupIntoQuestions, overallScoresFor, rollupQuestions, wordCount, wpm, type GroupableTurn } from "./stats";
+import {
+  fillerCount,
+  groupIntoQuestions,
+  overallScoresFor,
+  questionThreads,
+  rollupQuestions,
+  wordCount,
+  wpm,
+  type GroupableTurn,
+} from "./stats";
 
 const story = (n: number) => ({
   relevance: n,
@@ -71,6 +80,16 @@ describe("groupIntoQuestions — a follow-up adds to the question it came from",
     const legacy = { situation: 3, task: 3, action: 3, result: 3, specificity: 3, impact: 3, ownership: 3, relevance: 3 };
     const [q] = groupIntoQuestions([turn(1, "opening", { ...legacy, result: 1 }), turn(2, "clarify", legacy)]);
     expect(q.score).toBe(3);
+  });
+
+  // The ledger groups unscored turns the same way, so its Q2 is the report's Q2.
+  it("threads turns that carry no scores at all", () => {
+    const threads = questionThreads([
+      { seq: 3, questionType: "opening" },
+      { seq: 1, questionType: "opening" },
+      { seq: 2, questionType: "deepen" },
+    ]);
+    expect(threads.map((t) => t.map((x) => x.seq))).toEqual([[1, 2], [3]]);
   });
 });
 
