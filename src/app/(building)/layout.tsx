@@ -8,6 +8,7 @@ import { Suspense, type ReactNode } from "react";
 import { Announcer } from "@/components/building/Announcer";
 import { BuildingBackdrop } from "@/components/building/BuildingBackdrop";
 import { BuildingProvider } from "@/components/building/BuildingProvider";
+import { SkyTimeToggle } from "@/components/building/sky/SkyTimeToggle";
 import { StationLayer } from "@/components/building/StationLayer";
 
 export default function BuildingLayout({ children }: { children: ReactNode }) {
@@ -25,6 +26,8 @@ export default function BuildingLayout({ children }: { children: ReactNode }) {
         <StationLayer>{children}</StationLayer>
       </Suspense>
       <Announcer />
+      {/* Development only: preview the street's sky at each time of day. */}
+      {process.env.NODE_ENV === "development" && <SkyTimeToggle />}
     </BuildingProvider>
   );
 }

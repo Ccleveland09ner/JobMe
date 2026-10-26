@@ -53,7 +53,7 @@ export function Sky() {
     const goal = latest.current;
     const w = (weights.current ??= TIMES_OF_DAY.map((t) => (t === goal ? 1 : 0)));
     // A long wait between demand frames mustn't skip the fade.
-    const step = reducedMotion() ? 1 : Math.min(delta, 0.05) / FADE_SECONDS;
+    const step = reducedMotion() ? 1 : Math.min(delta, 0.1) / FADE_SECONDS;
     let fading = false;
     for (let i = 0; i < w.length; i++) {
       const d = (TIMES_OF_DAY[i] === goal ? 1 : 0) - w[i];
