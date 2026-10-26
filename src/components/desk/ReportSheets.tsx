@@ -35,7 +35,7 @@ export function FlapPage({
 }) {
   return (
     <DocumentPage face="flap" running="Reports">
-      <FlipSafe className="-rotate-1 rounded-md border-2 border-ink bg-paper px-5 py-4 shadow-[4px_5px_0_0_rgb(28_27_26/0.2)]">
+      <FlipSafe className="paper-label -rotate-1 rounded-md px-5 py-4">
         <p className={kickerClass}>Interview report</p>
         {doc ? (
           <>

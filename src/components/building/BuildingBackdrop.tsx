@@ -30,11 +30,13 @@ class CanvasErrorBoundary extends Component<{ onError: () => void; children: Rea
 export function BuildingBackdrop() {
   const building = useBuilding();
   const show3D = building?.show3D ?? false;
+  // While a document is open in the user's hands, the office behind it goes out of focus.
+  const reading = building?.held.phase === "open";
 
   return (
     <div aria-hidden="true" className="fixed inset-0 z-0">
       {building?.webgl && (
-        <div className={`absolute inset-0 ${show3D ? "" : "invisible"}`}>
+        <div className={`absolute inset-0 transition-[filter] duration-500 ${show3D ? "" : "invisible"} ${reading ? "blur-[3px] brightness-90" : ""}`}>
           <CanvasErrorBoundary onError={() => building.dispatch({ type: "CONTEXT_LOST" })}>
             <BuildingCanvas />
           </CanvasErrorBoundary>

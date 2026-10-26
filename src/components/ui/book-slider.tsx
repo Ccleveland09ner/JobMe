@@ -23,7 +23,7 @@ import {
   type Ref,
 } from "react";
 
-import { clipboardFrame, type BookState, type PageSize, type TurnedBox } from "@/lib/frontend/book-layout";
+import { clipboardFrame, stackDepths, type BookState, type PageSize, type TurnedBox } from "@/lib/frontend/book-layout";
 import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { Engine, PagesContext, programmatic, settingsFor, stateOf, type BookMode, type FlipEngine, type FlipEvent } from "./book-engine";
@@ -93,6 +93,12 @@ function isOpen({ spread, total }: BookState): boolean {
   return !spread.includes(0) && !spread.includes(total - 1);
 }
 
+/** Which cover a shut book shows. */
+function shutOn(state: BookState): "front" | "back" | undefined {
+  if (isOpen(state)) return undefined;
+  return state.spread.includes(0) ? "front" : "back";
+}
+
 const turned = ({ left, top, width, height, rotate }: TurnedBox): CSSProperties => ({
   left,
   top,
@@ -103,6 +109,8 @@ const turned = ({ left, top, width, height, rotate }: TurnedBox): CSSProperties 
 
 /** A book's boards (a folder's card) stand this far out from its pages, each side. */
 const FRAME_INSET = 14;
+/** The deepest a stack of pages beside the open spread is drawn, px. */
+const STACK_DEPTH = { book: 12, folder: 6 } as const;
 
 export function BookSlider({
   mode,
@@ -168,12 +176,6 @@ export function BookSlider({
   const onTeardown = useCallback((gone: FlipEngine) => {
     if (engine.current === gone) engine.current = null;
   }, []);
-
-  // A new size for the block: the engine only watches the window itself.
-  const blockWidth = fit?.blockWidth;
-  useEffect(() => {
-    engine.current?.update();
-  }, [blockWidth]);
 
   const next = useCallback(() => {
     const e = engine.current;
@@ -248,6 +250,8 @@ export function BookSlider({
   );
 
   const position = state ? describe(state) : "";
+  // How deep the page stacks either side of the spread are drawn (globals.css .page-stack).
+  const stacks = state && !clipboard ? stackDepths(state, covers ? STACK_DEPTH.book : STACK_DEPTH.folder) : null;
   const atStart = !state || state.page <= 0;
   const atEnd = !state || state.spread[state.spread.length - 1] >= state.total - 1;
 
@@ -257,6 +261,8 @@ export function BookSlider({
       className={`book-slider book-slider--${mode} w-full ${className}`.trim()}
       data-orientation={state?.orientation}
       data-open={covers && state && isOpen(state) ? "" : undefined}
+      data-shut={covers && state ? shutOn(state) : undefined}
+      style={stacks ? ({ "--stack-left": `${stacks.left}px`, "--stack-right": `${stacks.right}px` } as CSSProperties) : undefined}
     >
       <div
         className="relative mx-auto"
@@ -275,6 +281,7 @@ export function BookSlider({
           className="h-full"
         >
           {!clipboard && <div aria-hidden="true" className={covers ? "book-frame" : "folder-frame"} />}
+          {!clipboard && <div aria-hidden="true" className="page-stack" />}
           {frame ? (
             <div className="absolute" style={turned(frame.block)}>
               {engineView}

@@ -97,23 +97,21 @@ export function CloseTag({
   );
 }
 
-const SHADOW = "absolute -bottom-5 inset-x-10 h-8 rounded-[50%] bg-ink/25";
-
 export function HeldPad({ title, kicker, onClose, closeLabel = "Put the notepad down", children, headingLevel = "h2" }: ShellProps) {
   const { closing, heading } = useHeldShell("notepad", onClose);
   const id = useId();
   const H = headingLevel;
   return (
     <section aria-labelledby={id} className={`relative w-full max-w-xl pb-6 pt-4 ${closing ? "held-out" : "held-in"}`}>
-      <div aria-hidden="true" className={SHADOW} />
-      {/* The spiral, along the top. */}
+      {/* The spiral, along the top: metal rings through the card and the pages. */}
       <div aria-hidden="true" className="absolute inset-x-10 top-0 z-10 flex justify-between">
         {Array.from({ length: 9 }, (_, i) => (
-          <span key={i} className="h-8 w-3 rounded-full border-[3px] border-ink bg-clipmetal" />
+          <span key={i} className="spiral-ring h-8 w-2.5 rounded-full" />
         ))}
       </div>
-      <div className="relative rounded-2xl border-[3px] border-ink bg-fabric p-2 shadow-[0_8px_0_-2px_var(--color-ink),0_8px_0_1px_var(--color-ink)]">
-        <div className="grain relative rounded-lg border-2 border-ink bg-paper">
+      {/* Cloth-bound card behind the pages (globals.css .pad-*). */}
+      <div className="pad-back relative rounded-2xl p-2">
+        <div className="pad-paper relative rounded-lg">
           <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-dashed border-ink/20 px-5 pb-3 pt-7">
             <div className="flex flex-col gap-0.5">
               {kicker && <p className="text-xs font-semibold uppercase tracking-widest text-muted">{kicker}</p>}

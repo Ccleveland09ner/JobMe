@@ -7,7 +7,18 @@
  * them through context, and the engine is destroyed after React lets go.
  */
 
-import { createContext, useContext, useLayoutEffect, useRef, type ComponentProps, type CSSProperties, type ReactNode, type Ref } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from "react";
 import HTMLFlipBook from "react-pageflip";
 
 import { spreadAt, type BookOrientation, type BookState, type PageSize } from "@/lib/frontend/book-layout";
@@ -104,6 +115,28 @@ const BLOCK_STYLE: CSSProperties = {};
 /** One engine for one document; remounted (keyed) for the next. */
 export function Engine({ count, settings, pageClassName, hardPage, onInit, onFlip, onChangeOrientation, onTeardown }: EngineProps) {
   const book = useRef<{ pageFlip(): FlipEngine | undefined } | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const started = useRef(false);
+  const init = useCallback(
+    (e: FlipEvent) => {
+      started.current = true;
+      onInit(e);
+    },
+    [onInit],
+  );
+
+  // The engine sizes its pages when it starts and when the window resizes. Its
+  // box can still settle after it starts (a cold load measures it at its
+  // minimum height), and a new fit resizes it: re-measure on either.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (started.current) book.current?.pageFlip()?.update();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // The engine exists before it reports in (init is deferred), so ask the
   // book for it while its handle still stands; destroy it once React has
@@ -119,14 +152,14 @@ export function Engine({ count, settings, pageClassName, hardPage, onInit, onFli
   }, [onTeardown]);
 
   return (
-    <div className="book-engine">
+    <div ref={box} className="book-engine">
       <HTMLFlipBook
         ref={book}
         className="book-block"
         style={BLOCK_STYLE}
         {...settings}
         renderOnlyPageLengthChange
-        onInit={onInit}
+        onInit={init}
         onFlip={onFlip}
         onChangeOrientation={onChangeOrientation}
       >

@@ -1,7 +1,8 @@
 /**
- * A clipboard drawn like the building (toon tones, ink edges, solid depth).
- * CSS, not WebGL, so its fields stay real form controls; use paperField and
- * paperArea for fields written on the paper.
+ * A clipboard lit like the office: hardboard with its edge and shadow, a
+ * brushed metal clip, paper in layers (globals.css .clip-*). CSS, not WebGL,
+ * so its fields stay real form controls; use paperField and paperArea for
+ * fields written on the paper.
  */
 
 import type { HTMLAttributes, ReactNode } from "react";
@@ -28,13 +29,6 @@ export interface ClipboardProps extends HTMLAttributes<HTMLDivElement> {
   decoration?: ReactNode;
 }
 
-/** Hard-edged toon bevel: a lit rim top-left, a shaded rim bottom-right. */
-const BOARD_BEVEL =
-  "shadow-[inset_5px_5px_0_0_var(--color-board-light),inset_-5px_-5px_0_0_var(--color-board-dark)]";
-
-/** The board's thickness: an extruded edge, ink-outlined, below the face. */
-const BOARD_EDGE = "shadow-[0_9px_0_-2px_var(--color-board-dark),0_9px_0_1px_var(--color-ink)]";
-
 export function Clipboard({
   className = "",
   paperClassName = "",
@@ -46,39 +40,30 @@ export function Clipboard({
 }: ClipboardProps) {
   return (
     <div className={`${closing ? "held-out" : "clipboard-in"} relative pb-6 pt-10 ${className}`.trim()} {...rest}>
-      {/* Flat contact shadow on whatever it rests against. */}
-      <div aria-hidden="true" className="absolute inset-x-6 bottom-0 h-7 rounded-[50%] bg-ink/25" />
-
-      {/* The board: extruded edge, then the face with its bevelled rim. */}
-      <div className={`relative rounded-[1.4rem] border-[3px] border-ink bg-board ${BOARD_EDGE}`}>
-        <div className={`rounded-[1.2rem] px-3 pb-4 pt-9 sm:px-4 sm:pb-5 ${BOARD_BEVEL}`}>
+      {/* The board: its face lit, its edge below, its shadow on whatever is behind. */}
+      <div className="clip-board relative rounded-[1.4rem]">
+        <div className="px-3 pb-4 pt-9 sm:px-4 sm:pb-5">
           {/* The clip, gripping the paper's top edge. */}
           <div aria-hidden="true" className="absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[45%]">
             <div className="relative h-12 w-36">
               {/* Lever arm, behind the plate. */}
-              <div className="absolute left-1/2 top-0 h-5 w-20 -translate-x-1/2 rounded-t-full border-[3px] border-b-0 border-ink bg-[linear-gradient(var(--color-clipmetal-light)_0_45%,var(--color-clipmetal)_45%)]" />
-              {/* Plate: three toon tones top to bottom, extruded lower lip. */}
-              <div className="absolute inset-x-0 bottom-0 h-9 rounded-t-lg rounded-b-xl border-[3px] border-ink bg-[linear-gradient(var(--color-clipmetal-light)_0_30%,var(--color-clipmetal)_30%_72%,var(--color-clipmetal-shade)_72%)] shadow-[0_4px_0_-1px_var(--color-clipmetal-shade),0_4px_0_2px_var(--color-ink)]">
-                <span className="absolute left-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 border-ink bg-clipmetal-light" />
-                <span className="absolute right-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 border-ink bg-clipmetal-light" />
+              <div className="clip-metal absolute left-1/2 top-0 h-5 w-20 -translate-x-1/2 rounded-t-full" />
+              {/* Plate, riveted to the board, rolled into a hinge along its lower edge. */}
+              <div className="clip-metal clip-plate absolute inset-x-0 bottom-0 h-9 rounded-t-lg rounded-b-xl">
+                <span className="clip-rivet absolute left-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full" />
+                <span className="clip-rivet absolute right-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full" />
               </div>
             </div>
-            {/* Its flat shadow on the paper. */}
-            <div className="absolute inset-x-3 -bottom-3 -z-10 h-4 rounded-b-lg bg-ink/20" />
           </div>
 
           {/* The paper: two sheets peeking out under the top one. */}
           <div className="relative">
-            <div aria-hidden="true" className="absolute inset-0 translate-x-1.5 translate-y-2 rotate-[0.8deg] rounded-md border-2 border-ink/70 bg-paper-shade" />
-            <div aria-hidden="true" className="absolute inset-0 -translate-x-1 translate-y-1 -rotate-[0.6deg] rounded-md border-2 border-ink/70 bg-paper" />
+            <div aria-hidden="true" className="clip-sheet clip-sheet--under absolute inset-0 translate-x-1.5 translate-y-2 rotate-[0.8deg] rounded-md" />
+            <div aria-hidden="true" className="clip-sheet absolute inset-0 -translate-x-1 translate-y-1 -rotate-[0.6deg] rounded-md" />
             {loose ? (
               <div className="relative">{children}</div>
             ) : (
-              <div
-                className={`grain relative rounded-md border-2 border-ink bg-paper px-5 pb-6 pt-9 shadow-[inset_-3px_-3px_0_0_var(--color-paper-shade)] sm:px-6 ${paperClassName}`.trim()}
-              >
-                {children}
-              </div>
+              <div className={`clip-paper relative rounded-md px-5 pb-6 pt-9 sm:px-6 ${paperClassName}`.trim()}>{children}</div>
             )}
           </div>
         </div>

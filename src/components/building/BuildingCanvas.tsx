@@ -59,7 +59,7 @@ export default function BuildingCanvas() {
   useEffect(() => () => void (document.body.style.cursor = ""), []);
 
   if (!building) return null;
-  const { state, dispatch, speaker } = building;
+  const { state, dispatch, speaker, held } = building;
   const { station, target, holding } = state;
 
   const frontDoorsOpen = INSIDE.has(station) || (target !== null && INSIDE.has(target));
@@ -97,7 +97,8 @@ export default function BuildingCanvas() {
         <RecruiterModel
           speaker={secretary}
           look={SECRETARY_LOOK}
-          animate={station === "desk" && target === null}
+          // Still while the user reads something from the desk: the scene can rest.
+          animate={station === "desk" && target === null && held.phase !== "open"}
           position={[SECRETARY.x, 0, SECRETARY.z]}
         />
         <RecruiterModel
