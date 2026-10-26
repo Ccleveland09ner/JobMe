@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Ms. Crystal at the front desk: she greets the user each time they come
- * into reception (a first visit or a return) and sees them off when they sign
- * out. One controller runs each line through its whole life
+ * Ms. Crystal at the front desk: she greets the user once each time they sign
+ * in (a first visit or a return; greeting.ts), not each time they come back to
+ * the desk, and sees them off only when they choose to sign out. One
+ * controller runs each line through its whole life
  * (receptionistMachine.ts), so her voice, mouth, speech bubble and the lobby
  * music move together:
  *
@@ -36,6 +37,7 @@ import { sampleVisemes, type SpeechTimeline } from "@/lib/voice/lipsync";
 import { createClient } from "@/lib/supabase/client";
 
 import { timelineFor } from "./clips";
+import { spendGreeting, useGreetingOwed } from "./greeting";
 import { pickLine, type Line, type LineKind } from "./lines";
 import { dialogueReducer, initialDialogue, type DialogueEvent, type Purpose, type ReceptionistDialogue } from "./receptionistMachine";
 import { deviceStatus, lastLineId, loadVisitorFacts, markWelcomed, rememberLine, visitorStatus, type VisitorStatus } from "./visitor";
@@ -119,6 +121,9 @@ export function ReceptionistProvider({ children }: { children: ReactNode }) {
     latest.current = { building, voiceOn };
   });
 
+  // A goodbye's hush on the music, kept until the user has signed out.
+  const goodbyeHush = useRef<(() => void) | null>(null);
+
   /** Says `line` from start to finish; resolves once her bubble is gone. False if she was busy. */
   const say = useCallback(
     async (line: Line, purpose: Purpose, onSpeak?: () => void): Promise<boolean> => {
@@ -161,6 +166,7 @@ export function ReceptionistProvider({ children }: { children: ReactNode }) {
       if (speech.current === said) speech.current = null;
       // A goodbye keeps the music quiet: the user is on their way out.
       if (purpose === "greeting") releaseMusic();
+      else goodbyeHush.current = releaseMusic;
       return true;
     },
     [send],
@@ -198,28 +204,34 @@ export function ReceptionistProvider({ children }: { children: ReactNode }) {
     });
   }, [say, visitor]);
 
-  // A greeting is owed each time the user comes into reception from elsewhere (or opens the site there).
+  // A greeting is owed once per sign-in (greeting.ts): coming back from an interview owes none.
   const cameraAt = building?.cameraAt ?? null;
   const leaving = building?.leaving ?? false;
   const show3D = building?.show3D ?? false;
-  const [owed, setOwed] = useState(true);
-  const [lastSettled, setLastSettled] = useState(cameraAt);
-  if (cameraAt !== lastSettled) {
-    setLastSettled(cameraAt);
-    if (cameraAt !== null && !RECEPTION.has(cameraAt)) setOwed(true);
-  }
+  const owed = useGreetingOwed();
+  // A sign-in may be someone else: ask who's arrived afresh.
+  useEffect(() => {
+    if (owed) status.current = null;
+  }, [owed]);
   const greeting = useRef(false);
   useEffect(() => {
     if (cameraAt !== "desk" || !owed || leaving || !show3D || !ready || greeting.current) return;
     const timer = setTimeout(() => {
       greeting.current = true;
+      spendGreeting();
       void greet().finally(() => {
         greeting.current = false;
-        setOwed(false);
       });
     }, GREET_DELAY_MS);
     return () => clearTimeout(timer);
   }, [cameraAt, owed, leaving, show3D, ready, greet]);
+
+  // Signed out (or the sign-out given up): the goodbye's hush lifts, for the next visit.
+  useEffect(() => {
+    if (leaving) return;
+    goodbyeHush.current?.();
+    goodbyeHush.current = null;
+  }, [leaving]);
 
   // On the way to the desk with a greeting owed, the music waits for her (she hushes it herself once she starts).
   const heading = building ? (building.state.target ?? building.state.station) : null;

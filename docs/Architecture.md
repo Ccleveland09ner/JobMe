@@ -20,7 +20,7 @@ How the code is organised, which way dependencies point, what the data layer gua
 - there are no import cycles;
 - `lib` never imports `components` or `app`;
 - `lib/engine` imports nothing outside itself;
-- a `"use client"` module never reaches `lib/supabase/server`, `lib/auth`, `lib/ai/*`, `lib/resume/store` or `lib/engine/bank`. Server modules reach the client only as `import type`.
+- a `"use client"` module never reaches `lib/supabase/server`, `lib/auth`, `lib/ai/*`, `lib/resume/store` or `lib/engine/bank`. Server modules reach the client only as `import type`, or behind a `"use server"` module (`lib/supabase/sign-out.ts`), which ships only references to its functions.
 
 ## Request flows
 

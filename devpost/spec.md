@@ -24,7 +24,7 @@ PRD ref: `prd.md > The Core Journey`.
 
 1. **Street.** `/` renders the street station of the persistent building (`src/app/(building)/layout.tsx` → `BuildingCanvas`). The sky and street sounds come from the clock (`sky/timeOfDay.ts`, `sky/sounds.ts`). **Step inside** moves the camera to the entrance.
 2. **Sign in.** `/login` signs in or signs up with Supabase Auth (email and password). Sign-up checks `username_available`; the `handle_new_user` trigger creates the `profiles` row with a username and a member code. `src/proxy.ts` refreshes the session cookie on page requests.
-3. **Front desk.** `/dashboard` is the desk station. `ReceptionistProvider` asks whether the visitor is new or returning (`receptionist/visitor.ts`: the account's `jobme_welcomed_at` metadata, or any past interview) and plays one recorded greeting with its bubble and lip-sync. `LobbyMusic` waits for her.
+3. **Front desk.** `/dashboard` is the desk station. Signing in owes one greeting (`receptionist/greeting.ts`, kept for the tab); on arrival `ReceptionistProvider` spends it, asks whether the visitor is new or returning (`receptionist/visitor.ts`: the account's `jobme_welcomed_at` metadata, or any past interview) and plays one recorded greeting with its bubble and lip-sync. `LobbyMusic` waits for her.
 4. **Setup.** `/interview/new` lifts the setup clipboard (`setup/SetupForm.tsx`). A résumé goes to `POST /api/resume`, which extracts, redacts, chunks, embeds and distils it into facts and coverage items. **Begin** calls `POST /api/sessions` with the display name, mode and job details.
 5. **Session start.** `startInterview` (`lib/interview/start.ts`) fetches a posting link if given, infers the role family and seniority (`engine/roles.ts`), takes the family's default topics, and makes one time-boxed plan call (`ai/question-plan.ts`) that may re-choose and re-word them for the job. It saves `interview_sessions` with `engine_state` and `question_plan`, and returns the session id and opening line.
 6. **Room load.** `/interview/[id]` loads the session and its turns through RLS (`loadRoom`). A finished session goes to its report; otherwise the room resumes at the current question with the notepad history rebuilt.
@@ -93,7 +93,7 @@ PRD ref: `prd.md > The Core Journey` (step 1).
 PRD ref: `prd.md > Front Desk and Receptionist`.
 
 ### Accounts and Auth
-`(building)/login/` handles sign-in and sign-up; `lib/auth.ts` guards pages (redirect to `/login`) and routes (401); `lib/supabase/` holds the server, browser and session-refresh clients. Sign-out (`/logout`) returns to the entrance.
+`(building)/login/` handles sign-in and sign-up; `lib/auth.ts` guards pages (redirect to `/login`) and routes (401); `lib/supabase/` holds the server, browser and session-refresh clients. Sign-out runs a server action (`lib/supabase/sign-out.ts`) once the camera is back at the front door, so `/login` arrives without a page reload and the building stays loaded; the `/logout` route is the plain form post when that can't run.
 PRD ref: `prd.md > Accounts and Profile`.
 
 ### Setup Clipboard

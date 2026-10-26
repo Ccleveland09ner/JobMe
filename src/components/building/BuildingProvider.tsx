@@ -22,6 +22,7 @@ import {
 import { useBrowserValue, useHydrated } from "@/components/common/useBrowserValue";
 import type { Speaker } from "@/components/room/types";
 import { webglAvailable } from "@/lib/frontend/webgl";
+import { signOut } from "@/lib/supabase/sign-out";
 
 import { buildingReducer, initialBuilding, type BuildingEvent, type BuildingState } from "./buildingMachine";
 import { heldReducer, initialHeld, type HeldEvent, type HeldState } from "./heldMachine";
@@ -41,7 +42,7 @@ export interface Building {
   show3D: boolean;
   dispatch: (event: BuildingEvent) => void;
   walkTo: (to: Station, options?: { hold?: boolean }) => void;
-  /** Sign out: the receptionist's goodbye, the walk to the front door, then post /logout (BuildingProvider owns it, so it survives the page). */
+  /** Sign out: the receptionist's goodbye, the walk to the front door, then sign out in place (BuildingProvider owns it, so it survives the page). */
   leave: () => void;
   /** Signing out is under way. */
   leaving: boolean;
@@ -89,6 +90,8 @@ const BuildingContext = createContext<Building | null>(null);
 
 /** Sign out anyway if the walk to the door hasn't arrived by then (another walk, a lost context). */
 const LEAVE_TIMEOUT_MS = 8000;
+/** Post /logout the old way (a full page load) if signing out in place hasn't reached /login by then. */
+const SIGN_OUT_TIMEOUT_MS = 10000;
 /** Walk out anyway if the goodbye hasn't finished by then: no audio problem keeps anyone in. */
 const FAREWELL_TIMEOUT_MS = 15000;
 
@@ -162,7 +165,7 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "WALK", to, hold: options?.hold ?? false });
   }, []);
 
-  // Signing out walks to the door and then posts /logout. It runs here, not in
+  // Signing out walks to the door and then signs out. It runs here, not in
   // the button that asked: on the way, a settings note shrinks to "Open this
   // note" and unmounts its button, which then never posted, stranding the user.
   // First the farewell (the receptionist's goodbye), then the walk out.
@@ -192,16 +195,39 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
 
   const show3D = canUseWebGL && state.render === "3d";
 
+  // At the door, sign out in place: /login comes as a client-side navigation and
+  // the building stays loaded. A full page load used to rebuild all of it right
+  // there, and the sign-in form struggled while it did.
   const atDoor = state.station === "entrance" && state.target === null;
+  const signingOut = useRef(false);
   useEffect(() => {
     if (!walkingOut) return;
-    if (atDoor || !show3D) {
-      logout.current?.submit();
-      return;
-    }
-    const timer = setTimeout(() => logout.current?.submit(), LEAVE_TIMEOUT_MS);
-    return () => clearTimeout(timer);
+    const signOutHere = () => {
+      if (signingOut.current) return;
+      signingOut.current = true;
+      // Its redirect to /login ends the call with a rejection; the router follows it regardless.
+      signOut().catch(() => {});
+    };
+    if (atDoor || !show3D) signOutHere();
+    const timer = setTimeout(signOutHere, LEAVE_TIMEOUT_MS);
+    // Still not at /login: post the form, the old way.
+    const fallback = setTimeout(() => logout.current?.submit(), LEAVE_TIMEOUT_MS + SIGN_OUT_TIMEOUT_MS);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(fallback);
+    };
   }, [walkingOut, atDoor, show3D]);
+
+  // Signed out: /login has come, and the next sign-out starts afresh.
+  if (walkingOut && pathname === "/login") {
+    setLeaving(false);
+    setWalkingOut(false);
+  }
+  useEffect(() => {
+    if (leaving) return;
+    leaveStarted.current = false;
+    signingOut.current = false;
+  }, [leaving]);
 
   // No 3D objects to animate: the lift and the return happen at once.
   useEffect(() => {
@@ -272,7 +298,7 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
   return (
     <BuildingContext.Provider value={value}>
       {children}
-      {/* Where signing out posts from, once the user is at the door. */}
+      {/* Where signing out posts from if signing out in place doesn't reach /login. */}
       <form ref={logout} method="post" action="/logout" hidden />
     </BuildingContext.Provider>
   );

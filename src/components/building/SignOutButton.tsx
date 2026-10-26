@@ -2,8 +2,9 @@
 
 /**
  * Sign out. With 3D the receptionist says goodbye, then the building walks to
- * the front door and posts /logout (BuildingProvider.leave), so it finishes
- * even if this button is unmounted on the way; without 3D the form just posts.
+ * the front door and signs out in place (BuildingProvider.leave), so it
+ * finishes even if this button is unmounted on the way; without 3D the form
+ * just posts /logout.
  */
 
 import { buttonClasses } from "@/components/ui/Button";

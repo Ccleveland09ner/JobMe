@@ -16,12 +16,15 @@ export const Corridor = memo(function Corridor({ doorOpen }: { doorOpen: boolean
   const l = x - width / 2;
   const r = x + width / 2;
   const d = ROOM_DOOR_WIDTH / 2;
+  // Walls and ceiling start behind the lobby's back wall (0.2 thick). Run through
+  // it, they share its faces at the opening and flicker there (z-fighting).
+  const behindLobby = front - 0.2;
   return (
     <group>
       <Slab x={[l, r]} y={[-0.08, 0]} z={[back, front]} finish="floor" />
-      <Slab x={[l, r]} y={[height, height + 0.1]} z={[back, front]} finish="ceiling" />
-      <Slab x={[l - 0.2, l]} y={[0, height]} z={[back, front]} />
-      <Slab x={[r, r + 0.2]} y={[0, height]} z={[back, front]} />
+      <Slab x={[l, r]} y={[height, height + 0.1]} z={[back, behindLobby]} finish="ceiling" />
+      <Slab x={[l - 0.2, l]} y={[0, height]} z={[back, behindLobby]} />
+      <Slab x={[r, r + 0.2]} y={[0, height]} z={[back, behindLobby]} />
       <Slab x={[l, r]} y={[0, 0.1]} z={[back, front]} finish="trim" />
       {[front - 2, front - 5].map((z) => (
         <CeilingLight key={z} at={[x, height - 0.03, z]} size={[0.6, 0.9]} />

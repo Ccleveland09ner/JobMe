@@ -57,6 +57,7 @@ Keyboard controls, reduced-motion handling and 2D fallbacks (the desk's buttons 
 
 ### Front Desk and Receptionist
 - Ms. Crystal greets first-time visitors with one of four welcomes and returning visitors with one of four welcome-backs, and sees visitors off at sign-out with one of four goodbyes.
+- She greets once per sign-in, not each time the user comes back to the desk from an interview, and says goodbye only when the user chooses to sign out.
 - A speech bubble shows exactly what she says, her lips move with her voice, and she never says the same line twice in a row.
 - Someone who has interviewed before counts as returning, even on a new browser.
 - The lobby music plays quietly at the desk, waits while she speaks, and can be turned off on the preferences note.

@@ -59,6 +59,8 @@ function valueImports(file: string): string[] {
 const files = sourceFiles(SRC);
 const graph = new Map(files.map((f) => [f, valueImports(f)]));
 const isClient = (file: string) => /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))*\s*["']use client["']/.test(fs.readFileSync(file, "utf8"));
+/** A "use server" module reaches the browser only as references to its functions: its own imports stay on the server. */
+const isServerFunctions = (file: string) => /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))*\s*["']use server["']/.test(fs.readFileSync(file, "utf8"));
 
 describe("architecture", () => {
   it("keeps server-only code and the question bank out of the browser", () => {
@@ -73,7 +75,7 @@ describe("architecture", () => {
             leaks.push([...trail, next].map(rel).join(" -> "));
           } else if (!seen.has(next)) {
             seen.add(next);
-            stack.push([...trail, next]);
+            if (!isServerFunctions(next)) stack.push([...trail, next]);
           }
         }
       }

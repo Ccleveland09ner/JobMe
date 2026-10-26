@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 
 import { useBuilding } from "@/components/building/BuildingProvider";
+import { oweGreeting } from "@/components/receptionist/greeting";
 import { Button } from "@/components/ui/Button";
 import { paperField } from "@/components/ui/Clipboard";
 import { describedBy } from "@/components/ui/Field";
@@ -80,8 +81,9 @@ export function LoginForm() {
     setConfirm("");
   }
 
-  /** Through the door to the front desk; the desk's page arrives with the walk. */
+  /** Through the door to the front desk, where the receptionist greets them; the desk's page arrives with the walk. */
   function enter() {
+    oweGreeting();
     building?.walkTo("desk");
     router.push("/dashboard");
     router.refresh();
