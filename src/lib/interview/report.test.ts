@@ -1,18 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { RawEvaluation } from "../ai/evaluate";
 import type { ReportDraft } from "../ai/report";
 import { TOPICS } from "../engine/topics";
 import type { Scores } from "../engine/types";
 import { groupIntoQuestions } from "../stats";
 import {
+  MAX_RESCORES,
   reportQuestionsFor,
+  rescoreUnscored,
   runReport,
   type ReportOutcome,
   type ReportSessionRow,
   type ReportStore,
   type ReportTurnRow,
+  type Rescore,
   type StoredReport,
 } from "./report";
+
+// Unscored turns are re-scored at filing; no test may reach the real model.
+vi.mock("../ai/evaluate", async (original) => ({
+  ...(await original<typeof import("../ai/evaluate")>()),
+  evaluateAndDraft: vi.fn(async () => {
+    throw new Error("no model in tests");
+  }),
+}));
+
+function evaluation(scores: Scores): RawEvaluation {
+  return {
+    scores,
+    status: "complete",
+    observation: "Clear outcome once asked",
+    off_topic: false,
+    repeats_previous: false,
+    clarify_gap: null,
+    drafts: { deepen: "Why that way?", clarify: "How did it end?" },
+  };
+}
 
 const flat = (n: number): Scores => ({
   relevance: n,
@@ -57,6 +81,7 @@ function memoryStore(opts: {
     turns: opts.turns ?? [],
     report: opts.report ?? null,
     completions: 0,
+    rescores: new Map<string, Rescore>(),
   };
 
   const store: ReportStore = {
@@ -71,6 +96,9 @@ function memoryStore(opts: {
     completeSession: async (overallScores) => {
       db.completions++;
       if (db.session) db.session = { status: "completed", overallScores };
+    },
+    saveRescore: async (turnId, rescore) => {
+      db.rescores.set(turnId, rescore);
     },
   };
   return { store, db };
@@ -320,5 +348,80 @@ describe("reportQuestionsFor", () => {
   it("names a topic it doesn't know by its id, and a missing one General", () => {
     const groups = groupIntoQuestions([turn(1, flat(2), "opening", "brand_new_topic"), { ...turn(2, flat(2)), topic: null }]);
     expect(reportQuestionsFor(groups).map((q) => q.competency)).toEqual(["brand_new_topic", "General"]);
+  });
+});
+
+describe("runReport — questions live scoring missed are re-scored at filing", () => {
+  it("scores an unscored question and saves it on that question's last turn", async () => {
+    const { store, db } = memoryStore({
+      turns: [turn(1, flat(3)), turn(2, null), turn(3, null, "clarify")],
+    });
+    const evaluate = vi.fn(async () => evaluation(flat(4)));
+
+    const outcome = await runReport(store, { generateText: async () => DRAFT, evaluate });
+
+    // Only Q2 was unscored; Q1 already had its score.
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(db.rescores.get("turn-3")).toMatchObject({ scores: flat(4), band: "great" });
+    expect(bodyOf(outcome).stats).toMatchObject({ answered: 2, scored: 2 });
+    expect(bodyOf(outcome).overallScores?.overall).toBe(3.5);
+  });
+
+  it("scores the whole thread against the original question, like a live follow-up", async () => {
+    const { store } = memoryStore({ turns: [turn(1, null), turn(2, null, "clarify")] });
+    const evaluate = vi.fn(async () => evaluation(flat(3)));
+
+    await runReport(store, { generateText: async () => DRAFT, evaluate });
+
+    expect(evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        questionText: "Question 1?",
+        questionType: "clarify",
+        followUpQuestion: "Question 2?",
+        answer: "Answer number 2 about the checkout service.",
+        priorThreadTurns: [{ question: "Question 1?", answer: "Answer number 1 about the checkout service." }],
+      }),
+    );
+  });
+
+  it("leaves a question unscored when its re-score fails, and still files", async () => {
+    const { store, db } = memoryStore({ turns: [turn(1, flat(3)), turn(2, null)] });
+    const evaluate = vi.fn(async () => {
+      throw new Error("timeout");
+    });
+
+    const outcome = await runReport(store, { generateText: async () => DRAFT, evaluate });
+
+    expect(db.rescores.size).toBe(0);
+    expect(bodyOf(outcome).stats).toMatchObject({ answered: 2, scored: 1 });
+  });
+
+  it("still counts a re-score this report could not save", async () => {
+    const { store } = memoryStore({ turns: [turn(1, null)] });
+    store.saveRescore = async () => {
+      throw new Error("function rescore_turn does not exist");
+    };
+
+    const outcome = await runReport(store, { generateText: async () => DRAFT, evaluate: async () => evaluation(flat(4)) });
+
+    expect(bodyOf(outcome).overallScores?.overall).toBe(4);
+  });
+
+  it("never re-scores a filed report", async () => {
+    const { store } = memoryStore({ turns: [turn(1, null)], report: { summary: "", weakestTurnId: null, rewrite: null, stats: {} as StoredReport["stats"] } });
+    const evaluate = vi.fn(async () => evaluation(flat(4)));
+
+    await runReport(store, { evaluate });
+
+    expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("re-scores at most MAX_RESCORES questions", async () => {
+    const turns = Array.from({ length: MAX_RESCORES + 3 }, (_, i) => turn(i + 1, null));
+    const evaluate = vi.fn(async () => evaluation(flat(3)));
+
+    await rescoreUnscored(turns, {}, { saveRescore: async () => {} }, evaluate);
+
+    expect(evaluate).toHaveBeenCalledTimes(MAX_RESCORES);
   });
 });

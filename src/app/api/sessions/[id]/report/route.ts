@@ -16,8 +16,11 @@ import { jobForPrompt, parsePlan } from "@/lib/plan";
 import { pickScores, reportFromRow } from "@/lib/stats";
 import { createClient } from "@/lib/supabase/server";
 
-/** One model call plus a few queries; the default can be too tight on Vercel. */
-export const maxDuration = 30;
+/**
+ * Re-scores of turns live scoring missed (up to RESCORE_TIMEOUT_MS, side by
+ * side), then one model call for the text, plus a few queries.
+ */
+export const maxDuration = 60;
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -52,12 +55,15 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
         .maybeSingle();
       if (error) throw new Error(`load session: ${error.message}`);
       if (!data) return null;
+      const plan = parsePlan(data.question_plan);
       return {
         status: data.status,
         overallScores: data.overall_scores ?? null,
         endedAt: data.ended_at ?? null,
         // The role as the turns saw it, so feedback is judged against the same job.
-        roleText: jobForPrompt(parsePlan(data.question_plan), data.role_text ?? null),
+        roleText: jobForPrompt(plan, data.role_text ?? null),
+        // As turnContextFrom reads it, so a re-score is judged at the same level.
+        seniority: plan?.job?.seniority ?? (plan?.role?.seniority || null),
       };
     },
 
@@ -118,6 +124,18 @@ function reportStore(supabase: Supabase, id: string): ReportStore {
         })
         .eq("id", id);
       if (error) throw new Error(`complete session: ${error.message}`);
+    },
+
+    async saveRescore(turnId, rescore) {
+      // Returns false when the turn was already scored (a concurrent report won): nothing to do.
+      const { error } = await supabase.rpc("rescore_turn", {
+        p_turn_id: turnId,
+        p_scores: rescore.scores,
+        p_band: rescore.band,
+        p_primary_gap: rescore.primaryGap,
+        p_notepad_text: rescore.observation || null,
+      });
+      if (error) throw new Error(`rescore turn: ${error.message}`);
     },
   };
 }

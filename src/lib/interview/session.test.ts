@@ -141,6 +141,7 @@ function reportStore(rows: ReportTurnRow[]): ReportStore {
     completeSession: async () => {
       completed = true;
     },
+    saveRescore: async () => {},
   };
 }
 
@@ -166,8 +167,9 @@ describe("a whole interview through the pipeline", () => {
     // Every turn kept, and every one honestly unscored.
     expect(rows.every((r) => r.scores === null)).toBe(true);
 
+    // Still down when the report re-scores what live scoring missed.
     const generateText = vi.fn();
-    const outcome = await runReport(reportStore(rows), { generateText });
+    const outcome = await runReport(reportStore(rows), { generateText, evaluate });
 
     expect(outcome.kind).toBe("filed");
     // Nothing was scored, so there is nothing to rewrite — and no call to make.
