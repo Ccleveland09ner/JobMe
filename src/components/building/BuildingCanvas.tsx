@@ -23,6 +23,7 @@ import { Lighting } from "./scene/Lighting";
 import { Lobby } from "./scene/Lobby";
 import { LOOK_POINTS } from "./scene/Objects";
 import { Street } from "./scene/Street";
+import { MouseParallax } from "./sky/MouseParallax";
 import { Sky } from "./sky/Sky";
 import type { Station } from "./stations";
 import { RECRUITER, SECRETARY } from "./world";
@@ -108,6 +109,7 @@ export default function BuildingCanvas() {
       </Suspense>
 
       <CameraRig />
+      <MouseParallax />
     </Canvas>
   );
 }
