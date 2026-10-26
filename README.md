@@ -32,12 +32,14 @@
         <li><a href="#built-with">Built With</a></li>
       </ul>
     </li>
+    <li><a href="#hackathon-submission">Hackathon Submission</a></li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
         <li><a href="#installation">Installation</a></li>
         <li><a href="#environment-variables">Environment Variables</a></li>
+        <li><a href="#deploying-to-vercel">Deploying to Vercel</a></li>
       </ul>
     </li>
     <li>
@@ -75,8 +77,9 @@ The application includes authentication, résumé ingestion, adaptive interviews
 ### Features
 
 - **Accounts:** email/password sign-in and sign-up with a unique username and an assigned member code. Settings let you edit your display name and save interview/input defaults in the current browser.
+- **Street and front desk:** a street outside the building with a time-of-day sky and matching street sounds, clickable signposts, and a Step inside tile. At the front desk the receptionist, Ms. Crystal, greets first-time and returning visitors and sees them off at sign-out, in a recorded, lip-synced voice with a speech bubble. Quiet lobby music plays at the desk and can be turned off.
 - **Personalized setup:** choose Quick or Full, optionally upload or reuse a PDF résumé, and supply a target role, pasted job description, or supported job-posting link. Link import supports Greenhouse, Lever, Ashby, and SmartRecruiters.
-- **Adaptive interviews:** questions come from an 11-topic behavioral bank and résumé roles/projects. The engine chooses whether to clarify, deepen, move to another topic, or wrap up.
+- **Adaptive interviews:** questions come from a 15-topic bank and résumé roles/projects. Every interview opens with motivation, then asks the role family's own question (software, product, or data) and behavioral competencies. The engine chooses whether to clarify, deepen, move to another topic, or wrap up.
 - **Voice and typed answers:** browser speech recognition, an optional microphone check, editable typed input, live transcripts/captions, and recruiter speech with animated lip-sync. Recognition failures fall back to typed input.
 - **Live feedback:** the recruiter's notepad shows scores, an answer-quality band, the main gap, quoted evidence, an observation, and the reason for the next question.
 - **Saved progress:** return to an unfinished interview, retry an answer after a failed request, or end early after at least one answer. The desk ledger is the record of every interview: what you were asked and what you said, question by question and word for word, with follow-ups under the question they added to.
@@ -98,6 +101,24 @@ The application includes authentication, résumé ingestion, adaptive interviews
 - Google Gemini through `@google/genai` for evaluation, question planning, résumé processing, and report text.
 - Web Speech APIs for recognition and browser speech; optional ElevenLabs speech through a server proxy.
 - `unpdf` for PDF text extraction, Zod for validation, and Vitest for tests.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- HACKATHON SUBMISSION -->
+## Hackathon Submission
+
+JobMe was built for Devpost [*Build With AI: Basics*](https://learn-ai-basics.devpost.com/), which uses the [Learn Skill Pack](https://github.com/challengepost/learn-ai-basics).
+
+| Requirement | Where |
+| --- | --- |
+| Scope | [`devpost/scope.md`](./devpost/scope.md): the kernel, who it's for, the core loop, and the proof-of-concept boundary. |
+| Product requirements | [`devpost/prd.md`](./devpost/prd.md): the core journey, screens, behavior, states, and what was deferred. |
+| Technical spec | [`devpost/spec.md`](./devpost/spec.md): the architecture, data model, file structure, external services, and failure modes. |
+| Public repository | [Ccleveland09ner/JobMe][project-url] |
+| Demo video | Linked from the Devpost submission. |
+| Running it yourself | [Getting Started](#getting-started) |
+
+The `devpost/` documents describe JobMe as built. The original plans they grew from are kept in [`docs/`](./docs/) (see [Documentation](#documentation)).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -167,7 +188,7 @@ npm run build
 npm start
 ```
 
-Configure the same environment variables on the deployment host and update the Supabase Site URL. Font loading uses `next/font/google`, so builds need access to the Google font downloads. The committed recruiter model runs as-is; Blender is only needed to rebuild that asset.
+Configure the same environment variables on the deployment host and update the Supabase Site URL; for Vercel, see [Deploying to Vercel](#deploying-to-vercel). Font loading uses `next/font/google`, so builds need access to the Google font downloads. The committed recruiter model runs as-is; Blender is only needed to rebuild that asset.
 
 ### Environment Variables
 
@@ -185,6 +206,17 @@ Configure the same environment variables on the deployment host and update the S
 
 Only the `NEXT_PUBLIC_*` values belong in the browser. Keep service-role, Gemini, and ElevenLabs keys server-side. Some comments in `.env.example` predate the current auth and maintenance scripts; the table above describes actual usage.
 
+### Deploying to Vercel
+
+JobMe deploys to [Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs) as a standard Next.js project; no `vercel.json` is needed. `package.json` pins Node.js 24.x, and the slower routes (starting a session, processing a résumé, filing a report) allow up to 30 seconds through `maxDuration`.
+
+1. **Import the repository.** Add a new Vercel project from `Ccleveland09ner/JobMe`, keeping the detected Next.js framework and the default install and build commands.
+2. **Set the environment variables before the first deploy** (Settings → Environment Variables, for Production and, if you use them, Preview): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `GEMINI_API_KEY`; for the neural voice, also `TTS_PROVIDER=elevenlabs`, `ELEVENLABS_API_KEY`, and `ELEVENLABS_VOICE_ID`. Leave `SUPABASE_SERVICE_ROLE_KEY` out; the app never uses it. The build succeeds without these values, but nobody can sign in, and because `NEXT_PUBLIC_*` values are compiled into the browser code at build time, changing them later needs a redeploy.
+3. **Deploy, then point Supabase at the new domain.** In Supabase, under Authentication → URL Configuration, set the Site URL to your deployment (`https://<your-project>.vercel.app` or a custom domain) and add it to the Redirect URLs. Sign-up confirmation emails link to the Site URL.
+4. **Try it.** Open the deployment in Chrome, create an account, and run a short interview. The microphone works because Vercel serves HTTPS.
+
+Vercel caps a function's request body at 4.5 MB; résumé uploads are capped at 4 MB, so they fit. Each answer makes several database calls, so choose the Vercel Functions region (Settings → Functions) nearest your Supabase project. Free Supabase projects pause after a week of inactivity; wake the project before a demo. The `/dev` previews return 404 in production.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- USAGE -->
@@ -200,12 +232,20 @@ Only the `NEXT_PUBLIC_*` values belong in the browser. Keep service-role, Gemini
 
 | Mode | Current behavior |
 | --- | --- |
-| Quick | Up to 10 questions, starting from four selected bank topics, with résumé questions mixed in when available. |
-| Full | A résumé-derived budget capped at 30 questions. Prioritizes coverage of up to 10 ranked résumé items, with a limited bank-question budget. Without a résumé, uses general behavioral questions. |
+| Quick | Up to 10 questions, starting from four topics (motivation, the role's own question, then behavioral competencies), with résumé questions mixed in when available. |
+| Full | A résumé-derived budget of 8 to 30 questions. Prioritizes coverage of up to 10 ranked résumé items, with a limited bank-question budget. Without a résumé, uses general behavioral questions. |
 
 Full mode trims résumé items beyond its coverage budget; it does not promise to cover every item on an arbitrarily long résumé. Sessions can finish before their cap, and users can end early.
 
-Answers are scored from 1–4 on **Situation, Task, Action, Result, Specificity, Impact, Ownership, and Relevance**. The interface displays all eight dimensions. Answer banding uses the average of the four STAR components alongside Specificity, Impact, Ownership, and Relevance. Feedback is for practice, not a prediction of a hiring outcome.
+Answers are scored from 1–4 on the dimensions that fit the kind of question, each kind with its own weights:
+
+| Kind | Dimensions |
+| --- | --- |
+| Behavioral and résumé stories | Relevance, Specific evidence, Own contribution, Reasoning, Outcome, Clarity |
+| Technical and problem solving | Relevance, Accuracy, Reasoning, Specific evidence, Clarity |
+| Motivation | Relevance, Specific evidence, Reasoning, Clarity |
+
+An answer is banded **Needs work** (weighted score below 2.0, or off-topic), **Strong** (3.5 or above with no dimension below 3, Clarity excepted), or **Developing**. A follow-up adds to the original answer, so each question is scored by its latest, most complete evaluation. STAR and numbers are never required, and grammar, accent, and filler words are never penalized. The [scoring rubric](./docs/Scoring-Rubric.md) has the weights and the reasons for them. Sessions scored before the rubric changed keep their original STAR dimensions. Feedback is for practice, not a prediction of a hiring outcome.
 
 ### How an Interview Works
 
@@ -225,6 +265,8 @@ Embeddings currently support résumé processing/retrieval helpers; the active t
 ### Data Handling
 
 JobMe sends answer transcripts to Gemini and stores transcripts, scores, engine state, and reports in Supabase. It does not upload or store candidate microphone audio itself; the browser's speech-recognition service may process audio remotely, as disclosed during setup.
+
+Whether the receptionist has greeted you before is kept in your account's auth metadata; interview defaults and the music setting are kept in this browser.
 
 Résumé PDFs are uploaded for server-side extraction but are not retained. The app applies pattern-based redaction before sending extracted résumé text to AI services or storing it, and retains redacted text, facts, coverage items, and vectors. This redaction is not a guarantee of anonymity, and answer transcripts do not pass through the résumé redactor. Deleting a session also deletes its turns and report; saved résumés are separate records.
 
@@ -252,11 +294,11 @@ API handlers authenticate their own requests:
 | `DELETE /api/sessions/[id]` | Delete a session and its dependent turns/report. |
 | `GET /api/tts` | ElevenLabs proxy, including optional character alignment for lip-sync. |
 
-Development-only previews are available at `/dev/recruiter`, `/dev/book`, and `/dev/building/[station]` (`street`, `entrance`, `desk`, `noteboard`, `corridor`, or `room`). They return 404 in production. The book preview is a layout/interaction workbench.
+Development-only previews are available at `/dev/recruiter`, `/dev/receptionist`, `/dev/book`, and `/dev/building/[station]` (`street`, `entrance`, `desk`, `noteboard`, `corridor`, or `room`). They return 404 in production. The book preview is a layout/interaction workbench.
 
 ### Current Limits
 
-- The configured track is behavioral SWE internship practice; there is no coding-exercise runner or track selector.
+- Interviews are behavioral at their core, tailored to the role family (software, product, data, or general) inferred from the job title. There is no coding-exercise runner or track selector.
 - Résumé uploads must be text-based PDFs under 4 MB. There is no OCR path for scanned résumés; suspicious layouts require review of extracted text.
 - Voice input uses browser recognition. Silence submission is based on transcript inactivity, not voice-activity detection, and barge-in is not implemented.
 - Posting imports are limited to the four supported providers; other jobs can be supplied as pasted text.
@@ -331,6 +373,7 @@ src/app/dev/              Recruiter and book previews
 src/components/building/  Building state, camera, stations, and 3D scenes
 src/components/room/      Interview controls, recruiter, captions, and notepad
 src/components/desk/      Session ledger and reports folder
+src/components/receptionist/  Front-desk receptionist: lines, recorded clips, visitor status
 src/components/           Setup, reports, settings, charts, and shared UI
 src/lib/engine/           Pure interview policy, topic bank, scoring types
 src/lib/interview/        Turn and report orchestration
@@ -345,12 +388,15 @@ supabase/migrations/      Schema, RLS, grants, and database functions
 scripts/                  Local simulations, service probes, maintenance tools
 public/                   Recruiter model, audio, and 3D font data
 design/tools/             Recruiter asset rebuild tools
+devpost/                  Hackathon planning documents: scope, PRD, spec
 docs/                     Original plans and implementation notes
 ```
 
 ### Documentation
 
-- [Product requirements](./docs/PRD-JobMe-MVP.md), [technical design](./docs/TechDesign-JobMe-MVP.md), and [backend implementation brief](./docs/Backend-Implementation-Brief.md) are historical planning documents. They contain superseded scaffold, auth, scoring, and pipeline details; use the current source and this README for implemented behavior.
+- [Scope](./devpost/scope.md), [product requirements](./devpost/prd.md), and [technical spec](./devpost/spec.md) describe JobMe as built; they are the hackathon's planning documents.
+- [Architecture](./docs/Architecture.md) covers the layers and their import rules, request flows, data integrity, and where new code goes. The [scoring rubric](./docs/Scoring-Rubric.md) covers how answers are scored, how questions are chosen, and how feedback is written.
+- The original [product requirements](./docs/PRD-JobMe-MVP.md), [technical design](./docs/TechDesign-JobMe-MVP.md), and [backend implementation brief](./docs/Backend-Implementation-Brief.md) are historical planning documents. They contain superseded scaffold, auth, scoring, and pipeline details; use the current source and this README for implemented behavior.
 - [October 5 migration note](./docs/Migration-Note-2026-10-05.md) explains résumé coverage, ranking, and PDF extraction changes.
 - [Recruiter asset tools](./design/tools/README.md) describe rebuilding the avatar; [third-party notices](./THIRD_PARTY_NOTICES.md) cover the bundled model, animation, and lettering assets.
 - [AGENTS.md](./AGENTS.md) contains repository instructions. Before changing Next.js code, read the relevant guides in `node_modules/next/dist/docs/` for this installed version.
@@ -360,7 +406,7 @@ docs/                     Original plans and implementation notes
 <!-- LICENSE -->
 ## License
 
-This repository does not currently declare a project-wide license. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the notices covering bundled assets.
+Distributed under the MIT License. See [LICENSE](./LICENSE). Bundled third-party assets keep their own licenses; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -368,6 +414,8 @@ This repository does not currently declare a project-wide license. See [THIRD_PA
 ## Contact
 
 GitHub: [@Ccleveland09ner](https://github.com/Ccleveland09ner)
+
+GitHub: [@Chibela](https://github.com/Chibela)
 
 Project: [Ccleveland09ner/JobMe][project-url]
 
@@ -383,7 +431,7 @@ Originally built for Devpost *Build With AI: Basics*.
 - [Best-README-Template](https://github.com/othneildrew/Best-README-Template) — the format used for this README.
 - [maxMyers13/hackathon-app](https://github.com/maxMyers13/hackathon-app) — the application starter.
 - [challengepost/learn-ai-basics](https://github.com/challengepost/learn-ai-basics) — the project process.
-- TalkingHead sample avatars, Adobe Mixamo animation, and Comic Neue lettering — see [third-party notices](./THIRD_PARTY_NOTICES.md).
+- TalkingHead sample avatars, Adobe Mixamo animation, Comic Neue lettering, react-pageflip, lobby music from Free To Use, and the receptionist's ElevenLabs voice — see [third-party notices](./THIRD_PARTY_NOTICES.md).
 - [Shields.io](https://shields.io/) — technology badges.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

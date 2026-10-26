@@ -14,6 +14,9 @@ import { ingestResume } from "@/lib/resume/ingest";
 import { storeResume } from "@/lib/resume/store";
 import { createClient } from "@/lib/supabase/server";
 
+/** Parsing, an embedding batch, a distilling call and ranking can outrun a platform's default. */
+export const maxDuration = 30;
+
 /** A text resume is tens of KB. */
 const MAX_BYTES = 4 * 1024 * 1024;
 
