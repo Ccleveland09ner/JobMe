@@ -4,13 +4,13 @@ import { BANK } from "../engine/bank";
 import { TOPIC_IDS, type EngineState } from "../engine/types";
 import {
   displayAverage,
-  findEvidence,
   friendlyError,
+  modeFromRow,
   noteFromTurnRow,
+  pickOverall,
   pickScores,
   progressFromState,
   scoreEntries,
-  sessionSummaryFromRow,
 } from "./adapters";
 import { TOPIC_LABELS } from "./labels";
 
@@ -118,56 +118,24 @@ describe("noteFromTurnRow", () => {
   });
 });
 
-describe("sessionSummaryFromRow", () => {
-  it("normalises status, mode and scores", () => {
-    expect(
-      sessionSummaryFromRow({
-        id: "s1",
-        status: "completed",
-        question_count: 7,
-        overall_scores: { impact: 2.5, structure: 3 },
-        started_at: "2026-10-01T10:00:00Z",
-        ended_at: null,
-        mode: "full",
-      }),
-    ).toEqual({
-      id: "s1",
-      status: "completed",
-      mode: "full",
-      startedAt: "2026-10-01T10:00:00Z",
-      endedAt: null,
-      questionCount: 7,
-      overallScores: { impact: 2.5 },
-      // A session stored before `overall` existed: the mean it showed then.
-      overall: 2.5,
-    });
-  });
-
+describe("pickOverall", () => {
   it("uses the stored overall score, and never renders it as a dimension", () => {
-    const summary = sessionSummaryFromRow({
-      id: "s2",
-      status: "completed",
-      question_count: 5,
-      overall_scores: { reasoning: 2, outcome: 4, overall: 3.24 },
-      started_at: "2026-10-20T10:00:00Z",
-      ended_at: null,
-      mode: "quick",
-    });
-    expect(summary.overall).toBe(3.2);
-    expect(summary.overallScores).toEqual({ reasoning: 2, outcome: 4 });
+    const stored = { reasoning: 2, outcome: 4, overall: 3.24 };
+    expect(pickOverall(stored)).toBe(3.2);
+    expect(pickScores(stored)).toEqual({ reasoning: 2, outcome: 4 });
   });
 
+  it("stands in the plain mean for a session stored before `overall` existed", () => {
+    expect(pickOverall({ impact: 2.5, structure: 3 })).toBe(2.5);
+    expect(pickOverall(null)).toBeNull();
+  });
+});
+
+describe("modeFromRow", () => {
   it("does not invent a mode it cannot read", () => {
-    const s = sessionSummaryFromRow({
-      id: "s1",
-      status: "in_progress",
-      question_count: null,
-      overall_scores: null,
-      started_at: "x",
-      ended_at: null,
-    });
-    expect(s.mode).toBeNull();
-    expect(s.questionCount).toBe(0);
+    expect(modeFromRow("full")).toBe("full");
+    expect(modeFromRow("marathon")).toBeNull();
+    expect(modeFromRow(undefined)).toBeNull();
   });
 });
 
@@ -190,22 +158,6 @@ describe("progressFromState", () => {
       topicIndex: 1,
       topicsTotal: 3,
     });
-  });
-});
-
-describe("findEvidence", () => {
-  it("splits around a case-insensitive match, preserving original casing", () => {
-    expect(findEvidence("Honestly we Worked Together on it.", "we worked together")).toEqual({
-      before: "Honestly ",
-      match: "we Worked Together",
-      after: " on it.",
-    });
-  });
-
-  it("returns null for a paraphrase or no quote", () => {
-    expect(findEvidence("We fixed it.", "the team resolved it")).toBeNull();
-    expect(findEvidence("We fixed it.", null)).toBeNull();
-    expect(findEvidence("We fixed it.", "  ")).toBeNull();
   });
 });
 

@@ -125,18 +125,6 @@ export interface ResumeUploadResponse {
 
 export type SessionStatus = "in_progress" | "completed";
 
-export interface SessionSummary {
-  id: string;
-  status: SessionStatus;
-  mode: InterviewMode | null;
-  startedAt: string;
-  endedAt: string | null;
-  questionCount: number;
-  overallScores: StoredScores | null;
-  /** The session's headline 1-4 score; null when unscored. */
-  overall: number | null;
-}
-
 /** One completed interview on the trend chart. */
 export interface TrendPoint {
   id: string;

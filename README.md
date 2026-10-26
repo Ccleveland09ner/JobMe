@@ -79,8 +79,8 @@ The application includes authentication, résumé ingestion, adaptive interviews
 - **Adaptive interviews:** questions come from an 11-topic behavioral bank and résumé roles/projects. The engine chooses whether to clarify, deepen, move to another topic, or wrap up.
 - **Voice and typed answers:** browser speech recognition, an optional microphone check, editable typed input, live transcripts/captions, and recruiter speech with animated lip-sync. Recognition failures fall back to typed input.
 - **Live feedback:** the recruiter's notepad shows scores, an answer-quality band, the main gap, quoted evidence, an observation, and the reason for the next question.
-- **Saved progress:** return to an unfinished interview, retry an answer after a failed request, or end early after at least one answer. The desk ledger lists sessions and supports deletion.
-- **Reports and trends:** overall and per-answer scores, a summary, a STAR rewrite of the weakest scored answer, highlighted transcripts, approximate filler counts, voice speaking rate, and trends across the latest 20 completed interviews.
+- **Saved progress:** return to an unfinished interview, retry an answer after a failed request, or end early after at least one answer. The desk ledger is the record of every interview: what you were asked and what you said, question by question and word for word, with follow-ups under the question they added to.
+- **Reports and trends:** each report holds the evaluation: overall and per-question scores with the interviewer's notes, a summary, what went well and what to work on, a STAR rewrite of the weakest scored answer, approximate filler counts, and voice speaking rate. The ledger points to the report for any of these, and the report to the ledger for the transcript. Trends across the latest 20 completed interviews are at the front of the ledger. An interview can be deleted from the ledger or from its report, and it leaves both.
 - **3D presentation and fallbacks:** a persistent Three.js building, animated camera transitions, a seated recruiter, and interactive paper objects. Keyboard-accessible controls, reduced-motion handling, and 2D fallbacks (the desk's buttons and an SVG recruiter) support use without the full 3D scene.
 
 ### Built With
@@ -194,7 +194,7 @@ Only the `NEXT_PUBLIC_*` values belong in the browser. Keep service-role, Gemini
 2. At the front desk, open the setup clipboard and choose Quick or Full. Add your résumé and target job if you want personalized questions.
 3. Complete the optional microphone check, or choose typed answers, then start the interview.
 4. Answer the recruiter and open the notepad to review feedback. You can leave and continue the saved session later, or end early after one answer.
-5. Read your scorecard in the reports folder. Return to the desk ledger to resume sessions, compare trends, or delete an interview.
+5. Read your scorecard, feedback and rewrite in the reports folder, and everything you said in the desk ledger. Return to the ledger to resume sessions or compare trends; delete an interview from either the ledger or its report.
 
 ### Interview Modes and Scoring
 
@@ -234,10 +234,10 @@ Résumé PDFs are uploaded for server-side extraction but are not retained. The 
 | --- | --- |
 | `/` | Street landing; signed-in users continue to the desk. |
 | `/login` | Sign-in and account creation. |
-| `/dashboard` | Front desk; `?open=ledger` opens session history and trends. |
+| `/dashboard` | Front desk; `?open=ledger` opens the ledger: each interview's transcript, your progress and trends. `&entry=<id>` opens it at one interview. |
 | `/interview/new` | Setup clipboard, résumé/job context, and microphone check. |
 | `/interview/[id]` | Current interview and live notepad. |
-| `/interview/[id]/report` | A session's scorecard and transcript. |
+| `/interview/[id]/report` | A session's report: scorecard, feedback and rewrite. |
 | `/reports` | Latest completed report, with navigation between reports. |
 | `/settings` | Account details and browser-saved defaults. |
 

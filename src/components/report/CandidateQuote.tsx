@@ -18,13 +18,3 @@ export function CandidateQuote({
   if (block) return <blockquote className={className}>&ldquo;{children}&rdquo;</blockquote>;
   return <q className={className}>{children}</q>;
 }
-
-/** The evidence for a gap, highlighted where it sits in the answer. */
-export function EvidenceMark({ children, gap }: { children: ReactNode; gap: string | null }) {
-  return (
-    <mark className="rounded bg-highlight px-0.5 text-ink">
-      {children}
-      {gap && <span className="sr-only"> (evidence for gap: {gap})</span>}
-    </mark>
-  );
-}

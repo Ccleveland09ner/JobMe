@@ -106,22 +106,27 @@ export interface QuestionGroup<T extends GroupableTurn> {
 }
 
 /**
- * Groups turns by original question, in seq order. Every `opening` starts a
+ * Turns by original question, in seq order. Every `opening` starts a
  * question; any other turn joins the one before it. A follow-up with nothing
  * before it (a row lost to a failed write) stands as its own question rather
- * than vanishing.
+ * than vanishing. The report and the ledger both number questions from this,
+ * so "Q2" is the same question in each.
  */
-export function groupIntoQuestions<T extends GroupableTurn>(
-  turns: T[],
-): QuestionGroup<T>[] {
+export function questionThreads<T extends Pick<GroupableTurn, "seq" | "questionType">>(turns: T[]): T[][] {
   const groups: T[][] = [];
   for (const turn of [...turns].sort((a, b) => a.seq - b.seq)) {
     const current = groups[groups.length - 1];
     if (turn.questionType === "opening" || !current) groups.push([turn]);
     else current.push(turn);
   }
+  return groups;
+}
 
-  return groups.map((group) => {
+/** The turns by original question (questionThreads), each scored by its latest cumulative evaluation. */
+export function groupIntoQuestions<T extends GroupableTurn>(
+  turns: T[],
+): QuestionGroup<T>[] {
+  return questionThreads(turns).map((group) => {
     const opening = group[0];
     const kind = questionKind({ topic: opening.topic, source: opening.source });
     const scoredTurn = [...group].reverse().find((t) => t.scores) ?? null;

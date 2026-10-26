@@ -1,25 +1,19 @@
 /**
- * The ledger (pure): each interview in a volume, shaped from its session,
- * turn and report rows, and the book they are printed in. Long text is cut
- * here, on the server, so only what the ledger shows reaches the page and
- * no single entry is taller than a page.
+ * The ledger (pure): the record of each interview in a volume, word for word,
+ * shaped from its session and turn rows, and the book they are printed in.
+ * It is an account of what happened, so it carries no scores, notes or
+ * feedback: those are the report's, and every entry points there. Long
+ * answers are split here, on the server, so no piece is taller than a page.
  */
 
-import type { ReportStats } from "@/lib/stats";
-import { FULL_QUESTION_CAP_MAX, type StoredScores } from "@/lib/engine/types";
+import { FULL_QUESTION_CAP_MAX, QUESTION_TYPES, type InterviewMode, type QuestionType } from "@/lib/engine/types";
+import { questionRef, questionThreads, wordCount } from "@/lib/stats";
 import type { RowReader } from "@/lib/supabase/reader";
 
-import {
-  pickOverall,
-  pickScores,
-  reportTurnFromRow,
-  SESSION_JSON_COLUMNS,
-  sessionSummaryFromRow,
-  type SessionRowData,
-  type TurnRow,
-} from "./adapters";
+import { modeFromRow, oneOf, pickOverall, pickScores, SESSION_JSON_COLUMNS } from "./adapters";
+import { topicLabel } from "./labels";
 import { splitText, type FlowBlock, type PagePlan } from "./paginate";
-import type { ReportTurnView, SessionSummary, TrendPoint } from "./types";
+import type { SessionStatus, TrendPoint } from "./types";
 
 /** Interviews per volume of the ledger. */
 export const VOLUME_SIZE = 6;
@@ -27,42 +21,67 @@ export const VOLUME_SIZE = 6;
 /** Completed interviews plotted on the trend chart, most recent. */
 export const TREND_LIMIT = 20;
 
-/** How much of an answer the ledger shows; the full answer is in the report. */
-export const LEDGER_ANSWER_CHARS = 220;
-/** Questions and notes are short; this only guards against a runaway one. */
-export const LEDGER_LINE_CHARS = 320;
-/** The interviewer's summary runs on in pieces of this size. */
-export const LEDGER_SUMMARY_CHARS = 420;
+/** An answer runs on across pages in pieces of this size. */
+export const LEDGER_TEXT_CHARS = 600;
 
-export interface LedgerQuestion extends ReportTurnView {
-  /** The interviewer's note on the answer. */
-  note: string | null;
+/** One exchange: what the interviewer asked, and the answer given, in full. */
+export interface LedgerTurn {
+  id: string;
+  seq: number;
+  /** An opening, or the follow-up it was (clarify or deepen). */
+  questionType: QuestionType | null;
+  questionText: string;
+  answer: string;
+  /** How long the answer was spoken for, ms; null when it was typed. */
+  spokenMs: number | null;
 }
 
-export interface LedgerEntry extends SessionSummary {
+/** One original question: its opening exchange, then each follow-up that added to it. */
+export interface LedgerQuestion {
+  /** "Q2", numbered as the report numbers it. */
+  ref: string;
+  /** The competency it was about. */
+  label: string;
+  fromResume: boolean;
+  turns: LedgerTurn[];
+}
+
+export interface LedgerEntry {
+  id: string;
+  status: SessionStatus;
+  mode: InterviewMode | null;
+  startedAt: string;
+  endedAt: string | null;
   /** The job the interview was for, when one was given. */
   title: string | null;
   questions: LedgerQuestion[];
-  /** The interviewer's summary, once the report exists. */
-  summary: string | null;
-  wpm: number | null;
-  fillers: number | null;
+  /** Follow-ups asked, and the words the candidate said, across the interview. */
+  followUps: number;
+  words: number;
 }
 
-export interface LedgerSessionRow extends SessionRowData {
+export interface LedgerSessionRow {
+  id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  /** `engine_state->>mode` (SESSION_JSON_COLUMNS). */
+  mode?: string | null;
   /** `question_plan->role->>title`. */
   role_title?: string | null;
 }
 
-export interface LedgerTurnRow extends TurnRow {
+export interface LedgerTurnRow {
   id: string;
   session_id: string;
-}
-
-export interface LedgerReportRow {
-  session_id: string;
-  summary: string | null;
-  stats: Partial<ReportStats> | null;
+  seq: number;
+  topic: string | null;
+  question_type: string | null;
+  question_source?: string | null;
+  question_text?: string | null;
+  answer_transcript?: string | null;
+  /** Sent only with a spoken answer. */
+  capture_ms?: number | null;
 }
 
 export interface LedgerVolume {
@@ -82,8 +101,8 @@ export interface LedgerOwner {
 export interface LedgerProgress {
   completed: number;
   inProgress: number;
-  /** overall_scores of the most recent completed interview. */
-  latestScores: StoredScores | null;
+  /** The most recent completed interview, whose report holds its scorecard. */
+  latestId: string | null;
   /** Its headline score, the mean of its question scores. */
   latestOverall: number | null;
 }
@@ -93,37 +112,48 @@ export function entryNumber(volume: LedgerVolume, index: number): number {
   return volume.total - volume.offset - index;
 }
 
-/** The start of `text`, cut at a word and marked with an ellipsis when cut. */
-export function excerpt(text: string, max: number): string {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length <= max) return clean;
-  const cut = clean.slice(0, max);
-  const space = cut.lastIndexOf(" ");
-  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, "")}…`;
+/** How an answer was given: "Typed", or "Spoken" and for how long. */
+export function answeredBy(spokenMs: number | null): string {
+  if (spokenMs === null) return "Typed";
+  const seconds = Math.round(spokenMs / 1000);
+  if (seconds < 1) return "Spoken";
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `Spoken for ${minutes ? `${minutes} min${rest ? ` ${rest} s` : ""}` : `${rest} s`}`;
 }
 
-export function ledgerEntries(sessions: LedgerSessionRow[], turns: LedgerTurnRow[], reports: LedgerReportRow[]): LedgerEntry[] {
+export function ledgerEntries(sessions: LedgerSessionRow[], turns: LedgerTurnRow[]): LedgerEntry[] {
   const turnsBySession = new Map<string, LedgerTurnRow[]>();
   for (const t of turns) turnsBySession.set(t.session_id, [...(turnsBySession.get(t.session_id) ?? []), t]);
-  const reportBySession = new Map(reports.map((r) => [r.session_id, r]));
 
-  return sessions.map((s) => {
-    const report = reportBySession.get(s.id);
-    const questions = [...(turnsBySession.get(s.id) ?? [])]
-      .sort((a, b) => a.seq - b.seq)
-      .map((t) => ({
-        ...reportTurnFromRow(t),
-        questionText: excerpt(t.question_text ?? "", LEDGER_LINE_CHARS),
-        answer: excerpt(t.answer_transcript ?? "", LEDGER_ANSWER_CHARS),
-        note: excerpt(t.notepad_text ?? "", LEDGER_LINE_CHARS) || null,
-      }));
+  return sessions.map((s): LedgerEntry => {
+    const rows = (turnsBySession.get(s.id) ?? []).map((row) => ({ seq: row.seq, questionType: row.question_type, row }));
+    const questions = questionThreads(rows).map(
+      (thread, i): LedgerQuestion => ({
+        ref: questionRef(i),
+        label: topicLabel(thread[0].row.topic),
+        fromResume: thread[0].row.question_source === "resume",
+        turns: thread.map(({ row }) => ({
+          id: row.id,
+          seq: row.seq,
+          questionType: oneOf(QUESTION_TYPES, row.question_type),
+          questionText: row.question_text?.trim() ?? "",
+          answer: row.answer_transcript?.trim() ?? "",
+          spokenMs: row.capture_ms ?? null,
+        })),
+      }),
+    );
+    const said = questions.flatMap((q) => q.turns);
     return {
-      ...sessionSummaryFromRow(s),
+      id: s.id,
+      status: s.status === "completed" ? "completed" : "in_progress",
+      mode: modeFromRow(s.mode),
+      startedAt: s.started_at,
+      endedAt: s.ended_at,
       title: s.role_title?.trim() || null,
       questions,
-      summary: report?.summary?.trim() || null,
-      wpm: report?.stats?.wpm ?? null,
-      fillers: report?.stats?.fillers ?? null,
+      followUps: said.length - questions.length,
+      words: said.reduce((n, t) => n + wordCount(t.answer), 0),
     };
   });
 }
@@ -135,6 +165,11 @@ export function ledgerVolumeHref(volume: number): string {
   return `/dashboard?open=ledger&section=history${volume === 1 ? "" : `&page=${volume}`}`;
 }
 
+/** The ledger open at one interview, in whichever volume holds it. */
+export function ledgerEntryHref(id: string): string {
+  return `/dashboard?open=ledger&entry=${encodeURIComponent(id)}`;
+}
+
 /**
  * Pages before the interviews: the front cover, then bookplate | contents
  * and progress | trends. The first interview starts on a left-hand page.
@@ -143,39 +178,54 @@ export const LEDGER_FLOW_START = 5;
 export const LEDGER_CONTENTS_PAGE = 2;
 export const LEDGER_PROGRESS_PAGE = 3;
 
-export type LedgerBlockKind = "overview" | "summary" | "metrics" | "questions" | "question" | "pending";
+export type LedgerBlockKind = "overview" | "transcript" | "ask" | "answer" | "where-next" | "pending";
 
 /** One printed block of an interview's record, before it is measured. */
 export interface LedgerBlock extends Omit<FlowBlock, "height"> {
   kind: LedgerBlockKind;
   /** The entry's index in the volume. */
   entry: number;
-  /** "question": the question's index in the entry. */
+  /** "ask" and "answer": the question's index in the entry, and the turn's in the question. */
   question?: number;
-  /** "summary": this piece of it, and whether it is the first. */
+  turn?: number;
+  /** "answer": this piece of it, and whether it is the first or the last. */
   text?: string;
   first?: boolean;
+  last?: boolean;
 }
 
 /**
- * Each interview's blocks: its overview alone on a left-hand page, then its
- * details from the facing page on: the interviewer's summary, the speaking
- * figures, and every question with its answer and note.
+ * Each interview's blocks: its overview alone on a left-hand page, then from
+ * the facing page its transcript, question by question, each follow-up under
+ * the question it added to, and where to go next: the report, or back into
+ * an unfinished interview.
  */
 export function ledgerFlow(entries: LedgerEntry[]): LedgerBlock[] {
   return entries.flatMap((e, entry) => {
     const details: LedgerBlock[] = [];
-    if (e.summary) {
-      splitText(e.summary, LEDGER_SUMMARY_CHARS).forEach((text, k) =>
-        details.push({ id: `s-${e.id}-${k}`, kind: "summary", entry, text, first: k === 0 }),
-      );
-    }
-    if (e.wpm !== null || e.fillers !== null) details.push({ id: `m-${e.id}`, kind: "metrics", entry });
     if (e.questions.length) {
-      details.push({ id: `qh-${e.id}`, kind: "questions", entry, keepWithNext: true });
-      e.questions.forEach((q, question) => details.push({ id: `q-${q.id}`, kind: "question", entry, question }));
-    }
-    if (!details.length) details.push({ id: `p-${e.id}`, kind: "pending", entry });
+      details.push({ id: `tr-${e.id}`, kind: "transcript", entry, keepWithNext: true });
+      e.questions.forEach((q, question) =>
+        q.turns.forEach((t, turn) => {
+          // A question is never left at the foot of a page without its answer.
+          details.push({ id: `ask-${t.id}`, kind: "ask", entry, question, turn, keepWithNext: true });
+          const pieces = splitText(t.answer, LEDGER_TEXT_CHARS);
+          (pieces.length ? pieces : [""]).forEach((text, k, all) =>
+            details.push({
+              id: `ans-${t.id}-${k}`,
+              kind: "answer",
+              entry,
+              question,
+              turn,
+              text,
+              first: k === 0,
+              last: k === all.length - 1,
+            }),
+          );
+        }),
+      );
+      details.push({ id: `wn-${e.id}`, kind: "where-next", entry });
+    } else details.push({ id: `p-${e.id}`, kind: "pending", entry });
     details[0] = { ...details[0], breakBefore: true };
     return [{ id: `ov-${e.id}`, kind: "overview" as const, entry, startOnLeft: true }, ...details];
   });
@@ -234,9 +284,9 @@ export function describeLedger({ spread, total }: { spread: number[]; total: num
 
 // Loading (RLS scopes every row to the signed-in user)
 
-const VOLUME_COLUMNS = `id, status, question_count, overall_scores, started_at, ended_at, ${SESSION_JSON_COLUMNS}`;
+const VOLUME_COLUMNS = `id, status, started_at, ended_at, ${SESSION_JSON_COLUMNS}`;
 const TURN_COLUMNS =
-  "id, session_id, seq, topic, question_type, question_text, answer_transcript, band, primary_gap, notepad_text";
+  "id, session_id, seq, topic, question_type, question_source, question_text, answer_transcript, capture_ms";
 
 /** The record as a whole: how many interviews, how many finished, the trend, and whose it is. */
 export interface LedgerShelf {
@@ -273,7 +323,7 @@ export async function loadLedgerShelf(supabase: RowReader, userId: string): Prom
   };
 }
 
-/** One volume: rows `from` to `to` (newest first), each with its turns and its report's summary. */
+/** One volume: rows `from` to `to` (newest first), each with every turn of it. */
 export async function loadLedgerVolume(supabase: RowReader, [from, to]: [number, number]): Promise<LedgerEntry[]> {
   const { data: rows, error } = await supabase
     .from("interview_sessions")
@@ -285,17 +335,26 @@ export async function loadLedgerVolume(supabase: RowReader, [from, to]: [number,
   const ids = sessions.map((s) => s.id);
   if (!ids.length) return [];
 
-  const [turnsRes, reportsRes] = await Promise.all([
-    supabase
-      .from("turns")
-      .select(TURN_COLUMNS)
-      .in("session_id", ids)
-      .order("seq", { ascending: true })
-      .limit(VOLUME_SIZE * FULL_QUESTION_CAP_MAX),
-    supabase.from("reports").select("session_id, summary, stats").in("session_id", ids),
-  ]);
-  if (turnsRes.error) throw new Error(`dashboard turns: ${turnsRes.error.message}`);
-  // Not essential: without them the ledger just doesn't quote the summaries.
-  const reports = reportsRes.error ? [] : ((reportsRes.data ?? []) as unknown as LedgerReportRow[]);
-  return ledgerEntries(sessions, (turnsRes.data ?? []) as unknown as LedgerTurnRow[], reports);
+  const { data: turns, error: turnsError } = await supabase
+    .from("turns")
+    .select(TURN_COLUMNS)
+    .in("session_id", ids)
+    .order("seq", { ascending: true })
+    .limit(VOLUME_SIZE * FULL_QUESTION_CAP_MAX);
+  if (turnsError) throw new Error(`dashboard turns: ${turnsError.message}`);
+  return ledgerEntries(sessions, (turns ?? []) as unknown as LedgerTurnRow[]);
+}
+
+/** The volume an interview is printed in, counting newest first; null when there is no such interview. */
+export async function loadEntryVolume(supabase: RowReader, id: string): Promise<number | null> {
+  const { data, error } = await supabase.from("interview_sessions").select("started_at").eq("id", id).maybeSingle();
+  if (error) throw new Error(`ledger entry: ${error.message}`);
+  const startedAt = (data as { started_at: string } | null)?.started_at;
+  if (!startedAt) return null;
+  const newer = await supabase
+    .from("interview_sessions")
+    .select("id", { count: "exact", head: true })
+    .gt("started_at", startedAt);
+  if (newer.error) throw new Error(`ledger entry: ${newer.error.message}`);
+  return Math.floor((newer.count ?? 0) / VOLUME_SIZE) + 1;
 }

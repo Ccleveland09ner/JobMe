@@ -78,9 +78,9 @@ export function StationLayer({ children }: { children: ReactNode }) {
 
 /** Desk actions, in the order the objects sit. */
 const DESK_ACTIONS: { name: string; label: string }[] = [
-  { name: "ledger", label: "Open the ledger: your interview history and progress" },
+  { name: "ledger", label: "Open the ledger: every interview, word for word, and your progress" },
   { name: "clipboard", label: "Pick up the clipboard: start an interview" },
-  { name: "reports", label: "Open the reports folder: your interview reports" },
+  { name: "reports", label: "Open the reports folder: summaries, feedback and rewrites" },
   { name: "settings", label: "Go to the settings notice board" },
 ];
 
