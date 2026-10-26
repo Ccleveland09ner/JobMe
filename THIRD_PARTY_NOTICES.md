@@ -168,3 +168,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Lobby music
+
+The tracks in `public/audio/music/` are Non-Premium Assets from Free To Use
+(https://freetouse.com/music), used under its license
+(https://freetouse.com/license):
+
+- "Warm Place" by Pufino
+- "Reflection" by Hazelwood
+- "Peach Prosecco" by massobeats
+- "Branch" by Lukrembo
+- "Aromatic" by massobeats

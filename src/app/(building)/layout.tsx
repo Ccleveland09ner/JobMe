@@ -11,6 +11,7 @@ import { BuildingProvider } from "@/components/building/BuildingProvider";
 import { LobbyMusic } from "@/components/building/LobbyMusic";
 import { SkyTimeToggle } from "@/components/building/sky/SkyTimeToggle";
 import { StationLayer } from "@/components/building/StationLayer";
+import { StreetSounds } from "@/components/building/StreetSounds";
 
 export default function BuildingLayout({ children }: { children: ReactNode }) {
   return (
@@ -28,6 +29,7 @@ export default function BuildingLayout({ children }: { children: ReactNode }) {
       </Suspense>
       <Announcer />
       <LobbyMusic />
+      <StreetSounds />
       {/* Development only: preview the street's sky at each time of day. */}
       {process.env.NODE_ENV === "development" && <SkyTimeToggle />}
     </BuildingProvider>

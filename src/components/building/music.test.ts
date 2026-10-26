@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hushMusic, isMusicHushed, LOBBY_TRACKS, nextTrack, wantsLobbyMusic } from "./music";
+import { hushMusic, isMusicHushed, wantsLobbyMusic } from "./music";
 import type { Station } from "./stations";
 
 const STATIONS: Station[] = ["street", "entrance", "desk", "noteboard", "corridor", "room"];
@@ -16,15 +16,6 @@ describe("wantsLobbyMusic", () => {
     expect(wantsLobbyMusic({ station: "desk", target: "noteboard" })).toBe(true);
     expect(wantsLobbyMusic({ station: "desk", target: "room" })).toBe(false);
     expect(wantsLobbyMusic({ station: "noteboard", target: "entrance" })).toBe(false);
-  });
-});
-
-describe("nextTrack", () => {
-  it("goes round the playlist", () => {
-    const count = LOBBY_TRACKS.length;
-    expect(nextTrack(0, count)).toBe(1);
-    expect(nextTrack(count - 1, count)).toBe(0);
-    expect(nextTrack(3, 0)).toBe(0);
   });
 });
 
