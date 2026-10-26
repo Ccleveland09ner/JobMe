@@ -41,6 +41,9 @@ export const REPEAT_LINE =
  */
 export const NO_EXPERIENCE_LINE = "No direct experience → moving on";
 
+/** Shown when the answer left nothing for a follow-up to ask. */
+export const FULLY_ANSWERED_LINE = "Answered in full → moving on";
+
 /** Shown when scoring failed. Never leaks the error to the candidate. */
 export const SCORING_FAILED_LINE = "Couldn't score that one. Let's keep going.";
 

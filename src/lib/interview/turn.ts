@@ -4,10 +4,11 @@
  * band, gap and evidence in code, step() picks the move, then the wording.
  */
 
-import { classifyBand, resolveGap } from "../engine/classify";
+import { GREAT_MIN_DIMENSION, classifyBand, minimum, resolveGap } from "../engine/classify";
 import { clarifySeeds, deepenSeeds, questionFor } from "../engine/bank";
 import { commitQuestion, step, type NextQuestionSpec, type StepInput } from "../engine/policy";
 import {
+  FULLY_ANSWERED_LINE,
   NO_EXPERIENCE_LINE,
   NUDGE_LINE,
   REPEAT_LINE,
@@ -43,11 +44,13 @@ import type { QuestionPlan, TurnBody } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
 /**
- * Aborts a slow evaluation so the turn degrades instead of hanging. Measured
- * live at 1.2-2.0 s; set well clear of that tail, as a slow scored turn beats
- * a fast unscored one.
+ * Aborts a slow evaluation so the turn degrades instead of hanging. Set well
+ * clear of the tail, as a slow scored turn beats a fast unscored one: on
+ * 2026-10-26 gemini-3.1-flash-lite measured 2.6-4.4 s, and the 4 s this used
+ * to be left every turn of a session unscored. Anything that still misses it
+ * is re-scored when the report is filed (lib/interview/report.ts).
  */
-export const EVAL_TIMEOUT_MS = 4000;
+export const EVAL_TIMEOUT_MS = 8000;
 
 export interface TurnContext {
   state: EngineState;
@@ -145,6 +148,8 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     previousBand: state.threadScores.length ? state.lastBand : null,
   });
 
+  const fullyAnswered = !degraded && isFullyAnswered(evaluated, band, kind);
+
   // The engine decides.
   const stepInput: StepInput = {
     scores: evaluated.scores,
@@ -152,6 +157,8 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     primaryGap,
     repeatsPrevious: evaluated.repeatsPrevious,
     noExperience: evaluated.noExperience,
+    fullyAnswered,
+    unscored: degraded,
   };
   const result = step(state, stepInput);
 
@@ -197,10 +204,25 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
         ? REPEAT_LINE
         : evaluated.noExperience && result.move !== "wrap"
           ? NO_EXPERIENCE_LINE
-          : reasonLine(result.move, primaryGap, band),
+          : fullyAnswered && result.move === "opening"
+            ? FULLY_ANSWERED_LINE
+            : reasonLine(result.move, primaryGap, band),
       degraded,
     },
   };
+}
+
+/**
+ * Nothing left to ask: the evaluator called the answer complete, it is not
+ * weak, and no dimension a follow-up could chase is below solid. A complete
+ * answer with a real gap (a 2 anywhere) still gets its clarify.
+ */
+export function isFullyAnswered(
+  evaluated: Pick<Evaluated, "complete" | "scores">,
+  band: Band,
+  kind: QuestionKind,
+): boolean {
+  return evaluated.complete && band !== "weak" && minimum(evaluated.scores, kind) >= GREAT_MIN_DIMENSION;
 }
 
 /** What the evaluator made of an answer, or the heuristics when it was unavailable. */
@@ -210,6 +232,8 @@ interface Evaluated {
   modelOffTopic: boolean;
   repeatsPrevious: boolean;
   noExperience: boolean;
+  /** The evaluator's status was `complete`: enough evidence to judge the whole question. */
+  complete: boolean;
   /** The gap the model's clarify draft was written against. */
   modelGap: string | null;
   drafts: { deepen: string; clarify: string } | null;
@@ -258,6 +282,7 @@ async function evaluateAnswer(ctx: TurnContext, kind: QuestionKind): Promise<Eva
       modelOffTopic: evaluation.off_topic,
       repeatsPrevious: evaluation.repeats_previous,
       noExperience: evaluation.status === "no_experience",
+      complete: evaluation.status === "complete",
       modelGap: evaluation.clarify_gap,
       drafts: evaluation.drafts,
       degradedReason: null,
@@ -275,6 +300,7 @@ async function evaluateAnswer(ctx: TurnContext, kind: QuestionKind): Promise<Eva
       modelOffTopic: false,
       repeatsPrevious: false,
       noExperience: false,
+      complete: false,
       modelGap: null,
       drafts: null,
       degradedReason,

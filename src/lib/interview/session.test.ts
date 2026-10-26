@@ -172,6 +172,8 @@ describe("a whole interview through the pipeline", () => {
     const outcome = await runReport(reportStore(rows), { generateText, evaluate });
 
     expect(outcome.kind).toBe("filed");
+    // An unscored answer is never followed up on a guessed gap.
+    expect(rows.every((r) => r.questionType === "opening")).toBe(true);
     // Nothing was scored, so there is nothing to rewrite — and no call to make.
     expect(generateText).not.toHaveBeenCalled();
     expect(bodyOf(outcome)).toMatchObject({ rewrite: null, overallScores: null });
@@ -188,19 +190,14 @@ describe("a whole interview through the pipeline", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  /** All strong: Deepen, resolve one level harder, repeat — then wrap. */
-  it("runs a strong session: deepens, climbs difficulty, and stays deterministic", async () => {
+  /** All strong and complete: nothing to follow up, so each answer opens the next thread one level harder — then wrap. */
+  it("runs a strong session: no follow-ups, climbs difficulty, and stays deterministic", async () => {
     const evaluate = vi.fn(async () => raw(flat(4)));
 
     const first = await interview(evaluate);
     const second = await interview(vi.fn(async () => raw(flat(4))));
 
-    expect(first.moves).toEqual([
-      "deepen", "opening",
-      "deepen", "opening",
-      "deepen", "opening",
-      "deepen", "wrap",
-    ]);
+    expect(first.moves).toEqual(["opening", "opening", "opening", "wrap"]);
     expect(second.moves).toEqual(first.moves);
     // Bumped after each great thread, and capped at 3.
     expect(first.state.difficulty).toBe(3);

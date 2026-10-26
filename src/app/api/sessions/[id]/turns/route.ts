@@ -15,6 +15,9 @@ import { runTurn, staleTurnBody, submitAnswer, turnResponseBody, type TurnStore 
 import { TurnBody } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
+/** The evaluator alone may take EVAL_TIMEOUT_MS (8 s); keep clear of a short platform default. */
+export const maxDuration = 30;
+
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 export async function POST(

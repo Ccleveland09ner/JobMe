@@ -43,6 +43,16 @@ export interface StepInput {
    * invite an invented story, so the thread ends and the interview moves on.
    */
   noExperience?: boolean;
+  /**
+   * The evaluator called the answer complete and no scored dimension is below
+   * solid. Nothing is missing, so there is nothing for a follow-up to ask.
+   */
+  fullyAnswered?: boolean;
+  /**
+   * The evaluator failed and heuristics stood in. Their gap is a guess, so
+   * the thread ends rather than chasing it, and difficulty stays put.
+   */
+  unscored?: boolean;
 }
 
 /** `next` is null only when `move === 'wrap'`. */
@@ -137,6 +147,9 @@ export function shouldResolveTopic(
   input: StepInput,
 ): boolean {
   if (input.noExperience) return true;
+  // Not every question needs a follow-up: only a gap earns one.
+  if (input.fullyAnswered) return true;
+  if (input.unscored) return true;
   if (state.followUpsUsed >= maxFollowUpsFor(state)) return true;
   if (isPlateau(state, input)) return true;
   if (state.lastMove === "deepen" && input.band === "great") return true;
@@ -245,7 +258,7 @@ export function step(state: EngineState, input: StepInput): StepResult {
   // Resolve the thread and move on.
   const resumeItems = markCurrentCovered(base);
   const difficulty =
-    input.band === "great"
+    input.band === "great" && !input.unscored
       ? (Math.min(MAX_DIFFICULTY, base.difficulty + 1) as 1 | 2 | 3)
       : base.difficulty;
 

@@ -265,7 +265,7 @@ async function resumeHeavy(): Promise<void> {
 }
 
 async function weakThenStrong(): Promise<void> {
-  console.log("\nAdaptivity — weak clarifies, strong deepens");
+  console.log("\nAdaptivity — weak clarifies, strong and complete moves on");
 
   const weak = await runSession({
     mode: "quick",
@@ -282,7 +282,7 @@ async function weakThenStrong(): Promise<void> {
 
   check("weak answers produce a clarify", weak.moves.includes("clarify"));
   check("weak answers never produce a deepen", !weak.moves.includes("deepen"));
-  check("strong answers produce a deepen", strong.moves.includes("deepen"));
+  check("strong, complete answers need no follow-up", !strong.moves.includes("deepen"));
   check("strong answers never produce a clarify", !strong.moves.includes("clarify"));
   check(
     "strong answers raise difficulty",

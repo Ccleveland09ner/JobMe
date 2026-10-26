@@ -256,9 +256,37 @@ describe("shouldResolveTopic", () => {
     expect(shouldResolveTopic(state, input(stillWeak, "weak"))).toBe(true);
   });
 
-  it("never resolves on the opening answer alone", () => {
+  it("does not resolve an opening answer that left a gap", () => {
     const state = makeState({ followUpsUsed: 0, lastMove: "opening" });
     expect(shouldResolveTopic(state, input(MEDIOCRE, "mediocre"))).toBe(false);
+  });
+
+  it("resolves an opening answer that left nothing to ask", () => {
+    const state = makeState({ followUpsUsed: 0, lastMove: "opening" });
+    expect(shouldResolveTopic(state, input(flat(3), "mediocre", { fullyAnswered: true }))).toBe(true);
+  });
+
+  it("resolves an unscored answer rather than chase a guessed gap", () => {
+    const state = makeState({ followUpsUsed: 0, lastMove: "opening" });
+    expect(shouldResolveTopic(state, input(MEDIOCRE, "mediocre", { unscored: true }))).toBe(true);
+  });
+});
+
+describe("step — no follow-up without a gap", () => {
+  it("moves on, a level harder, after a great answer that was fully answered", () => {
+    const result = step(makeState(), input(GREAT, "great", { fullyAnswered: true }));
+    expect(result.move).toBe("opening");
+    expect(result.state.difficulty).toBe(2);
+  });
+
+  it("still deepens a great answer the evaluator called incomplete", () => {
+    expect(step(makeState(), input(GREAT, "great")).move).toBe("deepen");
+  });
+
+  it("moves on after an unscored answer without raising difficulty", () => {
+    const result = step(makeState(), input(GREAT, "great", { unscored: true }));
+    expect(result.move).toBe("opening");
+    expect(result.state.difficulty).toBe(1);
   });
 });
 
