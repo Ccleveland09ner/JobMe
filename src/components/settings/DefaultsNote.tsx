@@ -1,11 +1,18 @@
 "use client";
 
-/** The interview defaults note: type and answer mode, saved in this browser. */
+/** The preferences note: interview type, answer mode and lobby music, saved in this browser. */
 
 import { useId, useState } from "react";
 
 import { FULL_QUESTION_CAP_MAX, FULL_QUESTION_CAP_MIN, QUICK_QUESTION_CAP } from "@/lib/engine/types";
-import { FALLBACK_DEFAULTS, useDefaults, writeDefaults, type InterviewDefaults } from "@/lib/frontend/preferences";
+import {
+  FALLBACK_DEFAULTS,
+  useDefaults,
+  useLobbyMusic,
+  writeDefaults,
+  writeLobbyMusic,
+  type InterviewDefaults,
+} from "@/lib/frontend/preferences";
 
 interface Option<V extends string> {
   value: V;
@@ -21,6 +28,11 @@ const TYPES: Option<InterviewDefaults["mode"]>[] = [
 const ANSWERS: Option<InterviewDefaults["inputMode"]>[] = [
   { value: "voice", label: "Speak", hint: "into the microphone" },
   { value: "typed", label: "Type", hint: "in a text box" },
+];
+
+const MUSIC: Option<"on" | "off">[] = [
+  { value: "on", label: "On", hint: "quietly, in the lobby" },
+  { value: "off", label: "Off", hint: "no music" },
 ];
 
 function Choice<V extends string>({
@@ -65,11 +77,11 @@ function Choice<V extends string>({
 
 export function DefaultsNote() {
   const defaults = useDefaults() ?? FALLBACK_DEFAULTS;
+  const music = useLobbyMusic();
   const [status, setStatus] = useState<string>("");
 
-  const save = (next: InterviewDefaults) => {
-    setStatus(writeDefaults(next) ? "Saved on this device." : "This browser wouldn't save it (private browsing?).");
-  };
+  const saved = (ok: boolean) => setStatus(ok ? "Saved on this device." : "This browser wouldn't save it (private browsing?).");
+  const save = (next: InterviewDefaults) => saved(writeDefaults(next));
 
   return (
     <div className="flex flex-col gap-3">
@@ -80,8 +92,9 @@ export function DefaultsNote() {
         value={defaults.inputMode}
         onChange={(inputMode) => save({ ...defaults, inputMode })}
       />
+      <Choice legend="Lobby music" options={MUSIC} value={music ? "on" : "off"} onChange={(v) => saved(writeLobbyMusic(v === "on"))} />
       <p role="status" className="text-xs text-muted">
-        {status || "The setup clipboard starts with these. Any interview can still change them."}
+        {status || "The setup clipboard starts with your interview type and answers. Any interview can still change them."}
       </p>
     </div>
   );

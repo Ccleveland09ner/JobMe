@@ -62,6 +62,11 @@ How the code is organised, which way dependencies point, what the data layer gua
   - grain over the palette's colours, rims lit and shadows cast from the same upper-right key light (`globals.css`, `ui/Clipboard.tsx`);
   - the ledger and folder show their page block either side of the spread (`stackDepths` in `lib/frontend/book-layout.ts`);
   - while one is open, the office goes out of focus and the secretary rests (`BuildingBackdrop.tsx`, `BuildingCanvas.tsx`).
+- The lobby has music (`LobbyMusic.tsx`, with the playlist and where it plays in `music.ts`; tracks in `public/audio/music/`):
+  - it plays quietly at the desk and the notice board, fading in and out as the user walks in or leaves;
+  - it can be turned off on the Preferences note (stored in this browser, `lib/frontend/preferences.ts`);
+  - it is quiet while the microphone test runs and while the tab is hidden;
+  - it waits for the user's first click or key press, as browsers require.
 - `StationLayer` is the DOM over the canvas:
   - `stationLayout.ts` holds its routing rules: path → layout, and path → held object.
   - `stationEffects.ts` holds its effects: heading focus, held sync, desk actions, camera inset.

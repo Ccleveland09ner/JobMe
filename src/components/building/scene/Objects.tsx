@@ -279,7 +279,7 @@ export function NamePlate() {
 const pinGeometry = new THREE.SphereGeometry(0.028, 20, 14);
 
 const NOTE_LOOK: Record<BoardNote, { title: string; paper: Finish }> = {
-  defaults: { title: "INTERVIEW DEFAULTS", paper: "paper" },
+  defaults: { title: "PREFERENCES", paper: "paper" },
   account: { title: "ACCOUNT", paper: "noteYellow" },
 };
 

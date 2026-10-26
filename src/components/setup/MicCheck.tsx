@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAlive } from "@/components/common/useAlive";
 import { useBrowserValue } from "@/components/common/useBrowserValue";
+import { hushMusic } from "@/components/building/music";
 import { Button } from "@/components/ui/Button";
 import type { InputMode } from "@/lib/frontend/types";
 import { isSttSupported } from "@/lib/voice/stt";
@@ -73,10 +74,13 @@ export function MicCheck({
         raf = requestAnimationFrame(tick);
       };
       tick();
+      // The lobby's music would move the meter: quiet while the test runs.
+      const unhush = hushMusic();
       cleanup.current = () => {
         cancelAnimationFrame(raf);
         stream.getTracks().forEach((t) => t.stop());
         void ctx.close();
+        unhush();
         cleanup.current = null;
       };
       setStatus("allowed");
