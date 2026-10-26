@@ -11,7 +11,12 @@ export interface Pose {
   fov: number;
   /** Half-width (m) to keep in view at the target; narrow screens step back. */
   fit?: number;
+  /** Half-width (m) to fill the screen with on portrait screens: the camera comes in or steps back to it. */
+  fill?: number;
 }
+
+/** Narrower than this aspect is portrait: a pose's `fill` applies. */
+export const PORTRAIT = 1;
 
 export const POSES: Record<Station, Pose> = {
   street: { position: [0, 1.7, FACADE_Z + 21], target: [0, 5.4, FACADE_Z], fov: 46 },

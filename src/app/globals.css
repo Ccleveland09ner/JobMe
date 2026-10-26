@@ -139,6 +139,24 @@ body {
     0 2px 16px rgb(10 14 40 / 0.45);
 }
 
+/*
+ * Writing cut into the landing signposts' stone (components/building/landing):
+ * dark letters with a lit lower lip, as an inscription. At night, pale letters
+ * keep it readable on the dimmer stone.
+ */
+.engraved {
+  color: #4a3f33;
+  text-shadow:
+    0 1px 0 rgb(255 250 240 / 0.6),
+    0 -1px 0 rgb(40 30 20 / 0.25);
+}
+:root[data-sky="night"] .engraved {
+  color: #f1e8da;
+  text-shadow:
+    0 -1px 0 rgb(0 0 0 / 0.6),
+    0 1px 0 rgb(255 255 255 / 0.12);
+}
+
 /* Visible focus states are a requirement, not a polish item. */
 :focus-visible {
   outline: 2px solid var(--color-accent);

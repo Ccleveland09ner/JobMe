@@ -17,6 +17,7 @@ import { LETTERING_FONT } from "@/components/three/lettering";
 
 import { useBuilding } from "./BuildingProvider";
 import { CameraRig } from "./CameraRig";
+import { LANDING_ACTIONS } from "./landing/layout";
 import { LandingScene } from "./landing/LandingScene";
 import { Corridor } from "./scene/Corridor";
 import { InterviewRoomScene } from "./scene/InterviewRoom";
@@ -73,6 +74,8 @@ export default function BuildingCanvas() {
       // Soft PCF shadows from the key light (scene/Lighting.tsx).
       shadows="percentage"
       frameloop="demand"
+      // A click that hit nothing usable: an open signpost closes (landing/LandingControls.tsx).
+      onPointerMissed={() => building.activate(LANDING_ACTIONS.outside)}
       // Up to 2x: the characters are rendered in full 3D and soften below it.
       dpr={[1, 2]}
       camera={{ near: 0.05, far: 120 }}

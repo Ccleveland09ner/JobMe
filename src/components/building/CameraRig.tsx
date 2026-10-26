@@ -15,7 +15,7 @@ import { prefersReducedMotion } from "@/lib/frontend/motion";
 
 import { useBuilding } from "./BuildingProvider";
 import { isPoster, POSTER_CLOSE_UPS, POSTER_GLIDE_SECONDS } from "./landing/layout";
-import { fovFor, NOTE_CLOSE_UPS, pathBetween, POSES, type Pose, type Station } from "./stations";
+import { fovFor, NOTE_CLOSE_UPS, pathBetween, PORTRAIT, POSES, type Pose, type Station } from "./stations";
 import type { BoardNote } from "./world";
 
 /** Walking pace, metres per second, and the bounds on one leg's duration. */
@@ -39,6 +39,10 @@ interface CameraValues {
   fov: number;
   /** Pose.fit, or 0. */
   fit: number;
+  /** Pose.fill, or 1 when it has none (then unused): tweened as a width, never through 0. */
+  fill: number;
+  /** 1 with Pose.fill, 0 without, so a glide eases in and out of it. */
+  filling: number;
 }
 
 const valuesOf = (pose: Pose): CameraValues => ({
@@ -50,6 +54,8 @@ const valuesOf = (pose: Pose): CameraValues => ({
   tz: pose.target[2],
   fov: pose.fov,
   fit: pose.fit ?? 0,
+  fill: pose.fill ?? 1,
+  filling: pose.fill ? 1 : 0,
 });
 
 const scratch = new THREE.Vector3();
@@ -236,11 +242,14 @@ export function CameraRig() {
     const fov = fovFor({ position: [0, 0, 0], target: [0, 0, 0], fov: c.fov }, aspect);
     // Too narrow to keep the pose's width in view: step back to fit it.
     let back = 1;
+    const distance = Math.hypot(c.px - c.tx, c.py - c.ty, c.pz - c.tz);
+    const across = Math.tan((fov * Math.PI) / 360) * aspect;
     if (c.fit > 0) {
-      const distance = Math.hypot(c.px - c.tx, c.py - c.ty, c.pz - c.tz);
-      const needed = c.fit / (Math.tan((fov * Math.PI) / 360) * aspect);
+      const needed = c.fit / across;
       if (distance > 0 && needed > distance) back = needed / distance;
     }
+    // Portrait: come in (or step back) until the pose's `fill` width fills the screen.
+    if (c.filling > 0 && aspect < PORTRAIT && distance > 0) back += (c.fill / across / distance - back) * c.filling;
     persp.position.set(c.tx + (c.px - c.tx) * back, c.ty + (c.py - c.ty) * back, c.tz + (c.pz - c.tz) * back);
     persp.lookAt(scratch.set(c.tx, c.ty, c.tz));
     // What the camera looks at, for the key light's shadows (scene/Lighting.tsx).

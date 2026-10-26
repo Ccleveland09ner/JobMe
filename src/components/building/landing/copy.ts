@@ -1,9 +1,9 @@
 /**
  * Every word the landing page shows, in one place to edit. No em dashes.
- * The About Us and Guide text are placeholders until confirmed.
+ * The ABOUT US and GUIDE content are placeholders until confirmed.
  */
 
-/** Under the title; one is picked per visit, never the last one shown (useTagline.ts). */
+/** Under the title; one is picked per visit, never the last one shown (useTagline.ts). Tagline.tsx adds the quotation marks. */
 export const TAGLINES = [
   "Tired of being rejected after interviews? Practice until you walk in ready.",
   "Tired of feeling underprepared? Rehearse with a recruiter before the real one.",
@@ -13,46 +13,54 @@ export const TAGLINES = [
 /** On the plaque above the front door. */
 export const ENTRANCE_SIGN = "INTERVIEW CENTER";
 
-/** On the placard over the beaming tile, and its button for the keyboard. */
-export const STEP_INSIDE = "Step inside";
+/** Hovering words in the scene: always capitals. */
+const caps = (s: string) => s.toUpperCase();
+
+export const LABELS = {
+  stepInside: caps("Step inside"),
+  next: caps("Next: Guide"),
+  back: caps("Back: About Us"),
+  close: caps("Close"),
+} as const;
 
 export type Poster = "about" | "guide";
 
 export interface PosterCopy {
-  /** Painted on the board, and the zoomed card's heading. */
+  /** Hovering over its signpost, and the opened view's heading. */
   title: string;
-  /** PLACEHOLDER: to confirm. */
+  /** Paragraphs. PLACEHOLDER: to confirm. */
   body: readonly string[];
   /** A numbered list, after the body. PLACEHOLDER: to confirm. */
   steps?: readonly string[];
   /** After the steps. PLACEHOLDER: to confirm. */
   closing?: string;
-  /** The hidden button that opens it. */
-  open: string;
 }
 
 export const POSTER_COPY: Record<Poster, PosterCopy> = {
   about: {
-    title: "About Us",
+    title: caps("About Us"),
     body: [
-      "JobMe is a 3D mock interview app. Meet an AI recruiter, answer real questions for the role you want, and get a clear report on how you did.",
+      "JobMe is a mock interview center you can walk around in. Pick the role you are aiming for, step into a 3D office, and sit down with a recruiter who asks the questions an interviewer would actually ask.",
+      "Nothing is on the line, so you can stumble, try again and sharpen your answers. When you are done, your results are filed in a report that shows what landed well and what to work on.",
+      "Practice as often as you like, until walking into the real interview feels like the tenth time and not the first.",
     ],
-    open: "Read the About Us poster",
   },
   guide: {
-    title: "Guide",
+    title: caps("Guide"),
     body: [],
     steps: ["Step inside", "Set up your role", "Sit the interview", "Review your results"],
     closing: "Simple as that.",
-    open: "Read the Guide poster",
   },
 };
 
-/** The zoomed poster's controls. */
-export const POSTER_CONTROLS = {
+/** What the hidden buttons say to screen readers (the words in the scene are their visible twins). */
+export const PROXY_LABELS = {
+  stepInside: "Step inside",
+  open: { about: "About us", guide: "Guide" } satisfies Record<Poster, string>,
+  next: "Next: Guide",
+  back: "Back: About us",
   close: "Close",
-  next: { label: "Next: Guide", aria: "Next poster: Guide" },
-  previous: { label: "Back: About Us", aria: "Previous poster: About Us" },
-  /** "1 of 2". */
-  position: (index: number, total: number) => `${index} of ${total}`,
 } as const;
+
+/** "Page 1 of 2", for screen readers. */
+export const pageOf = (index: number, total: number) => `Page ${index} of ${total}`;

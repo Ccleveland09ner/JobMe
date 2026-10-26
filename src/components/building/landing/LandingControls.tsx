@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * The landing page's controls over the scene. Hidden buttons for the keyboard
- * and screen readers (Step inside, and each poster) light their 3D twin when
- * focused, and show as plain buttons without 3D. The 3D tile and posters run
- * the same named actions. An open poster's writing is real text pinned onto
- * its board (ScreenAnchor), with Close, the arrow to the other poster, and
- * "1 of 2"; clicking anywhere else closes it.
+ * The landing page's side of the scene's hovering words. Every word in the
+ * scene (STEP INSIDE, ABOUT US, GUIDE, NEXT, BACK, CLOSE) runs a named action
+ * registered here, and has a hidden twin button for the keyboard and screen
+ * readers that lights the word while focused. An open signpost's writing is
+ * real text pinned onto its stone face (ScreenAnchor), cut in like an
+ * inscription, inside a polite live region. Without 3D the same controls are
+ * plain buttons and the writing a plain card.
  */
 
 import { useRouter } from "next/navigation";
@@ -16,94 +17,84 @@ import { buttonClasses } from "@/components/ui/Button";
 
 import { useBuilding, useShow3D } from "../BuildingProvider";
 import { StepInside } from "../StepInside";
-import { POSTER_CONTROLS, POSTER_COPY, STEP_INSIDE, type Poster } from "./copy";
+import { pageOf, POSTER_COPY, PROXY_LABELS, type Poster } from "./copy";
 import { LANDING_ACTIONS, POSTER_ORDER } from "./layout";
-import { usePosterNavigation, type PosterNavigation } from "./usePosterNavigation";
+import { useSignPostNavigation, type SignPostNavigation } from "./useSignPostNavigation";
 
-/** Width the writing is laid out at (CSS px), before scaling onto the board. */
-const WRITING_WIDTH = 360;
-/** No bigger than this on a large screen: centred on the board instead. */
-const MAX_SCALE = 1.35;
-
-/**
- * With 3D the twins sit in a click-through bar along the bottom, invisible but
- * there for screen readers and the keyboard; each shows while it has keyboard
- * focus. (Not sr-only, whose reset fights the button's padding; and the
- * button's .grain owns its position, so the bar places them.)
- */
-const TWIN_BAR = "pointer-events-none fixed inset-x-0 bottom-6 z-30 flex flex-wrap justify-center gap-3 px-4";
-const TWIN_3D = "opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100";
+/** Width the writing is laid out at (CSS px), before scaling onto the face. */
+const WRITING_WIDTH = 340;
+/** No bigger than this on a large screen: centred on the face instead. */
+const MAX_SCALE = 1.3;
 
 export function LandingControls() {
   const building = useBuilding();
   const show3D = useShow3D();
   const router = useRouter();
-  const nav = usePosterNavigation();
-  const { openPoster } = nav;
+  const nav = useSignPostNavigation();
+  const { openPoster, close, goNext, goBack, open } = nav;
   const setAction = building?.setAction;
   const walkTo = building?.walkTo;
-  const setHovered = building?.setHovered;
 
   useEffect(() => {
     if (!setAction) return;
-    setAction(LANDING_ACTIONS.stepInside, () => {
-      walkTo?.("entrance");
-      router.push("/login");
-    });
-    for (const poster of POSTER_ORDER) setAction(LANDING_ACTIONS.poster(poster), () => openPoster(poster));
+    const actions: [string, () => void][] = [
+      [
+        LANDING_ACTIONS.stepInside,
+        () => {
+          walkTo?.("entrance");
+          router.push("/login");
+        },
+      ],
+      ...POSTER_ORDER.map((p): [string, () => void] => [LANDING_ACTIONS.poster(p), () => openPoster(p)]),
+      [LANDING_ACTIONS.next, goNext],
+      [LANDING_ACTIONS.back, goBack],
+      [LANDING_ACTIONS.close, close],
+      [LANDING_ACTIONS.outside, () => open !== null && close()],
+    ];
+    for (const [name, run] of actions) setAction(name, run);
     return () => {
-      setAction(LANDING_ACTIONS.stepInside, null);
-      for (const poster of POSTER_ORDER) setAction(LANDING_ACTIONS.poster(poster), null);
+      for (const [name] of actions) setAction(name, null);
     };
-  }, [setAction, walkTo, router, openPoster]);
+  }, [setAction, walkTo, router, openPoster, goNext, goBack, close, open]);
 
   const plain = show3D === false;
-  const point = (name: string | null) => setHovered?.(name);
+  const twin = useTwin();
 
   return (
     <>
       <nav
         aria-label="Outside the building"
-        inert={nav.open !== null}
-        className={plain ? "pointer-events-auto mt-auto flex flex-wrap justify-center gap-3 px-4 pb-10" : TWIN_BAR}
+        inert={open !== null}
+        className={plain ? "pointer-events-auto mt-auto flex flex-wrap justify-center gap-3 px-4 pb-10" : "sr-only"}
       >
-        <StepInside
-          className={plain ? buttonClasses({ size: "lg" }) : `${TWIN_3D} ${buttonClasses({ size: "lg" })}`}
-          onFocus={() => point(LANDING_ACTIONS.stepInside)}
-          onBlur={() => point(null)}
-        >
-          {STEP_INSIDE}
+        <StepInside className={plain ? buttonClasses({ size: "lg" }) : undefined} {...twin(LANDING_ACTIONS.stepInside)}>
+          {PROXY_LABELS.stepInside}
         </StepInside>
         {POSTER_ORDER.map((poster) => (
           <button
             key={poster}
             type="button"
             onClick={() => openPoster(poster)}
-            onFocus={() => point(LANDING_ACTIONS.poster(poster))}
-            onBlur={() => point(null)}
-            className={
-              plain ? buttonClasses({ variant: "secondary", size: "lg" }) : `${TWIN_3D} ${buttonClasses({ variant: "secondary", size: "lg" })}`
-            }
+            className={plain ? buttonClasses({ variant: "secondary", size: "lg" }) : undefined}
+            {...twin(LANDING_ACTIONS.poster(poster))}
           >
-            {plain ? POSTER_COPY[poster].title : POSTER_COPY[poster].open}
+            {PROXY_LABELS.open[poster]}
           </button>
         ))}
       </nav>
 
-      {nav.open !== null && (
-        // Anywhere but the poster: close it. The scene behind takes no clicks meanwhile.
-        <div aria-hidden="true" onClick={nav.close} className="pointer-events-auto fixed inset-0 z-20" />
-      )}
       <div aria-live="polite" className="pointer-events-none fixed inset-0 z-30">
         {POSTER_ORDER.map((poster) =>
           plain ? (
-            nav.open === poster && (
-              <div key={poster} className="pointer-events-auto absolute inset-0 m-auto h-fit w-[min(24rem,calc(100vw-2rem))]">
-                <PosterCard poster={poster} nav={nav} shown />
+            open === poster && (
+              <div key={poster} className="pointer-events-auto absolute inset-0 m-auto h-fit max-h-[90dvh] w-[min(26rem,calc(100vw-2rem))] overflow-y-auto">
+                <div className="rounded-2xl border-2 border-ink bg-paper p-5 text-ink shadow-lg">
+                  <Writing poster={poster} nav={nav} shown plain />
+                </div>
               </div>
             )
           ) : (
-            <PinnedPoster key={poster} poster={poster} nav={nav} />
+            <PinnedFace key={poster} poster={poster} nav={nav} />
           ),
         )}
       </div>
@@ -111,7 +102,16 @@ export function LandingControls() {
   );
 }
 
-/** Scale the writing onto the board, centred, straight onto the style (no render per frame). */
+/** Focus handlers that light a word in the scene while its hidden twin has focus. */
+function useTwin() {
+  const setHovered = useBuilding()?.setHovered;
+  return (action: string) => ({
+    onFocus: () => setHovered?.(action),
+    onBlur: () => setHovered?.(null),
+  });
+}
+
+/** Scale the writing onto the face, centred, straight onto the style (no render per frame). */
 function applyFit(box: HTMLElement | null, { width, height }: { width: number; height: number }) {
   if (!box || !width) return;
   const scale = Math.min(width / WRITING_WIDTH, MAX_SCALE);
@@ -119,8 +119,8 @@ function applyFit(box: HTMLElement | null, { width, height }: { width: number; h
   box.style.height = `${height / scale}px`;
 }
 
-/** A poster's writing, pinned onto its board while it is up close. */
-function PinnedPoster({ poster, nav }: { poster: Poster; nav: PosterNavigation }) {
+/** A signpost's writing, pinned onto its face while it is open. */
+function PinnedFace({ poster, nav }: { poster: Poster; nav: SignPostNavigation }) {
   const setAnchor = useBuilding()?.setAnchor;
   const [el, setEl] = useState<HTMLElement | null>(null);
   const writing = useRef<HTMLDivElement>(null);
@@ -148,7 +148,7 @@ function PinnedPoster({ poster, nav }: { poster: Poster; nav: PosterNavigation }
   return (
     <div
       ref={setEl}
-      className={`absolute left-0 top-0 transition-opacity duration-300 ${shown ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+      className={`absolute left-0 top-0 transition-opacity duration-500 ${shown ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
     >
       <div
         ref={(box) => {
@@ -156,92 +156,68 @@ function PinnedPoster({ poster, nav }: { poster: Poster; nav: PosterNavigation }
           applyFit(box, size.current);
         }}
         style={{ width: WRITING_WIDTH }}
-        className="h-full origin-top-left"
+        className="engraved h-full origin-top-left overflow-y-auto px-5 py-5 [scrollbar-width:none]"
       >
-        <PosterCard poster={poster} nav={nav} shown={shown} />
+        {shown && <Writing poster={poster} nav={nav} shown />}
       </div>
     </div>
   );
 }
 
-const ICON = "size-5 shrink-0";
-
-function PosterCard({ poster, nav, shown }: { poster: Poster; nav: PosterNavigation; shown: boolean }) {
+function Writing({ poster, nav, shown, plain = false }: { poster: Poster; nav: SignPostNavigation; shown: boolean; plain?: boolean }) {
   const copy = POSTER_COPY[poster];
   const heading = useRef<HTMLHeadingElement>(null);
   const headingId = `poster-${poster}-title`;
-  const index = POSTER_ORDER.indexOf(poster) + 1;
-  const position = POSTER_CONTROLS.position(index, POSTER_ORDER.length);
+  const twin = useTwin();
 
-  // Into the poster once it is there.
+  // Into the writing once it is there.
   useEffect(() => {
     if (shown) heading.current?.focus({ preventScroll: true });
   }, [shown]);
 
-  const step = nav.next ?? nav.previous;
-  const forward = nav.next !== null;
-  const control = forward ? POSTER_CONTROLS.next : POSTER_CONTROLS.previous;
-
-  if (!shown) return null;
+  // Without 3D these are the only controls: visible buttons. With it, the hovering words are, and these their hidden twins.
+  const control = plain ? buttonClasses({ variant: "secondary", size: "md" }) : undefined;
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex h-full flex-col gap-3 overflow-hidden rounded-2xl border-2 border-ink bg-paper p-4 text-ink shadow-lg"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <h2
-          id={headingId}
-          ref={heading}
-          tabIndex={-1}
-          className="pt-1 text-2xl font-bold uppercase tracking-wide"
-          // Focus lands here to start reading; it isn't a control, so no ring (globals.css draws one on any :focus-visible).
-          style={{ outline: "none" }}
-        >
-          {copy.title}
-        </h2>
-        <button
-          type="button"
-          aria-label={POSTER_CONTROLS.close}
-          onClick={nav.close}
-          className="grid size-12 shrink-0 place-items-center rounded-xl border-2 border-ink bg-surface transition-colors hover:bg-sunken"
-        >
-          <svg viewBox="0 0 24 24" className={ICON} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto text-[17px] leading-snug [scrollbar-width:thin]">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <h2
+        id={headingId}
+        ref={heading}
+        tabIndex={-1}
+        className="text-[26px] font-bold uppercase tracking-[0.12em]"
+        // Focus lands here to start reading; it isn't a control, so no ring (globals.css draws one on any :focus-visible).
+        style={{ outline: "none" }}
+      >
+        {copy.title}
+      </h2>
+      <p className="sr-only">{pageOf(POSTER_ORDER.indexOf(poster) + 1, POSTER_ORDER.length)}</p>
+      <div className="flex flex-col gap-3 text-[17px] font-bold leading-[1.45]">
         {copy.body.map((p) => (
           <p key={p}>{p}</p>
         ))}
         {copy.steps && (
-          <ol className="flex list-inside list-decimal flex-col gap-1 font-semibold">
+          <ol className="flex list-inside list-decimal flex-col gap-1.5 text-[19px]">
             {copy.steps.map((s) => (
               <li key={s}>{s}</li>
             ))}
           </ol>
         )}
-        {copy.closing && <p>{copy.closing}</p>}
+        {copy.closing && <p className="mt-1 text-[19px]">{copy.closing}</p>}
       </div>
-
-      {step && (
-        <div className={`flex items-center gap-3 ${forward ? "justify-between" : "flex-row-reverse justify-between"}`}>
-          <span className="text-sm font-semibold text-muted">{position}</span>
-          <button
-            type="button"
-            aria-label={control.aria}
-            disabled={!nav.arrived}
-            onClick={() => nav.openPoster(step)}
-            className={`${buttonClasses({ variant: "secondary", size: "md" })} min-h-12 ${forward ? "" : "flex-row-reverse"}`}
-          >
-            {control.label}
-            <svg viewBox="0 0 24 24" className={`${ICON} ${forward ? "" : "rotate-180"}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
+      <div className={plain ? "mt-2 flex flex-wrap justify-end gap-2" : "sr-only"}>
+        {nav.previous && (
+          <button type="button" onClick={nav.goBack} className={control} {...twin(LANDING_ACTIONS.back)}>
+            {PROXY_LABELS.back}
           </button>
-        </div>
-      )}
+        )}
+        {nav.next && (
+          <button type="button" onClick={nav.goNext} className={control} {...twin(LANDING_ACTIONS.next)}>
+            {PROXY_LABELS.next}
+          </button>
+        )}
+        <button type="button" onClick={nav.close} className={control} {...twin(LANDING_ACTIONS.close)}>
+          {PROXY_LABELS.close}
+        </button>
+      </div>
     </section>
   );
 }
