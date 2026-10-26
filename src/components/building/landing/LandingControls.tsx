@@ -10,6 +10,7 @@
  * plain buttons and the writing a plain card.
  */
 
+import { Cinzel, EB_Garamond } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -20,6 +21,10 @@ import { StepInside } from "../StepInside";
 import { pageOf, POSTER_COPY, PROXY_LABELS, type Poster } from "./copy";
 import { LANDING_ACTIONS, POSTER_ORDER } from "./layout";
 import { useSignPostNavigation, type SignPostNavigation } from "./useSignPostNavigation";
+
+/** Cut into the stone: Roman inscription capitals for the heading, a book face for reading. */
+const inscription = Cinzel({ weight: "700", subsets: ["latin"], fallback: ["Trajan Pro", "Georgia", "serif"] });
+const book = EB_Garamond({ weight: "600", style: ["normal", "italic"], subsets: ["latin"], fallback: ["Garamond", "Georgia", "serif"] });
 
 /** Width the writing is laid out at (CSS px), before scaling onto the face. */
 const WRITING_WIDTH = 340;
@@ -183,25 +188,26 @@ function Writing({ poster, nav, shown, plain = false }: { poster: Poster; nav: S
         id={headingId}
         ref={heading}
         tabIndex={-1}
-        className="text-[26px] font-bold uppercase tracking-[0.12em]"
+        className={`${inscription.className} text-[26px] uppercase tracking-[0.1em]`}
         // Focus lands here to start reading; it isn't a control, so no ring (globals.css draws one on any :focus-visible).
         style={{ outline: "none" }}
       >
         {copy.title}
       </h2>
+      {!plain && <div aria-hidden="true" className="engraved-rule" />}
       <p className="sr-only">{pageOf(POSTER_ORDER.indexOf(poster) + 1, POSTER_ORDER.length)}</p>
-      <div className="flex flex-col gap-3 text-[17px] font-bold leading-[1.45]">
+      <div className={`${book.className} flex flex-col gap-3 text-[19px] leading-[1.4]`}>
         {copy.body.map((p) => (
           <p key={p}>{p}</p>
         ))}
         {copy.steps && (
-          <ol className="flex list-inside list-decimal flex-col gap-1.5 text-[19px]">
+          <ol className="flex list-inside list-decimal flex-col gap-1.5 text-[21px]">
             {copy.steps.map((s) => (
               <li key={s}>{s}</li>
             ))}
           </ol>
         )}
-        {copy.closing && <p className="mt-1 text-[19px]">{copy.closing}</p>}
+        {copy.closing && <p className="mt-1 text-[21px] italic">{copy.closing}</p>}
       </div>
       <div className={plain ? "mt-2 flex flex-wrap justify-end gap-2" : "sr-only"}>
         {nav.previous && (

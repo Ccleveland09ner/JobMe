@@ -4,8 +4,8 @@
  * A stone signpost beside the path, in the building's own stone and trim: a
  * stepped plinth, a slab with a recessed face in a trim frame, and a chamfered
  * cap, turned a little toward the street. Its name hovers above it in the
- * reception style (ABOUT US, GUIDE); that is what opens it. Pointing at the
- * name brightens it and warms the stone; a first visit draws the eye once.
+ * reception style (ABOUT US, GUIDE); the name or the stone opens it. Pointing
+ * at either brightens the name and warms the stone; a first visit draws the eye once.
  * At dusk and night a faint warm uplight keeps the stone readable.
  *
  * Opened, the writing is pinned onto the face (LandingControls.tsx), and
@@ -14,10 +14,12 @@
  */
 
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
+import { studioEnvironment } from "@/components/three/environment";
 import { finishMaterial } from "@/components/three/finishes";
+import { detailTexture } from "@/components/three/textures";
 
 import { useBuilding } from "../BuildingProvider";
 import { HoverLabel } from "../scene/HoverLabel";
@@ -53,6 +55,27 @@ const SEEN_KEY = "jobme.posters.seen";
 
 const bodyGeometry = new THREE.BoxGeometry(SLAB.width, 1, SLAB.depth);
 const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+/** The stone's hitbox, wider and deeper than the stone, for fingers. */
+const HIT_BODY = 1.3;
+const faceGeometry = new THREE.PlaneGeometry(FACE.width, FACE.height);
+/**
+ * The face: honed pale limestone, smooth (no block joints behind the writing)
+ * and lighter than the slab, so the cut letters read clearly. From dusk it
+ * glows softly, as if lit by the uplight, so they still read at night.
+ */
+const HONED = { color: "#efe6d6", glow: "#fff0d8", night: 0.32 } as const;
+
+function honedMaterial(gl: THREE.WebGLRenderer): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: HONED.color,
+    roughness: 0.85,
+    map: detailTexture("plaster"),
+    emissive: HONED.glow,
+    emissiveIntensity: 0,
+    envMap: studioEnvironment(gl),
+    envMapIntensity: 0.25,
+  });
+}
 
 /** A warm wash up the stone from the ground: strongest low and in the middle. */
 const UPLIGHT_ART: CanvasArt = {
@@ -111,6 +134,10 @@ export function SignPost({ poster, order }: { poster: Poster; order: number }) {
 
   const uplightMap = useCanvasTexture(UPLIGHT_ART);
   const uplight = useRef<THREE.MeshBasicMaterial>(null);
+  // Each post's own, so its glow can follow the sky without touching the shared stone.
+  const faceMaterial = useMemo(() => honedMaterial(gl), [gl]);
+  useEffect(() => () => faceMaterial.dispose(), [faceMaterial]);
+  const face = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>>(null);
   /** The first-visit pulse, 0 to 1, read by the title too. */
   const pulse = useRef(0);
   const pulseAt = useRef<number | null>(null);
@@ -136,6 +163,7 @@ export function SignPost({ poster, order }: { poster: Poster; order: number }) {
       else if (p > 0) pulse.current = Math.sin(p * Math.PI);
       invalidate();
     }
+    if (face.current) face.current.material.emissiveIntensity = HONED.night * skyLook.value.lamp;
     if (uplight.current) {
       uplight.current.opacity = UPLIGHT.night * skyLook.value.lamp + UPLIGHT.hover * hover.current + UPLIGHT.pulse * pulse.current;
     }
@@ -203,17 +231,24 @@ export function SignPost({ poster, order }: { poster: Poster; order: number }) {
         />
       </mesh>
 
-      {/* The stone itself: clicking it is not clicking "outside" it. */}
+      {/* The honed panel the writing is cut into, set back inside the frame. */}
+      <mesh ref={face} geometry={faceGeometry} material={faceMaterial} position={[0, faceY, front + 0.004]} receiveShadow />
+
+      {/* The stone itself opens it too (and, open, clicking it is not clicking "outside"). */}
       <mesh
         geometry={bodyGeometry}
         material={hitMaterial}
         position={[0, place.height / 2, 0]}
-        scale={[1, place.height, 1]}
-        onClick={(e) => e.stopPropagation()}
+        scale={[HIT_BODY, place.height, HIT_BODY]}
+        {...title.bind}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (touchable && view.open === null) building?.activate(titleAction);
+        }}
       />
 
       {/* Where the writing is pinned when it is open. */}
-      <group position={[0, faceY, front + 0.002]}>
+      <group position={[0, faceY, front + 0.006]}>
         <ScreenAnchor name={`poster:${poster}`} width={FACE.width} height={FACE.height} />
       </group>
 

@@ -140,21 +140,40 @@ body {
 }
 
 /*
- * Writing cut into the landing signposts' stone (components/building/landing):
- * dark letters with a lit lower lip, as an inscription. At night, pale letters
- * keep it readable on the dimmer stone.
+ * Writing cut into the landing signposts' honed stone (components/building/landing),
+ * as a V-cut inscription lit from above: each line's letters are dark in the
+ * shaded upper wall of the cut and a little lighter in the lit lower wall
+ * (a gradient per line, clipped to the letters); the stone's edge catches
+ * light along the bottom of each stroke and casts a hairline of shadow
+ * along the top (drop-shadow follows the letter shapes, text-shadow would
+ * show through the clipped fill). Dark on the pale face for clear contrast.
  */
 .engraved {
-  color: #4a3f33;
-  text-shadow:
-    0 1px 0 rgb(255 250 240 / 0.6),
-    0 -1px 0 rgb(40 30 20 / 0.25);
+  color: #33281e;
 }
-:root[data-sky="night"] .engraved {
-  color: #f1e8da;
-  text-shadow:
-    0 -1px 0 rgb(0 0 0 / 0.6),
-    0 1px 0 rgb(255 255 255 / 0.12);
+.engraved :is(h2, p, li) {
+  background: linear-gradient(to bottom, #1f170f 0%, #2f2419 40%, #5a4733 100%) 0 0 / 100% 1lh repeat-y;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1.2px 0.3px rgb(255 252 245 / 0.95)) drop-shadow(0 -0.8px 0.2px rgb(30 20 10 / 0.4));
+}
+.engraved li::marker {
+  color: #33281e;
+}
+/* A short line cut under the heading: a dark groove with a lit lower edge. */
+.engraved-rule {
+  width: 4.5rem;
+  height: 2px;
+  margin-top: -0.25rem;
+  background: #2e241a;
+  box-shadow:
+    0 1px 0 rgb(255 251 242 / 0.85),
+    0 -1px 0 rgb(30 20 10 / 0.25);
+}
+.engraved ::selection {
+  color: #241b13;
+  background: rgb(15 118 110 / 0.22);
 }
 
 /* Visible focus states are a requirement, not a polish item. */
