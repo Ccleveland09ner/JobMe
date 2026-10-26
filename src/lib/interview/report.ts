@@ -13,6 +13,7 @@
  * loses the insert and returns the winner's report instead.
  */
 
+import { evaluateAndDraft } from "../ai/evaluate";
 import {
   fallbackReport,
   generateReportText,
@@ -20,7 +21,8 @@ import {
   type ReportPromptQuestion,
 } from "../ai/report";
 import { TOPICS } from "../engine/topics";
-import type { StoredScores, TopicId } from "../engine/types";
+import { QUESTION_TYPES, type QuestionType, type StoredScores, type TopicId } from "../engine/types";
+import { judgeAnswer, type LateScore } from "./turn";
 import {
   groupIntoQuestions,
   overallScoresFrom,
@@ -61,7 +63,12 @@ export interface ReportSessionRow {
   endedAt?: string | null;
   /** The target role as the turns saw it, for the report prompt. */
   roleText?: string | null;
+  /** The candidate's level, which a re-score is judged against like a live one. */
+  seniority?: string | null;
 }
+
+/** What a re-score writes onto the turn live scoring missed: the same as a late score. */
+export type Rescore = LateScore;
 
 export interface ReportStore {
   loadSession(): Promise<ReportSessionRow | null>;
@@ -72,6 +79,8 @@ export interface ReportStore {
   insertReport(report: StoredReport): Promise<"inserted" | "exists">;
   /** Marks the session completed with its overall scores and end time. Idempotent. */
   completeSession(overallScores: Record<string, number> | null, endedAt: string): Promise<void>;
+  /** Writes a re-score onto a still-unscored turn (rescore_turn). Throws when it could not. */
+  saveRescore(turnId: string, rescore: Rescore): Promise<void>;
 }
 
 export interface ReportBody {
@@ -104,11 +113,82 @@ export function reportQuestionsFor(
   }));
 }
 
+/**
+ * A re-score has no candidate waiting on it, so it gets far longer than a live
+ * turn (EVAL_TIMEOUT_MS), but the calls run side by side and must leave the
+ * report text room inside the route's maxDuration.
+ */
+export const RESCORE_TIMEOUT_MS = 20_000;
+/** Re-scores per report: the free tier allows 15 calls a minute, and the report text needs one. */
+export const MAX_RESCORES = 8;
+
+/**
+ * Scores again every question live scoring missed (no scored turn), the way
+ * a follow-up is scored: the whole thread against the original question. The
+ * score lands on the question's last turn, which is where groupIntoQuestions
+ * looks. A re-score that fails leaves the question unscored; one that cannot
+ * be saved still counts in this report.
+ */
+export async function rescoreUnscored(
+  turns: ReportTurnRow[],
+  session: Pick<ReportSessionRow, "roleText" | "seniority">,
+  store: Pick<ReportStore, "saveRescore">,
+  evaluate: typeof evaluateAndDraft = evaluateAndDraft,
+): Promise<ReportTurnRow[]> {
+  const unscored = groupIntoQuestions(turns).filter((g) => !g.scores).slice(0, MAX_RESCORES);
+  if (!unscored.length) return turns;
+
+  const rescored = new Map<string, Rescore>();
+  await Promise.all(
+    unscored.map(async (g) => {
+      const last = g.turns[g.turns.length - 1];
+      const questionType: QuestionType = (QUESTION_TYPES as readonly string[]).includes(last.questionType ?? "")
+        ? (last.questionType as QuestionType)
+        : "opening";
+      const prior = g.turns.slice(0, -1).map((t) => ({ question: t.questionText, answer: t.answerTranscript }));
+      try {
+        const evaluation = await evaluate({
+          kind: g.kind,
+          topic: TOPICS[g.opening.topic as TopicId]?.label ?? g.opening.topic ?? "General",
+          questionText: g.opening.questionText,
+          questionType,
+          answer: last.answerTranscript,
+          followUpQuestion: prior.length ? last.questionText : null,
+          priorThreadTurns: prior,
+          roleText: session.roleText ?? null,
+          seniority: session.seniority ?? null,
+          signal: AbortSignal.timeout(RESCORE_TIMEOUT_MS),
+        });
+        const { band, primaryGap } = judgeAnswer({
+          transcript: last.answerTranscript,
+          questionType,
+          kind: g.kind,
+          scores: evaluation.scores,
+          modelOffTopic: evaluation.off_topic,
+          modelGap: evaluation.clarify_gap,
+        });
+        const rescore = { scores: evaluation.scores, band, primaryGap, observation: evaluation.observation };
+        rescored.set(last.id, rescore);
+        await store.saveRescore(last.id, rescore).catch((err: unknown) => {
+          console.warn(`[report] re-score of turn ${last.id} not saved: ${(err as Error).message?.slice(0, 200) ?? String(err)}`);
+        });
+      } catch (err) {
+        console.warn(`[report] re-score of turn ${last.id} failed: ${(err as Error).message?.slice(0, 200) ?? String(err)}`);
+      }
+    }),
+  );
+
+  return turns.map((t) => {
+    const r = rescored.get(t.id);
+    return r ? { ...t, scores: r.scores, primaryGap: r.primaryGap } : t;
+  });
+}
+
 export async function runReport(
   store: ReportStore,
-  deps: { generateText?: typeof generateReportText } = {},
+  deps: { generateText?: typeof generateReportText; evaluate?: typeof evaluateAndDraft } = {},
 ): Promise<ReportOutcome> {
-  const [session, existing, turns] = await Promise.all([
+  const [session, existing, loaded] = await Promise.all([
     store.loadSession(),
     store.loadReport(),
     store.loadTurns(),
@@ -116,20 +196,26 @@ export async function runReport(
 
   if (!session) return { kind: "not-found" };
 
+  if (existing) {
+    // A crash mid-way left a report on an in-progress session: heal it.
+    const overallScores = overallScoresFrom(rollupQuestions(groupIntoQuestions(loaded)));
+    if (session.status !== "completed" || !session.overallScores) {
+      await store.completeSession(overallScores, session.endedAt ?? new Date().toISOString());
+    }
+    return { kind: "filed", body: { ...existing, overallScores }, generated: false };
+  }
+
+  if (loaded.length === 0) return { kind: "nothing-answered" };
+
+  // Live scoring has a candidate waiting and a short timeout; filing doesn't.
+  const turns = await rescoreUnscored(loaded, session, store, deps.evaluate);
+
   // One score per ORIGINAL question — its latest cumulative evaluation — and
   // unscored questions are shown honestly but never averaged.
   const groups = groupIntoQuestions(turns);
   const rollup = rollupQuestions(groups);
   const overallScores = overallScoresFrom(rollup);
   const complete = () => store.completeSession(overallScores, session.endedAt ?? new Date().toISOString());
-
-  if (existing) {
-    // A crash mid-way left a report on an in-progress session: heal it.
-    if (session.status !== "completed" || !session.overallScores) await complete();
-    return { kind: "filed", body: { ...existing, overallScores }, generated: false };
-  }
-
-  if (turns.length === 0) return { kind: "nothing-answered" };
 
   const questions = reportQuestionsFor(groups);
   const weakest = pickWeakest(questions);

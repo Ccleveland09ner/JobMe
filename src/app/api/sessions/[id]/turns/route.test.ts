@@ -63,6 +63,7 @@ const TURN: TurnResult = {
   stats: { wpm: 140, fillers: 1 },
   persistedScores: null,
   degradedReason: "unavailable",
+  lateScore: null,
   evalMs: 12,
 };
 
@@ -224,6 +225,31 @@ describe("POST /api/sessions/[id]/turns", () => {
       p_engine_state: ADVANCED,
       p_turn: { question_text: FIRST.text, answer_transcript: BODY.transcript, hold_ms: 9000, capture_ms: 8000, wpm: 140, degraded_reason: "unavailable" },
     });
+  });
+
+  it("saves a score that lands after the response onto the turn just written", async () => {
+    const fake = database({ session: SESSION_ROW, submit: { data: "turn-1" } });
+    const late = { scores: { relevance: 4, outcome: 3 }, band: "great" as const, primaryGap: "outcome" as const, observation: "Clear result." };
+    vi.mocked(runTurn).mockResolvedValue({ ...TURN, degradedReason: "timeout", lateScore: Promise.resolve(late) });
+
+    const res = await POST(request(BODY), ctx(ID));
+
+    expect(res.status).toBe(200);
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(2));
+    expect(fake.calls[1]).toEqual({
+      name: "rescore_turn",
+      args: { p_turn_id: "turn-1", p_scores: late.scores, p_band: "great", p_primary_gap: "outcome", p_notepad_text: "Clear result." },
+    });
+  });
+
+  it("writes nothing more when the late score fails after all", async () => {
+    const fake = database({ session: SESSION_ROW, submit: { data: "turn-1" } });
+    vi.mocked(runTurn).mockResolvedValue({ ...TURN, degradedReason: "timeout", lateScore: Promise.resolve(null) });
+
+    await POST(request(BODY), ctx(ID));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fake.calls.map((c) => c.name)).toEqual(["submit_turn"]);
   });
 
   it("speaks a new thread's lead before its question, and passes the wrap line", async () => {

@@ -253,7 +253,7 @@ export function InterviewRoom(props: InterviewRoomProps) {
       {/* Announce the gist of each new note, not eight score bars. */}
       <p aria-live="polite" className="sr-only">
         {latest
-          ? `Notepad updated. ${latest.degraded ? "Scoring unavailable for this answer." : latest.observation} ${latest.reason}`
+          ? `Notepad updated. ${latest.degraded ? "Not scored yet." : latest.observation} ${latest.reason}`
           : ""}
       </p>
     </div>

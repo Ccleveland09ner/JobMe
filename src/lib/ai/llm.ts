@@ -99,6 +99,8 @@ export async function generateJson<T>(args: {
 /**
  * Measured (npm run probe): flash-lite with no thinkingConfig is fastest (~1 s,
  * 0 thoughts); a thinking budget of 0 is rejected. Accepted modes vary by model.
+ * Under load (2026-10-26: 16-40 s a call, and 503s) a slow score is added to
+ * its turn after the interview moves on; see LATE_EVAL_TIMEOUT_MS.
  */
 export const LLM_MODEL = process.env.LLM_MODEL ?? "gemini-3.5-flash-lite";
 

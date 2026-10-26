@@ -4,14 +4,16 @@
  * band, gap and evidence in code, step() picks the move, then the wording.
  */
 
-import { classifyBand, resolveGap } from "../engine/classify";
+import { GREAT_MIN_DIMENSION, classifyBand, minimum, resolveGap } from "../engine/classify";
 import { clarifySeeds, deepenSeeds, questionFor } from "../engine/bank";
 import { commitQuestion, step, type NextQuestionSpec, type StepInput } from "../engine/policy";
 import {
+  FULLY_ANSWERED_LINE,
   NO_EXPERIENCE_LINE,
   NUDGE_LINE,
   REPEAT_LINE,
   SCORING_FAILED_LINE,
+  SCORING_LATE_LINE,
   WRAP_LINE,
   reasonLine,
   transitionLead,
@@ -43,11 +45,27 @@ import type { QuestionPlan, TurnBody } from "../schemas";
 import { MIN_ANSWER_WORDS, fillerCount, wordCount, wpm } from "../stats";
 
 /**
- * Aborts a slow evaluation so the turn degrades instead of hanging. Measured
- * live at 1.2-2.0 s; set well clear of that tail, as a slow scored turn beats
- * a fast unscored one.
+ * How long the candidate waits for a score. Past this the turn moves on
+ * unscored, but the evaluation keeps running and its score is saved onto the
+ * turn when it lands (`lateScore`). On 2026-10-26 Gemini was overloaded and
+ * took 16-40 s a call; the 4 s this used to be left every turn unscored for good.
  */
-export const EVAL_TIMEOUT_MS = 4000;
+export const EVAL_TIMEOUT_MS = 8000;
+
+/**
+ * How long a late evaluation may keep running after the turn has moved on.
+ * Inside the turn route's maxDuration, which after() runs within. Anything
+ * later still is re-scored when the report is filed (lib/interview/report.ts).
+ */
+export const LATE_EVAL_TIMEOUT_MS = 50_000;
+
+/** A score that landed after the turn moved on, to be written onto its row. */
+export interface LateScore {
+  scores: Scores;
+  band: Band;
+  primaryGap: Dimension;
+  observation: string;
+}
 
 export interface TurnContext {
   state: EngineState;
@@ -71,6 +89,8 @@ export interface TurnContext {
   plan?: QuestionPlan | null;
   /** Test seam: the rehearsal harness scripts the evaluator. */
   evaluate?: typeof evaluateAndDraft;
+  /** Test seam: how long to wait live; defaults to EVAL_TIMEOUT_MS. */
+  liveTimeoutMs?: number;
 }
 
 export interface NotepadEntry {
@@ -119,6 +139,11 @@ export type TurnResult =
       /** Persisted on the turn row; null means unscored. */
       persistedScores: Scores | null;
       degradedReason: DegradedReason | null;
+      /**
+       * The score of an evaluation that outlasted the live wait, null if it
+       * then failed. Null when there is nothing pending. Never rejects.
+       */
+      lateScore: Promise<LateScore | null> | null;
       /** How long the evaluator took, success or failure — telemetry only. */
       evalMs: number;
     };
@@ -145,6 +170,8 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     previousBand: state.threadScores.length ? state.lastBand : null,
   });
 
+  const fullyAnswered = !degraded && isFullyAnswered(evaluated, band, kind);
+
   // The engine decides.
   const stepInput: StepInput = {
     scores: evaluated.scores,
@@ -152,6 +179,8 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     primaryGap,
     repeatsPrevious: evaluated.repeatsPrevious,
     noExperience: evaluated.noExperience,
+    fullyAnswered,
+    unscored: degraded,
   };
   const result = step(state, stepInput);
 
@@ -177,6 +206,25 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
     wrapLine: result.move === "wrap" ? WRAP_LINE : undefined,
     persistedScores: degraded ? null : evaluated.scores,
     degradedReason: evaluated.degradedReason,
+    lateScore: evaluated.late
+      ? evaluated.late.then(
+          (evaluation): LateScore => ({
+            scores: evaluation.scores,
+            // Banded as it would have been live, against the same thread.
+            ...judgeAnswer({
+              transcript,
+              questionType: current.type,
+              kind,
+              scores: evaluation.scores,
+              modelOffTopic: evaluation.off_topic,
+              modelGap: evaluation.clarify_gap,
+              previousBand: state.threadScores.length ? state.lastBand : null,
+            }),
+            observation: evaluation.observation,
+          }),
+          () => null,
+        )
+      : null,
     evalMs: evaluated.evalMs,
     stats: {
       wpm: speakingRate,
@@ -197,10 +245,25 @@ export async function runTurn(ctx: TurnContext): Promise<TurnResult> {
         ? REPEAT_LINE
         : evaluated.noExperience && result.move !== "wrap"
           ? NO_EXPERIENCE_LINE
-          : reasonLine(result.move, primaryGap, band),
+          : fullyAnswered && result.move === "opening"
+            ? FULLY_ANSWERED_LINE
+            : reasonLine(result.move, primaryGap, band),
       degraded,
     },
   };
+}
+
+/**
+ * Nothing left to ask: the evaluator called the answer complete, it is not
+ * weak, and no dimension a follow-up could chase is below solid. A complete
+ * answer with a real gap (a 2 anywhere) still gets its clarify.
+ */
+export function isFullyAnswered(
+  evaluated: Pick<Evaluated, "complete" | "scores">,
+  band: Band,
+  kind: QuestionKind,
+): boolean {
+  return evaluated.complete && band !== "weak" && minimum(evaluated.scores, kind) >= GREAT_MIN_DIMENSION;
 }
 
 /** What the evaluator made of an answer, or the heuristics when it was unavailable. */
@@ -210,11 +273,15 @@ interface Evaluated {
   modelOffTopic: boolean;
   repeatsPrevious: boolean;
   noExperience: boolean;
+  /** The evaluator's status was `complete`: enough evidence to judge the whole question. */
+  complete: boolean;
   /** The gap the model's clarify draft was written against. */
   modelGap: string | null;
   drafts: { deepen: string; clarify: string } | null;
   /** Null when the model scored the answer. */
   degradedReason: DegradedReason | null;
+  /** The evaluation still running after the live wait ran out; null otherwise. */
+  late: Promise<Awaited<ReturnType<typeof evaluateAndDraft>>> | null;
   evalMs: number;
 }
 
@@ -233,53 +300,80 @@ async function evaluateAnswer(ctx: TurnContext, kind: QuestionKind): Promise<Eva
   const followUp = isFollowUpType(current.type) && prior.length > 0;
 
   const evaluate = ctx.evaluate ?? evaluateAndDraft;
-  const signal = AbortSignal.timeout(EVAL_TIMEOUT_MS);
+  // The call itself gets the late deadline; the candidate only waits the live one.
+  const signal = AbortSignal.timeout(LATE_EVAL_TIMEOUT_MS);
   const started = performance.now();
   const elapsed = () => Math.round(performance.now() - started);
 
+  const pending = evaluate({
+    kind,
+    topic: TOPICS[current.topic]?.label ?? current.topic,
+    questionText: followUp ? prior[0].question : current.text,
+    questionType: current.type,
+    answer: transcript,
+    followUpQuestion: followUp ? current.text : null,
+    resumeFacts: ctx.resumeFacts,
+    roleText: ctx.roleText ?? ctx.role?.title ?? null,
+    seniority: ctx.seniority ?? ctx.role?.seniority ?? null,
+    priorThreadTurns: followUp ? prior : [],
+    askedQuestions: state.askedQuestions,
+    signal,
+  });
+  // Nobody may await a late evaluation that then fails: never an unhandled rejection.
+  pending.catch(() => {});
+
   try {
-    const evaluation = await evaluate({
-      kind,
-      topic: TOPICS[current.topic]?.label ?? current.topic,
-      questionText: followUp ? prior[0].question : current.text,
-      questionType: current.type,
-      answer: transcript,
-      followUpQuestion: followUp ? current.text : null,
-      resumeFacts: ctx.resumeFacts,
-      roleText: ctx.roleText ?? ctx.role?.title ?? null,
-      seniority: ctx.seniority ?? ctx.role?.seniority ?? null,
-      priorThreadTurns: followUp ? prior : [],
-      askedQuestions: state.askedQuestions,
-      signal,
-    });
+    const evaluation = await withinLiveWait(pending, ctx.liveTimeoutMs ?? EVAL_TIMEOUT_MS);
     return {
       scores: evaluation.scores,
       observation: evaluation.observation,
       modelOffTopic: evaluation.off_topic,
       repeatsPrevious: evaluation.repeats_previous,
       noExperience: evaluation.status === "no_experience",
+      complete: evaluation.status === "complete",
       modelGap: evaluation.clarify_gap,
       drafts: evaluation.drafts,
       degradedReason: null,
+      late: null,
       evalMs: elapsed(),
     };
   } catch (err) {
     // Degraded: the engine runs on without the model (timeout or quota).
-    const degradedReason = degradedReasonFor(err, signal);
-    if (!(err instanceof EvalError)) {
+    const slow = err instanceof LiveWaitExceeded;
+    const degradedReason = slow ? "timeout" : degradedReasonFor(err, signal);
+    if (!slow && !(err instanceof EvalError)) {
       console.warn(`[turn] unexpected evaluator failure: ${String(err)}`);
     }
     return {
       scores: heuristicScores(transcript, kind),
-      observation: SCORING_FAILED_LINE,
+      observation: slow ? SCORING_LATE_LINE : SCORING_FAILED_LINE,
       modelOffTopic: false,
       repeatsPrevious: false,
       noExperience: false,
+      complete: false,
       modelGap: null,
       drafts: null,
       degradedReason,
+      // Still running: its score is saved onto the turn when it lands.
+      late: slow ? pending : null,
       evalMs: elapsed(),
     };
+  }
+}
+
+/** The live wait ran out; the evaluation itself is still running. */
+class LiveWaitExceeded extends Error {}
+
+/** The evaluation, or LiveWaitExceeded once the candidate has waited `ms`. */
+async function withinLiveWait<T>(pending: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new LiveWaitExceeded()), ms);
+  });
+  try {
+    return await Promise.race([pending, expired]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -475,9 +569,14 @@ export interface TurnStore {
   load(): Promise<{ session: TurnSessionRow | null; recentTurns: Parameters<typeof threadHistory>[1] } | { error: string }>;
   loadResume(id: string): Promise<{ resume_facts?: unknown; role_profile?: unknown } | null>;
   /** submit_turn: the turn and the new state in one transaction, only from the sequence read. */
-  submit(state: EngineState, turn: Record<string, unknown>): Promise<{ code?: string; message: string } | null>;
+  submit(
+    state: EngineState,
+    turn: Record<string, unknown>,
+  ): Promise<{ error: { code?: string; message: string } | null; turnId: string | null }>;
   /** The state another submit left, after this one lost the race. */
   reloadState(): Promise<EngineState | null>;
+  /** rescore_turn: a score that landed after the turn moved on. Throws when it could not be saved. */
+  saveLateScore(turnId: string, score: LateScore): Promise<void>;
 }
 
 export type AnswerOutcome =
@@ -488,7 +587,16 @@ export type AnswerOutcome =
   | { kind: "stale"; state: EngineState }
   | { kind: "nudge"; line: string }
   | { kind: "save-failed"; reason: string; seq: number }
-  | { kind: "saved"; result: Extract<TurnResult, { kind: "turn" }>; saveMs: number };
+  | {
+      kind: "saved";
+      result: Extract<TurnResult, { kind: "turn" }>;
+      saveMs: number;
+      /**
+       * Waits for a score still on its way and saves it onto the turn. The
+       * route runs it after responding; null when nothing is pending.
+       */
+      settleLate: (() => Promise<void>) | null;
+    };
 
 /** One answer, from the stored session to the saved turn. */
 export async function submitAnswer(
@@ -520,10 +628,25 @@ export async function submitAnswer(
   if (result.kind === "nudge") return { kind: "nudge", line: result.line };
 
   const started = performance.now();
-  const error = await store.submit(result.state, turnRowFor(ctx, result));
+  const { error, turnId } = await store.submit(result.state, turnRowFor(ctx, result));
   const saveMs = Math.round(performance.now() - started);
   // Lost the race: the other submit counts, and the client resyncs.
   if (isStaleSubmit(error)) return { kind: "stale", state: (await store.reloadState()) ?? state };
   if (error) return { kind: "save-failed", reason: error.message, seq: result.state.turnSeq };
-  return { kind: "saved", result, saveMs };
+
+  const late = result.lateScore;
+  const settleLate =
+    late && turnId
+      ? async () => {
+          const score = await late;
+          // Failed after all: the report re-scores it when it is filed.
+          if (!score) return;
+          try {
+            await store.saveLateScore(turnId, score);
+          } catch (err) {
+            console.warn(`[turn] late score for turn ${turnId} not saved: ${(err as Error).message?.slice(0, 200) ?? String(err)}`);
+          }
+        }
+      : null;
+  return { kind: "saved", result, saveMs, settleLate };
 }

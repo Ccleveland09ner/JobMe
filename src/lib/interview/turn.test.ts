@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EvalError, type RawEvaluation } from "../ai/evaluate";
 import { fallbackResumeQuestion } from "../ai/resume-questions";
 import { questionFor } from "../engine/bank";
-import { SCORING_FAILED_LINE } from "../engine/notepad";
+import { FULLY_ANSWERED_LINE, SCORING_FAILED_LINE, SCORING_LATE_LINE } from "../engine/notepad";
 import { initState } from "../engine/policy";
 import type { EngineState, Question, ResumeItem, Scores } from "../engine/types";
 import type { QuestionPlan } from "../schemas";
@@ -19,6 +19,7 @@ import {
   turnResponseBody,
   turnRowFor,
   submitAnswer,
+  type LateScore,
   type TurnStore,
   type TurnContext,
   type TurnResult,
@@ -200,12 +201,55 @@ describe("runTurn — degraded path", () => {
     expect(JSON.stringify(result.notepad)).not.toMatch(/rate|limit|gemini|error/i);
   });
 
+  it("moves on instead of following up on a heuristic guess", async () => {
+    const result = await runTurn(ctx({ evaluate: async () => { throw new EvalError("timeout"); } }));
+    if (result.kind !== "turn") throw new Error("expected a turn");
+    expect(result.move).toBe("opening");
+  });
+
   it("classifies each failure", () => {
     const live = new AbortController().signal;
     expect(degradedReasonFor(new Error("x"), AbortSignal.abort())).toBe("timeout");
     expect(degradedReasonFor(new EvalError("x", true), live)).toBe("rate_limited");
     expect(degradedReasonFor(new EvalError("x"), live)).toBe("unavailable");
     expect(degradedReasonFor(new Error("network"), live)).toBe("unavailable");
+  });
+});
+
+describe("runTurn — a follow-up only when something is missing", () => {
+  async function moveFor(evaluation: RawEvaluation) {
+    const result = await runTurn(ctx({ evaluate: async () => evaluation }));
+    if (result.kind !== "turn") throw new Error("expected a turn");
+    return result;
+  }
+
+  it("moves on from a complete, solid answer and says why", async () => {
+    const result = await moveFor(raw(flat(3)));
+    expect(result.move).toBe("opening");
+    expect(result.notepad.reason).toBe(FULLY_ANSWERED_LINE);
+  });
+
+  it("still clarifies a complete answer with a real gap", async () => {
+    expect((await moveFor(raw({ ...flat(3), outcome: 2 }))).move).toBe("clarify");
+  });
+
+  it("still follows up an answer the evaluator called incomplete", async () => {
+    expect((await moveFor({ ...raw(flat(3)), status: "incomplete" })).move).toBe("clarify");
+  });
+
+  it("moves on once a follow-up completes the answer", async () => {
+    const opening = await moveFor(raw({ ...flat(3), outcome: 1 }));
+    expect(opening.move).toBe("clarify");
+    const reply = await runTurn(
+      ctx({
+        state: opening.state,
+        transcript: "In the end checkout stopped timing out and refunds dropped.",
+        priorThreadTurns: [{ question: FIRST.text, answer: ANSWER }],
+        evaluate: async () => raw(flat(3)),
+      }),
+    );
+    if (reply.kind !== "turn") throw new Error("expected a turn");
+    expect(reply.move).toBe("opening");
   });
 });
 
@@ -319,7 +363,7 @@ describe("runTurn — openings come from the question plan", () => {
     resume: { [ACME.id]: { text: ACME_OPENING, topic: "problem_solving" } },
   };
 
-  /** Two great answers: deepen, then resolve a level harder and open the next thread. */
+  /** One great, complete answer: nothing to follow up, so the next thread opens a level harder. */
   async function nextThread(items: ResumeItem[], plan: QuestionPlan | null) {
     const state = initState({
       mode: "quick",
@@ -327,18 +371,10 @@ describe("runTurn — openings come from the question plan", () => {
       resumeItems: items,
       firstQuestion: FIRST,
     });
-    const base = ctx({ state, plan, evaluate: async () => raw(flat(4)) });
-
-    const first = await runTurn(base);
+    const first = await runTurn(ctx({ state, plan, evaluate: async () => raw(flat(4)) }));
     if (first.kind !== "turn") throw new Error("expected a turn");
-    expect(first.move).toBe("deepen");
-    // A follow-up continues the thread, so there is nothing to transition.
-    expect(first.lead).toBeUndefined();
-
-    const second = await runTurn({ ...base, state: first.state });
-    if (second.kind !== "turn") throw new Error("expected a turn");
-    expect(second.move).toBe("opening");
-    return second;
+    expect(first.move).toBe("opening");
+    return first;
   }
 
   it("uses the role-tailored wording at the new difficulty", async () => {
@@ -544,6 +580,7 @@ describe("submitAnswer", () => {
 
   function memoryStore(patch: Partial<{ status: string; state: EngineState; submitError: { code?: string; message: string } | null; winner: EngineState }> = {}) {
     const submitted: Record<string, unknown>[] = [];
+    const lateScores = new Map<string, LateScore>();
     const store: TurnStore = {
       load: async () => ({
         session: { engine_state: patch.state ?? freshState(), resume_id: null, status: patch.status ?? "in_progress", role_text: null, question_plan: null },
@@ -552,12 +589,59 @@ describe("submitAnswer", () => {
       loadResume: async () => null,
       submit: async (_state, turn) => {
         submitted.push(turn);
-        return patch.submitError ?? null;
+        return { error: patch.submitError ?? null, turnId: `turn-${submitted.length}` };
       },
       reloadState: async () => patch.winner ?? null,
+      saveLateScore: async (turnId, score) => {
+        lateScores.set(turnId, score);
+      },
     };
-    return { store, submitted };
+    return { store, submitted, lateScores };
   }
+
+  it("saves a score that outlasted the live wait onto the turn, once it lands", async () => {
+    const { store, submitted, lateScores } = memoryStore();
+    let land!: (e: RawEvaluation) => void;
+    const slow = new Promise<RawEvaluation>((resolve) => (land = resolve));
+
+    const outcome = await submitAnswer(ANSWER_BODY, store, {
+      runTurn: (c) => runTurn({ ...c, evaluate: () => slow, liveTimeoutMs: 5 }),
+    });
+
+    if (outcome.kind !== "saved") throw new Error("expected a saved turn");
+    // Saved unscored, and the interview moved on rather than following up.
+    expect(submitted[0]).toMatchObject({ scores: null, degraded_reason: "timeout", notepad_text: SCORING_LATE_LINE });
+    expect(outcome.result.move).toBe("opening");
+    expect(outcome.settleLate).not.toBeNull();
+
+    land(raw(flat(4)));
+    await outcome.settleLate!();
+    expect(lateScores.get("turn-1")).toMatchObject({ scores: flat(4), band: "great", observation: "Clear ownership; outcome quantified" });
+  });
+
+  it("has nothing to settle when the score came back in time, or failed outright", async () => {
+    const onTime = await submitAnswer(ANSWER_BODY, memoryStore().store, { runTurn: (c) => runTurn({ ...c, evaluate: async () => raw(flat(3)) }) });
+    const failed = await submitAnswer(ANSWER_BODY, memoryStore().store, {
+      runTurn: (c) => runTurn({ ...c, evaluate: async () => { throw new EvalError("quota", true); } }),
+    });
+    expect(onTime).toMatchObject({ kind: "saved", settleLate: null });
+    expect(failed).toMatchObject({ kind: "saved", settleLate: null });
+  });
+
+  it("saves nothing when the late evaluation fails after all", async () => {
+    const { store, lateScores } = memoryStore();
+    let fail!: (e: Error) => void;
+    const slow = new Promise<RawEvaluation>((_, reject) => (fail = reject));
+
+    const outcome = await submitAnswer(ANSWER_BODY, store, {
+      runTurn: (c) => runTurn({ ...c, evaluate: () => slow, liveTimeoutMs: 5 }),
+    });
+    if (outcome.kind !== "saved") throw new Error("expected a saved turn");
+
+    fail(new EvalError("503"));
+    await outcome.settleLate!();
+    expect(lateScores.size).toBe(0);
+  });
 
   it("saves an answered turn through the store", async () => {
     const { store, submitted } = memoryStore();

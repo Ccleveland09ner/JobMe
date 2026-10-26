@@ -100,7 +100,8 @@ export function noteFromTurnRow(row: TurnRow): NoteView {
     evidence: row.evidence || null,
     observation: row.notepad_text ?? "",
     reason: row.reason_text ?? "",
-    degraded: Boolean(row.degraded_reason) || scores === null,
+    // Not degraded_reason: a turn the report re-scored keeps it, for diagnosis.
+    degraded: scores === null,
   };
 }
 

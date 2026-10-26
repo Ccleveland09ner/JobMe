@@ -13,7 +13,14 @@ import type { TurnResponse } from "@/lib/frontend/types";
 import { isSessionId, notFound, readBody, serverError, unauthorized } from "@/lib/http";
 import { runTurn, staleTurnBody, submitAnswer, turnResponseBody, type TurnStore } from "@/lib/interview/turn";
 import { TurnBody } from "@/lib/schemas";
+import { saveTurnScore } from "@/lib/supabase/rescore";
 import { createClient } from "@/lib/supabase/server";
+
+/**
+ * The response goes after at most EVAL_TIMEOUT_MS of scoring, but after()
+ * waits up to LATE_EVAL_TIMEOUT_MS (50 s) for a slow score, within this.
+ */
+export const maxDuration = 60;
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -74,6 +81,8 @@ export async function POST(
     if (result.degradedReason) console.warn(`[turn] ${JSON.stringify(line)}`);
     else console.info(`[turn] ${JSON.stringify(line)}`);
   });
+  // A score that outlasted the live wait is saved once it lands.
+  if (outcome.settleLate) after(outcome.settleLate);
 
   return NextResponse.json(turnResponseBody(result) satisfies TurnResponse);
 }
@@ -107,17 +116,19 @@ function turnStore(supabase: Supabase, id: string): TurnStore {
       return data ?? null;
     },
     async submit(state, turn) {
-      const { error } = await supabase.rpc("submit_turn", {
+      const { data, error } = await supabase.rpc("submit_turn", {
         p_session_id: id,
         p_seq: state.turnSeq,
         p_engine_state: state,
         p_turn: turn,
       });
-      return error;
+      // submit_turn returns the new turn's id.
+      return { error, turnId: typeof data === "string" ? data : null };
     },
     async reloadState() {
       const { data } = await supabase.from("interview_sessions").select("engine_state").eq("id", id).maybeSingle();
       return (data?.engine_state ?? null) as EngineState | null;
     },
+    saveLateScore: (turnId, score) => saveTurnScore(supabase, turnId, score),
   };
 }
